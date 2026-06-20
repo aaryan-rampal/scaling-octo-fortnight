@@ -5,7 +5,16 @@ from `context/RETURN-architecture.pdf`. Zero build, no dependencies, no
 framework — just static files. On a phone it runs full-screen like a native
 app; on a laptop it shows inside a phone frame so the team can preview it.
 
-## Run it
+## 🔗 Live demo (no setup — just open it)
+
+**https://selinmutlu06.github.io/scaling-octo-fortnight/ui/**
+
+Anyone can open that link on a laptop or phone. It's served via GitHub Pages
+from the `ui-scaffold` branch of a fork; to refresh it after UI changes, push
+the branch to that fork (`git push fork ui-scaffold`). Long-term, a repo admin
+can enable Pages on the main repo so it deploys from here directly.
+
+## Run it locally
 
 ```bash
 # from repo root
