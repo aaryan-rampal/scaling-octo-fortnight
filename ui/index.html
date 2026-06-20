@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>RETURN — photo in, grounded memory out</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="phone">
+    <header class="topbar">
+      <h1 class="brand">RETURN<span class="dot">.</span></h1>
+      <p class="tagline">photo in, grounded memory out</p>
+    </header>
+
+    <!-- VIEW: place list (fake geofence) -->
+    <section id="view-places" class="view active">
+      <p class="section-label">Places near you</p>
+      <div id="place-list" class="place-list"><!-- injected --></div>
+      <p class="hint">Demo stands in for real geofencing — tap a place you've returned to.</p>
+    </section>
+
+    <!-- VIEW: reconstruct-before-reveal -->
+    <section id="view-reconstruct" class="view">
+      <button class="back" data-back>← places</button>
+      <div class="anchor-card">
+        <div id="anchor-photo" class="anchor-photo"></div>
+        <div class="anchor-meta">
+          <p id="anchor-place" class="anchor-place"></p>
+          <p id="anchor-time" class="anchor-time"></p>
+        </div>
+      </div>
+
+      <p class="section-label">Reconstructing the moment…</p>
+      <div id="reconstruct-feed" class="feed"><!-- injected, staged --></div>
+
+      <button id="reveal-btn" class="primary hidden">Reveal what happened →</button>
+    </section>
+
+    <!-- VIEW: the grounded storyline -->
+    <section id="view-reveal" class="view">
+      <button class="back" data-back-reconstruct>← back</button>
+      <div class="storyline-wrap">
+        <p class="section-label">The night, reconstructed</p>
+        <p id="storyline" class="storyline"></p>
+        <div id="citations" class="citations"><!-- injected --></div>
+      </div>
+
+      <div class="persona">
+        <p class="section-label">Talk to past you <span class="seal" id="seal-date"></span></p>
+        <div id="chat" class="chat"><!-- injected --></div>
+        <form id="chat-form" class="chat-form">
+          <input id="chat-input" type="text" autocomplete="off"
+                 placeholder="ask the version of you from that night…" />
+          <button type="submit" aria-label="send">↑</button>
+        </form>
+      </div>
+    </section>
+  </div>
+
+  <script src="seed.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
