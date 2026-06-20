@@ -1,3 +1,19 @@
 /.claude/worktrees
 /.mcp.json
 .env
+.venv
+
+# build artifacts
+*.egg-info/
+build/
+dist/
+
+# data & runtime
+data/
+*.jsonl
+.hindsight*
+
+# caches
+__pycache__/
+.pytest_cache/
+.ruff_cache/

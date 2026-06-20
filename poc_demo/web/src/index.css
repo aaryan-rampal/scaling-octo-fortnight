@@ -1,0 +1,27 @@
+:root {
+  --bg: #0d0b14;
+  --panel: #16131f;
+  --panel-2: #1d1a29;
+  --border: #2a2636;
+  --text: #c9c4d6;
+  --text-dim: #8a8398;
+  --accent: #b89cff;
+  --accent-2: #7c5cff;
+  font-family: "Inter", system-ui, -apple-system, sans-serif;
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+}
+
+code {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  color: var(--accent);
+}
