@@ -1,0 +1,3 @@
+setup:
+  project: berkeley-hackathon
+  config: dev
