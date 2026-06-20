@@ -1,7 +1,9 @@
 # RETURN — UI
 
-The frontend scaffold for the live demo: the **reconstruct-before-reveal** loop
-from `context/RETURN-architecture.pdf`. Zero build, no dependencies — just open it.
+The **mobile web app** for the live demo: the reconstruct-before-reveal loop
+from `context/RETURN-architecture.pdf`. Zero build, no dependencies, no
+framework — just static files. On a phone it runs full-screen like a native
+app; on a laptop it shows inside a phone frame so the team can preview it.
 
 ## Run it
 
@@ -9,37 +11,62 @@ from `context/RETURN-architecture.pdf`. Zero build, no dependencies — just ope
 # from repo root
 cd ui
 
-# option A — just open the file
+# laptop preview
 open index.html
 
-# option B — serve it (better for phone testing on the same wifi)
+# test on your actual phone (same wifi) — serve it, then open the URL on your phone
 python3 -m http.server 5173
-# then visit http://localhost:5173  (or http://<your-laptop-ip>:5173 on your phone)
+# laptop:  http://localhost:5173
+# phone:   http://<your-laptop-ip>:5173   (e.g. 192.168.1.x — run `ipconfig getifaddr en0`)
 ```
+
+### Make it look like an installed app on your phone
+1. Open the served URL in **Safari (iPhone)** or **Chrome (Android)**.
+2. Share → **Add to Home Screen**.
+3. Launch from the home-screen icon — it opens full-screen, no browser chrome.
+
+(`manifest.json` + the apple meta tags in `index.html` handle this. No service
+worker on purpose, so edits show up immediately while we're iterating.)
 
 ## The demo loop
 
-1. **Places** — stands in for geofence triggers. Tap a place you've "returned" to
-   (the *I'm back* button = the FAKE geofence from the build plan).
-2. **Reconstruct** — the photo anchor, then co-temporal cues stream in one by one
-   (cross-source fusion, architecture stage 02). This is the "reconstruct before
-   reveal" beat.
+1. **Places** — stands in for geofence triggers. Tap a place you've "returned"
+   to (the *I'm back* button = the FAKE geofence from the build plan).
+2. **Reconstruct** — the photo anchor, then co-temporal cues stream in one by
+   one (cross-source fusion, stage 02). The "reconstruct before reveal" beat.
 3. **Reveal** — the grounded storyline with inline citation chips (stage 08:
    every clause points at the event it came from).
 4. **Talk to past you** — chat with the version of you sealed at that moment
-   (stage 09). Ask it about that night; it only knows what it knew then.
+   (stage 09). It only knows what it knew then.
 
-## Wiring the real backend
+## Editing the UI (start here)
 
-All seeded data lives in `seed.js`. `app.js` reads it through `getPlaces()` /
-`getPlace()` only — swap those two functions for `fetch()` calls returning the
-same shape and the UI is live against the real pipeline. Nothing else changes.
+Everyone can edit safely — the three concerns are split into three files:
+
+| file | edit this to change… |
+|------|----------------------|
+| `seed.js` | **the demo content** — places, photos, cues, storyline, citations, the persona's replies. Pure data, no logic. |
+| `styles.css` | **the look** — colors live in the `:root` variables at the top; the desktop phone frame is the `@media (min-width: 600px)` block at the bottom. |
+| `index.html` | **the structure** — the three `<section class="view">` blocks. |
+| `app.js` | **the behavior** — view routing, the staged reconstruct animation, the persona chat. |
+
+Tips:
+- Recolor the whole app by editing the `--accent` / `--bg` / `--ink` variables in `styles.css`.
+- Add a new demo place: copy one object in `SEED.places` (`seed.js`) and change the fields.
+- No build step — save the file and refresh.
+
+## Wiring the real backend later
+
+`app.js` reads all data through `getPlaces()` / `getPlace()` only. Swap those
+two functions for `fetch()` calls that return the same shape as `seed.js` and
+the UI is live against the real pipeline. Nothing else changes.
 
 ## Files
 
 | file | what |
 |------|------|
-| `index.html` | markup + the three views |
-| `styles.css` | warm/dark theme matching the architecture deck |
+| `index.html` | markup + the three views + PWA meta tags |
+| `styles.css` | theme + responsive (full-screen phone / framed desktop) |
 | `seed.js` | demo data (the Moffitt / Maya worked trace + one more) |
-| `app.js` | view routing, the staged reconstruct, persona chat |
+| `app.js` | view routing, staged reconstruct, persona chat |
+| `manifest.json`, `icon.svg` | make it installable / add-to-home-screen |
