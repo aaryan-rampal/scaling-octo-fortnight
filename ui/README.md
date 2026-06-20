@@ -7,12 +7,22 @@ app; on a laptop it shows inside a phone frame so the team can preview it.
 
 ## 🔗 Live demo (no setup — just open it)
 
-**https://selinmutlu06.github.io/scaling-octo-fortnight/ui/**
+**https://selinmutlu06.github.io/scaling-octo-fortnight/**
 
-Anyone can open that link on a laptop or phone. It's served via GitHub Pages
-from the `ui-scaffold` branch of a fork; to refresh it after UI changes, push
-the branch to that fork (`git push fork ui-scaffold`). Long-term, a repo admin
-can enable Pages on the main repo so it deploys from here directly.
+Anyone can open that link on a laptop or phone — no install, no clone.
+
+### Open it + edit it + see your edits live
+1. Edit any file in `ui/` on the `ui-scaffold` branch.
+2. Publish your edits to the live link:
+   ```bash
+   git push fork ui-scaffold      # `fork` = your GitHub Pages copy
+   ```
+3. The committed workflow (`.github/workflows/deploy-ui.yml`) redeploys the
+   demo automatically (~1 min). Refresh the link.
+
+> The deploy pipeline lives **in this branch**, so the live demo is reproducible
+> from the branch alone. When a repo admin enables Pages on the main repo, the
+> same workflow deploys from there (remove the `if:` guard in the workflow).
 
 ## Run it locally
 
