@@ -7,7 +7,7 @@
 
   <!-- installable / "looks like a native app" on phones -->
   <link rel="manifest" href="manifest.json" />
-  <meta name="theme-color" content="#1a1714" />
+  <meta name="theme-color" content="#14100c" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
@@ -16,11 +16,15 @@
 
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
   <div class="phone">
+    <!-- ambient golden-hour glow + film grain (nostalgia atmosphere) -->
+    <div class="ambient" aria-hidden="true"></div>
+    <div class="grain" aria-hidden="true"></div>
+
     <div class="screen">
     <div class="statusbar" aria-hidden="true">
       <span class="sb-time">9:41</span>
@@ -30,30 +34,33 @@
         <svg viewBox="0 0 26 13" width="25" height="12"><rect x="1" y="1.5" width="20" height="10" rx="3" fill="none" stroke="currentColor" stroke-width="1" opacity=".4"/><rect x="2.5" y="3" width="16" height="7" rx="1.5"/><rect x="22.5" y="4.5" width="1.6" height="4" rx="1" opacity=".4"/></svg>
       </span>
     </div>
+
     <header class="topbar">
       <h1 class="brand">RETURN<span class="dot">.</span></h1>
-      <p class="tagline">photo in, grounded memory out</p>
+      <p class="tagline">return to a moment, not just a place</p>
     </header>
 
-    <!-- VIEW: place list (fake geofence) -->
+    <!-- VIEW: capsules -->
     <section id="view-places" class="view active">
-      <p class="section-label">Places near you</p>
+      <p class="section-label">Your capsules</p>
       <div id="place-list" class="place-list"><!-- injected --></div>
-      <p class="hint">Demo stands in for real geofencing — tap a place you've returned to.</p>
+      <p class="hint">Sealed capsules unlock when you come back. The <em>I'm back</em>
+        button stands in for real geofencing in this build.</p>
     </section>
 
     <!-- VIEW: reconstruct-before-reveal -->
     <section id="view-reconstruct" class="view">
-      <button class="back" data-back>← places</button>
+      <button class="back" data-back>← capsules</button>
       <div class="anchor-card">
         <div id="anchor-photo" class="anchor-photo"></div>
         <div class="anchor-meta">
           <p id="anchor-place" class="anchor-place"></p>
           <p id="anchor-time" class="anchor-time"></p>
+          <span id="anchor-mood" class="mood-pill"></span>
         </div>
       </div>
 
-      <p class="section-label">Reconstructing the moment…</p>
+      <p class="section-label">Reconstructing the moment</p>
       <div id="reconstruct-feed" class="feed"><!-- injected, staged --></div>
 
       <button id="reveal-btn" class="primary hidden">Reveal what happened →</button>
@@ -66,7 +73,11 @@
         <p class="section-label">The night, reconstructed</p>
         <p id="storyline" class="storyline"></p>
         <div id="citations" class="citations"><!-- injected --></div>
+        <div id="principle" class="principle"><!-- injected --></div>
       </div>
+
+      <!-- forward-looking reflection (wellbeing guardrail) -->
+      <div id="reflection" class="reflection"><!-- injected --></div>
 
       <div class="persona">
         <p class="section-label">Talk to past you <span class="seal" id="seal-date"></span></p>
