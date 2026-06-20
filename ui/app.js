@@ -8,6 +8,9 @@
 const getPlaces = () => SEED.places;
 const getPlace = (id) => SEED.places.find((p) => p.id === id);
 
+// honor the OS "reduce motion" setting (a11y — ui-ux-pro-max §7)
+const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
 // --- view routing ---
 const views = {
   places: document.getElementById("view-places"),
@@ -28,14 +31,21 @@ function renderPlaces() {
   getPlaces().forEach((p) => {
     const el = document.createElement("div");
     el.className = "place";
+    // keyboard-accessible: focusable + Enter/Space activate (a11y — §1/§2)
+    el.tabIndex = 0;
+    el.setAttribute("role", "button");
+    el.setAttribute("aria-label", `Return to ${p.name}`);
     el.innerHTML = `
-      <div class="thumb" style="background:${p.anchor.photo}">${p.emoji}</div>
+      <div class="thumb" style="background:${p.anchor.photo}">${p.icon}</div>
       <div class="pmeta">
         <div class="pname">${p.name}</div>
         <div class="pdesc">${p.desc}</div>
       </div>
       <span class="pback">${p.back}</span>`;
     el.addEventListener("click", () => openPlace(p.id));
+    el.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openPlace(p.id); }
+    });
     list.appendChild(el);
   });
 }
@@ -54,15 +64,31 @@ function openPlace(id) {
   revealBtn.classList.add("hidden");
   show("reconstruct");
 
+  const cueHTML = (c) => `
+    <div class="ctype">${c.type}</div>
+    <div class="ctext">${c.text}</div>
+    <div class="ctime">${c.time}</div>`;
+
+  if (reduceMotion) {
+    // no staged animation — show everything at once
+    active.cues.forEach((c) => {
+      const el = document.createElement("div");
+      el.className = "cue";
+      el.style.animation = "none";
+      el.style.opacity = "1";
+      el.innerHTML = cueHTML(c);
+      feed.appendChild(el);
+    });
+    revealBtn.classList.remove("hidden");
+    return;
+  }
+
   // stage cues in one at a time — the "reconstruction" beat
   active.cues.forEach((c, i) => {
     setTimeout(() => {
       const el = document.createElement("div");
       el.className = "cue";
-      el.innerHTML = `
-        <div class="ctype">${c.type}</div>
-        <div class="ctext">${c.text}</div>
-        <div class="ctime">${c.time}</div>`;
+      el.innerHTML = cueHTML(c);
       feed.appendChild(el);
       if (i === active.cues.length - 1) {
         setTimeout(() => revealBtn.classList.remove("hidden"), 400);
