@@ -32,10 +32,20 @@ body {
   min-height: 100dvh;
   display: flex;
   flex-direction: column;
+}
+.screen {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
   overflow: hidden;
+  background: var(--bg);
   /* respect the notch / home indicator on real phones */
   padding: env(safe-area-inset-top) 0 env(safe-area-inset-bottom);
 }
+
+/* status bar — only shown inside the desktop phone frame (real phones get the
+   OS one). Toggled on in the media query at the bottom. */
+.statusbar { display: none; }
 
 /* header */
 .topbar {
@@ -91,19 +101,34 @@ body {
 /* place list */
 .place-list { display: flex; flex-direction: column; gap: 12px; }
 .place {
-  background: var(--panel);
+  position: relative;
+  background: linear-gradient(180deg, var(--panel) 0%, #1f1b16 100%);
   border: 1px solid var(--line);
   border-radius: var(--radius);
-  padding: 16px 16px;
+  padding: 14px;
   cursor: pointer;
-  transition: border-color .2s, transform .1s;
+  transition: border-color .2s, transform .12s, box-shadow .25s;
   display: flex;
   align-items: center;
   gap: 14px;
 }
-.place:hover { border-color: var(--accent); }
-.place:active { transform: scale(.99); }
-.place .emoji { font-size: 26px; }
+.place:hover {
+  border-color: var(--accent);
+  transform: translateY(-2px);
+  box-shadow: 0 14px 30px -14px rgba(0,0,0,.75);
+}
+.place:active { transform: translateY(0) scale(.99); }
+.place .thumb {
+  width: 52px; height: 52px;
+  border-radius: 13px;
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  font-size: 23px;
+  background-size: cover;
+  background-position: center;
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,.07), inset 0 -10px 18px rgba(0,0,0,.25);
+}
 .place .pmeta { flex: 1; }
 .place .pname { font-weight: 600; font-size: 15px; }
 .place .pdesc { font-size: 12px; color: var(--ink-faint); margin-top: 2px; }
@@ -251,24 +276,96 @@ body {
   cursor: pointer;
 }
 
-/* Desktop / tablet: show it inside a centered phone frame so the team can
-   preview the mobile app on a laptop. Phones get the full-screen layout above. */
+/* Desktop / tablet: render an actual phone device with the app on its screen,
+   so the team can preview the mobile app on a laptop. Phones themselves get
+   the clean full-screen layout above. */
 @media (min-width: 600px) {
   body {
-    background: radial-gradient(120% 80% at 50% 0%, #241f1a 0%, #141210 70%);
+    background:
+      radial-gradient(110% 70% at 50% -10%, #2a241d 0%, transparent 60%),
+      radial-gradient(120% 90% at 50% 110%, #1d2a2a 0%, transparent 55%),
+      #0c0a08;
     display: flex;
     justify-content: center;
     align-items: center;
-    padding: 24px 12px;
+    padding: 28px 16px;
   }
+
+  /* the device body (titanium-ish bezel) */
   .phone {
-    width: 390px;
-    min-height: 780px;
-    max-height: calc(100dvh - 48px);
-    overflow-y: auto;
-    border: 1px solid var(--line);
-    border-radius: 36px;
-    box-shadow: 0 30px 80px rgba(0,0,0,.55);
-    padding: 0;
+    position: relative;
+    width: 396px;
+    height: min(852px, calc(100dvh - 56px));
+    min-height: 0;
+    padding: 13px;
+    background: linear-gradient(150deg, #2c2c30 0%, #0b0b0d 40%, #18181b 100%);
+    border-radius: 60px;
+    box-shadow:
+      0 0 0 1px #3a3a40,                  /* outer rim highlight */
+      0 0 0 8px #0a0a0c,                  /* bezel */
+      0 40px 90px -10px rgba(0,0,0,.75),  /* drop shadow */
+      0 8px 24px rgba(0,0,0,.5);
   }
+
+  /* the glass screen */
+  .screen {
+    height: 100%;
+    border-radius: 47px;
+    overflow-y: auto;
+    overflow-x: hidden;
+    background: var(--bg);
+    padding: 0;
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .screen::-webkit-scrollbar { display: none; }
+
+  /* dynamic island */
+  .phone::before {
+    content: "";
+    position: absolute;
+    top: 26px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 116px;
+    height: 32px;
+    background: #050506;
+    border-radius: 20px;
+    z-index: 20;
+    box-shadow: inset 0 0 0 1px rgba(255,255,255,.04);
+  }
+
+  /* side button (power) */
+  .phone::after {
+    content: "";
+    position: absolute;
+    right: -2px;
+    top: 190px;
+    width: 4px;
+    height: 72px;
+    background: linear-gradient(90deg, #1a1a1d, #3a3a40);
+    border-radius: 0 4px 4px 0;
+  }
+
+  /* faux iOS status bar, tucked around the dynamic island */
+  .statusbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 15px 32px 0;
+    color: var(--ink);
+    font-size: 14px;
+    font-weight: 600;
+    position: relative;
+    z-index: 25;
+  }
+  .sb-time { font-variant-numeric: tabular-nums; letter-spacing: .3px; }
+  .sb-icons { display: inline-flex; align-items: center; gap: 6px; }
+  .sb-icons svg { fill: currentColor; color: var(--ink); }
+
+  /* subtle glass highlight on the screen edge */
+  .screen { box-shadow: inset 0 1px 0 rgba(255,255,255,.06); }
+
+  /* header sits just below the status bar / island */
+  .topbar { padding-top: 26px; }
 }

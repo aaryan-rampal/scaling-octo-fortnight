@@ -29,7 +29,7 @@ function renderPlaces() {
     const el = document.createElement("div");
     el.className = "place";
     el.innerHTML = `
-      <span class="emoji">${p.emoji}</span>
+      <div class="thumb" style="background:${p.anchor.photo}">${p.emoji}</div>
       <div class="pmeta">
         <div class="pname">${p.name}</div>
         <div class="pdesc">${p.desc}</div>
