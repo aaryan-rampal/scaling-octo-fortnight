@@ -1,0 +1,40 @@
+name: Deploy UI demo to GitHub Pages
+
+# Publishes the ui/ folder as the live demo on every push to this branch,
+# so editing the UI = the live link updates automatically.
+# Live URL (fork): https://selinmutlu06.github.io/scaling-octo-fortnight/
+on:
+  push:
+    branches: [ui-scaffold]
+    paths:
+      - "ui/**"
+      - ".github/workflows/deploy-ui.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    # Only deploys from the fork that has Pages enabled. On the main repo this
+    # job is skipped (no red CI) until an admin enables Pages there, at which
+    # point this same workflow deploys it — just remove this guard.
+    if: github.repository == 'selinmutlu06/scaling-octo-fortnight'
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: ui
+      - id: deployment
+        uses: actions/deploy-pages@v4
