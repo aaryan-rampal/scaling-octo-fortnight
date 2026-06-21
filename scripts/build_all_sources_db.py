@@ -2,24 +2,25 @@
 
 Reads the four local sources, projects each to canonical ``Event`` rows, and
 persists them through the single ``persist_events`` write path so they land in
-one SQLite file (``data/recall.db``). The full library of every source is stored
-(per the design: the durable store holds everything; downstream loaders filter).
+one SQLite file (``data/recall.db``).
 
-**Enrichment policy (LLM cost lives here, in one place):** the durable store
-holds the *whole* library, but the expensive LLM enrichments — photo vision and
-Spotify artist vibes — are computed only for the **trailing slice** that the
-retain step actually consumes. Older rows are stored unenriched; they cost
-nothing because nothing downstream reads them yet. iMessage contact names are
-resolved for the whole set (no LLM, just a Contacts-DB lookup), so they ride in
-at ingest.
+**One trailing window per source bounds ingest** (``--days`` default, per-source
+overrides). Only events inside a source's window are persisted, so the durable
+store holds the slice the pipeline actually uses — not the whole library. The
+expensive LLM enrichments (photo vision, Spotify artist vibes) then apply to
+exactly what was ingested. iMessage contact names are resolved at ingest (no
+LLM, just a Contacts-DB lookup).
 
 LIVE on the slice pass: photo vision + artist vibes spend OpenRouter on cache
-misses. Run the whole thing under Doppler. Each enrichment has its own trailing
-window (``--photo-days`` / ``--spotify-days``); ``--enrich-days`` sets the shared
-default for whichever is left unset.
+misses. Run the whole thing under Doppler.
+
+Each source has ONE trailing ingest window that bounds what lands in
+``recall.db`` — enrichment then applies to exactly what was ingested.
+``--days`` sets the shared default; ``--imessage-days`` / ``--photos-days`` /
+``--spotify-days`` / ``--claude-days`` override per source (0 = full history).
 
     env PYTHONPATH=src .venv/bin/python scripts/build_all_sources_db.py \\
-        --photo-days 30 --spotify-days 7
+        --days 30 --spotify-days 7
 """
 
 from __future__ import annotations
@@ -43,7 +44,6 @@ from adapters.spotify import (
 )
 from core.logging import configure_logging
 from core.schema import Event
-from models.photo import PhotoRecord
 from storage.persist import persist_events
 from storage.store import DEFAULT_DB_PATH, CapsuleStore
 
@@ -81,74 +81,68 @@ def _run_phase(name: str, build: Callable[[], list[Event]]) -> int:
     return written
 
 
-def _recent_event_ids(events: list[Event], days: int) -> set[str]:
-    """Return the ids of events within the trailing ``days`` of the latest one."""
-    if not events:
-        return set()
-    cutoff = max(e.t_utc for e in events) - timedelta(days=days)
-    return {e.id for e in events if e.t_utc >= cutoff}
+def _within_days(events: list[Event], days: int) -> list[Event]:
+    """Keep only events within the trailing ``days`` of the latest one.
 
-
-def _enrich_photos_slice(records: list[PhotoRecord], days: int) -> list[PhotoRecord]:
-    """Vision-enrich only the trailing-``days`` photo records (others pass through).
-
-    ``enrich_photos`` is given just the slice, so only those photos are ever sent
-    to the vision model; the rest of the library is returned unchanged.
+    The single per-source window: it bounds what lands in ``recall.db`` (ingest),
+    so enrichment and retain downstream only ever see this slice. ``days <= 0``
+    keeps everything (no cutoff).
     """
-    recent_ids = _recent_event_ids([r.to_event() for r in records], days)
+    if not events or days <= 0:
+        return events
+    cutoff = max(e.t_utc for e in events) - timedelta(days=days)
+    return [e for e in events if e.t_utc >= cutoff]
+
+
+def _photo_events(days: int) -> list[Event]:
+    """Ingest the trailing-``days`` photos, vision-enriching exactly that slice."""
+    records = ingest_photos(PHOTOS_DB)
+    recent_ids = {e.id for e in _within_days([r.to_event() for r in records], days)}
     recent = [r for r in records if r.id in recent_ids]
-    rest = [r for r in records if r.id not in recent_ids]
-    logger.info(
-        "photos: enriching {} of {} (last {}d) with vision", len(recent), len(records), days
-    )
-    return enrich_photos(recent) + rest
+    logger.info("photos: ingesting + vision-enriching {} (last {}d)", len(recent), days)
+    return [r.to_event() for r in enrich_photos(recent)]
 
 
 def _spotify_events(days: int) -> list[Event]:
-    """Read the full Spotify library, vibe-enriching only the trailing slice.
+    """Ingest the trailing-``days`` Spotify plays, vibe-enriching exactly that slice.
 
     Trivially-short plays are dropped via ``records_to_events`` (the adapter's
     ``min_ms_played`` noise filter), so the stored set matches a normal
     ``spotify.ingest`` rather than the raw streaming history.
     """
     records = [r for r in read_records(SPOTIFY_EXPORT_DIR) if r.ms_played >= DEFAULT_MIN_MS_PLAYED]
-    recent_ids = _recent_event_ids(records_to_events(records), days)
+    recent_ids = {e.id for e in _within_days(records_to_events(records), days)}
     recent = [r for r in records if r.to_event().id in recent_ids]
-    logger.info(
-        "spotify: enriching {} of {} (last {}d) with vibes", len(recent), len(records), days
-    )
+    logger.info("spotify: ingesting + vibe-enriching {} (last {}d)", len(recent), days)
     enrich_records(recent)  # mutates records in place; vibes ride into to_event()
-    return records_to_events(records)
+    return records_to_events(recent)
 
 
 def main() -> None:
     """Ingest all four sources into the unified events table, slice-enriched."""
     ap = argparse.ArgumentParser(description="Build the unified events DB from all sources.")
     ap.add_argument(
-        "--enrich-days",
+        "--days",
         type=int,
         default=30,
-        help="Default trailing enrichment window (days), used by any per-source flag left unset.",
+        help="Default trailing ingest window (days) per source; any per-source flag overrides it. "
+        "0 = no cutoff (full history).",
     )
-    ap.add_argument(
-        "--photo-days",
-        type=int,
-        default=None,
-        help="Trailing window for photo vision enrichment (defaults to --enrich-days).",
-    )
-    ap.add_argument(
-        "--spotify-days",
-        type=int,
-        default=None,
-        help="Trailing window for Spotify vibe enrichment (defaults to --enrich-days).",
-    )
+    for src in ("imessage", "photos", "spotify", "claude"):
+        ap.add_argument(
+            f"--{src}-days",
+            type=int,
+            default=None,
+            help=f"Trailing ingest window for {src} (defaults to --days).",
+        )
     ap.add_argument(
         "--fresh", action="store_true", help="Delete the existing DB first (build from scratch)."
     )
     args = ap.parse_args()
 
-    photo_days = args.photo_days if args.photo_days is not None else args.enrich_days
-    spotify_days = args.spotify_days if args.spotify_days is not None else args.enrich_days
+    def _window(source: str) -> int:
+        override = getattr(args, f"{source}_days")
+        return override if override is not None else args.days
 
     configure_logging()
 
@@ -157,20 +151,23 @@ def main() -> None:
         logger.info("Removed existing {} (--fresh)", DEFAULT_DB_PATH)
 
     logger.info(
-        "Building {} (photo enrich={}d, spotify enrich={}d)",
+        "Building {} (ingest windows: imessage={}d photos={}d spotify={}d claude={}d)",
         DEFAULT_DB_PATH,
-        photo_days,
-        spotify_days,
+        _window("imessage"),
+        _window("photos"),
+        _window("spotify"),
+        _window("claude"),
     )
 
-    def _photo_events() -> list[Event]:
-        records = _enrich_photos_slice(ingest_photos(PHOTOS_DB), photo_days)
-        return [r.to_event() for r in records]
-
-    _run_phase("imessage", lambda: imessage.ingest(IMESSAGE_TOP_N, db_path=IMESSAGE_DB))
-    _run_phase("claude", lambda: ingest_export(CLAUDE_EXPORT_DIR))
-    _run_phase("spotify", lambda: _spotify_events(spotify_days))
-    _run_phase("photos", _photo_events)
+    _run_phase(
+        "imessage",
+        lambda: _within_days(
+            imessage.ingest(IMESSAGE_TOP_N, db_path=IMESSAGE_DB), _window("imessage")
+        ),
+    )
+    _run_phase("claude", lambda: _within_days(ingest_export(CLAUDE_EXPORT_DIR), _window("claude")))
+    _run_phase("spotify", lambda: _spotify_events(_window("spotify")))
+    _run_phase("photos", lambda: _photo_events(_window("photos")))
 
     store = CapsuleStore()
     try:
