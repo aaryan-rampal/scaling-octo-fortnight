@@ -1,10 +1,11 @@
-"""Canonical mapping from a parsed Claude export to :class:`ChatEvent` rows.
+"""Canonical mapping from a parsed Claude export to :class:`~recall.schema.Event` rows.
 
 This is the *mapping* layer that sits on top of the faithful parse models in
 ``models.llm_export``. It turns each :class:`ClaudeMessage` into a canonical
-:class:`ChatEvent` (``source="claude"``), applying the project's conventions for
-roles, thread ids, reply links, deterministic ids, and — most importantly — the
-privacy rules that decide what message content is allowed to be persisted.
+:class:`~recall.schema.Event` (``source="claude"``), applying the project's
+conventions for roles, thread ids, reply links, deterministic ids, and — most
+importantly — the privacy rules that decide what message content is allowed to be
+persisted.
 
 Privacy is the reason this layer exists separately from parsing. The export
 contains material we must never store: the model's private ``thinking`` and the
@@ -19,8 +20,8 @@ from __future__ import annotations
 import hashlib
 from pathlib import Path
 
-from models.chat_event import ChatEvent
 from models.llm_export import ClaudeConversation, ClaudeExport, ClaudeMessage
+from recall.schema import Event
 
 #: Sentinel ``parent_message_uuid`` the export uses for a thread's root message.
 #: It is not a real message id, so the mapping treats it (like ``null``) as
@@ -117,12 +118,14 @@ def _reply_to(parent_message_uuid: str | None) -> str | None:
     return parent_message_uuid
 
 
-def to_chat_events(conversation: ClaudeConversation) -> list[ChatEvent]:
-    """Map one conversation's messages to canonical :class:`ChatEvent` rows.
+def to_chat_events(conversation: ClaudeConversation) -> list[Event]:
+    """Map one conversation's messages to canonical :class:`~recall.schema.Event` rows.
 
     Each message becomes at most one event. A message whose rendered content is
     empty (e.g. only a ``thinking`` block, or an empty body) is skipped, so the
     result can be shorter than the input and an empty conversation yields ``[]``.
+    Chat is conversational, so the events fill the conversational fields and leave
+    ``additional_data`` empty — the same shape iMessage produces.
 
     Args:
         conversation: A parsed conversation from the Claude export.
@@ -132,13 +135,13 @@ def to_chat_events(conversation: ClaudeConversation) -> list[ChatEvent]:
         empty-rendering messages dropped.
     """
     thread_id = conversation.uuid
-    events: list[ChatEvent] = []
+    events: list[Event] = []
     for message in conversation.chat_messages:
         content = _render_content(message)
         if not content:
             continue
         events.append(
-            ChatEvent(
+            Event(
                 id=_event_id(thread_id, message.uuid),
                 t_utc=message.created_at,
                 author_role=_ROLE_BY_SENDER[message.sender],
@@ -152,7 +155,7 @@ def to_chat_events(conversation: ClaudeConversation) -> list[ChatEvent]:
     return events
 
 
-def ingest_export(export_dir: str | Path) -> list[ChatEvent]:
+def ingest_export(export_dir: str | Path) -> list[Event]:
     """Load a Claude export directory and map every conversation to events.
 
     Args:
@@ -166,7 +169,7 @@ def ingest_export(export_dir: str | Path) -> list[ChatEvent]:
         FileNotFoundError: If the export directory has no ``conversations.json``.
     """
     export = ClaudeExport.from_dir(export_dir)
-    events: list[ChatEvent] = []
+    events: list[Event] = []
     for conversation in export.conversations:
         events.extend(to_chat_events(conversation))
     return events

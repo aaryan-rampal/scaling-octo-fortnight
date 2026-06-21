@@ -1,6 +1,6 @@
 """Tests for the Claude-chat adaptor (adaptors.llm_chats).
 
-Pins the canonical mapping from a ClaudeConversation to canonical ChatEvents:
+Pins the canonical mapping from a ClaudeConversation to canonical Events:
 role/source/thread_id/raw_ref, the reply_to root sentinel, deterministic ids,
 content rendering with privacy rules (thinking dropped, tool blocks reduced to a
 marker), empty-skip, and the empty-conversation case.
@@ -12,8 +12,8 @@ from datetime import UTC
 from pathlib import Path
 
 from adaptors.llm_chats import _event_id, ingest_export, to_chat_events
-from models.chat_event import ChatEvent
 from models.llm_export import ClaudeConversation
+from recall.schema import Event
 
 FIXTURE_DIR = Path(__file__).parent / "fixtures" / "llm_export"
 
@@ -74,7 +74,7 @@ def test_source_is_claude() -> None:
     conv = _conv("c1", [_msg("m1", "human", "hi")])
     events = to_chat_events(conv)
     assert all(e.source == "claude" for e in events)
-    assert all(isinstance(e, ChatEvent) for e in events)
+    assert all(isinstance(e, Event) for e in events)
 
 
 def test_thread_id_is_conversation_uuid() -> None:
@@ -271,7 +271,7 @@ def test_empty_conversation_yields_no_events() -> None:
 def test_ingest_export_returns_chat_events() -> None:
     events = ingest_export(FIXTURE_DIR)
     assert events
-    assert all(isinstance(e, ChatEvent) for e in events)
+    assert all(isinstance(e, Event) for e in events)
     assert all(e.source == "claude" for e in events)
 
 

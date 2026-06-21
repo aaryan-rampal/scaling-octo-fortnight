@@ -1,9 +1,13 @@
 """Parse-time model for a single Apple Photos asset (``PhotoRecord``).
 
-A ``PhotoRecord`` is the canonical raw_data row for one photo or video drawn from
-the local ``Photos.sqlite``. It is intentionally *not* a ``ChatEvent``: photos are
-not conversational, so they get their own model and their own table rather than
-being forced into the message schema.
+A ``PhotoRecord`` is the source-parse row for one photo or video drawn from the
+local ``Photos.sqlite``. Photos are not conversational, so :meth:`to_event`
+projects a record onto a canonical :class:`~recall.schema.Event` that leaves the
+conversational fields (``author_role`` / ``content`` / ``thread_id`` /
+``reply_to``) empty and carries the photo-only metadata in ``additional_data``.
+This puts photos on the **same provenance path as every other source**: the
+emitted events go through ``adaptors._persist.persist_events`` into the unified
+``events`` table, no source-specific storage needed.
 
 Pydantic is used (over the frozen dataclasses elsewhere) because the source rows
 come straight out of a third-party SQLite schema we do not control: strict
@@ -17,6 +21,11 @@ from datetime import datetime
 from typing import Literal
 
 from pydantic import BaseModel
+
+from recall.schema import Event
+
+#: ``source`` discriminator stamped on every photo-derived canonical event.
+PHOTO_SOURCE = "photos"
 
 
 class PhotoRecord(BaseModel):
@@ -63,3 +72,36 @@ class PhotoRecord(BaseModel):
     kind: Literal["photo", "video"]
     people: list[str]
     raw_ref: str
+
+    def to_event(self) -> Event:
+        """Project this photo onto the canonical :class:`~recall.schema.Event`.
+
+        The seam that puts photos on the shared provenance path. Photos are not
+        conversational, so ``author_role`` / ``content`` / ``thread_id`` /
+        ``reply_to`` are left ``None`` and the photo-only metadata (geo,
+        dimensions, flags, people, on-disk path) rides in ``additional_data``.
+        ``captured_at`` becomes the event's ``t_utc``.
+        """
+        return Event(
+            id=self.id,
+            t_utc=self.captured_at,
+            author_role=None,
+            content=None,
+            thread_id=None,
+            reply_to=None,
+            raw_ref=self.raw_ref,
+            source=PHOTO_SOURCE,
+            additional_data={
+                "lat": self.lat,
+                "lng": self.lng,
+                "original_filename": self.original_filename,
+                "original_path": self.original_path,
+                "width": self.width,
+                "height": self.height,
+                "is_favorite": self.is_favorite,
+                "is_hidden": self.is_hidden,
+                "is_trashed": self.is_trashed,
+                "kind": self.kind,
+                "people": self.people,
+            },
+        )

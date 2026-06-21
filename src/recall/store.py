@@ -19,6 +19,7 @@ POC's file-based-state philosophy: the DB is a single inspectable file under
 from __future__ import annotations
 
 import hashlib
+import json
 import sqlite3
 from collections.abc import Iterable, Iterator
 from contextlib import contextmanager
@@ -28,9 +29,20 @@ from recall.capsule import Capsule, Media
 from recall.schema import Event
 
 
-def content_sha(content: str) -> str:
-    """Return the provenance hash for an event's content (SHA-256, hex)."""
-    return hashlib.sha256(content.encode("utf-8")).hexdigest()
+def content_sha(event: Event) -> str:
+    """Return the provenance hash for an event (SHA-256, hex).
+
+    Hashes a deterministic serialization of the fields that carry the event's
+    payload — ``content`` for conversational sources, and ``additional_data`` for
+    sources (e.g. photos) whose payload is metadata rather than text. This lets a
+    stored row be proven byte-identical to what was ingested regardless of source.
+    """
+    payload = json.dumps(
+        {"content": event.content, "additional_data": event.additional_data},
+        sort_keys=True,
+        ensure_ascii=False,
+    )
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 #: Default on-disk location, alongside the JSONL state the POC already writes.
 DEFAULT_DB_PATH = Path("data/recall.db")
@@ -58,21 +70,25 @@ CREATE TABLE IF NOT EXISTS media (
 
 CREATE INDEX IF NOT EXISTS idx_media_capsule ON media(capsule_id);
 
--- Passive raw_data: canonical events from sources (iMessage / notes / discord).
--- Mirrors recall.schema.Event so passive sources have a persistent home too.
+-- Passive raw_data: canonical events from every source (iMessage / Claude /
+-- Spotify / photos / ...). One table holds every event; the source column says
+-- which kind a row is. Conversational fields (author_role / content / thread_id)
+-- are nullable because non-conversational sources (photos) leave them empty and
+-- carry their source-specific fields in additional_data (a JSON object) instead.
 -- content_sha is a provenance hash of the content as ingested: it lets us prove
 -- a stored message is byte-identical to what we saw, independent of whether the
 -- original source (e.g. chat.db) is later vacuumed, rebuilt, or unavailable.
 CREATE TABLE IF NOT EXISTS events (
-    id           TEXT PRIMARY KEY,
-    t_utc        TEXT NOT NULL,
-    author_role  TEXT NOT NULL,
-    content      TEXT NOT NULL,
-    thread_id    TEXT NOT NULL,
-    reply_to     TEXT,
-    raw_ref      TEXT NOT NULL,
-    source       TEXT NOT NULL,
-    content_sha  TEXT NOT NULL
+    id              TEXT PRIMARY KEY,
+    t_utc           TEXT NOT NULL,
+    author_role     TEXT,
+    content         TEXT,
+    thread_id       TEXT,
+    reply_to        TEXT,
+    raw_ref         TEXT NOT NULL,
+    source          TEXT NOT NULL,
+    content_sha     TEXT NOT NULL,
+    additional_data TEXT NOT NULL DEFAULT '{}'
 );
 
 CREATE INDEX IF NOT EXISTS idx_events_source ON events(source);
@@ -226,8 +242,8 @@ class CapsuleStore:
                 cur.execute(
                     "INSERT OR REPLACE INTO events "
                     "(id, t_utc, author_role, content, thread_id, reply_to, "
-                    " raw_ref, source, content_sha) "
-                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    " raw_ref, source, content_sha, additional_data) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     (
                         e.id,
                         e.t_utc.isoformat(),
@@ -237,7 +253,8 @@ class CapsuleStore:
                         e.reply_to,
                         e.raw_ref,
                         e.source,
-                        content_sha(e.content),
+                        content_sha(e),
+                        json.dumps(e.additional_data, ensure_ascii=False),
                     ),
                 )
                 count += 1
@@ -263,6 +280,7 @@ class CapsuleStore:
     @staticmethod
     def _row_to_event(row: sqlite3.Row) -> Event:
         data = {k: row[k] for k in row.keys() if k != "content_sha"}  # noqa: SIM118
+        data["additional_data"] = json.loads(data["additional_data"] or "{}")
         return Event.from_dict(data)
 
     def verify_event(self, event_id: str) -> bool | None:
@@ -276,11 +294,11 @@ class CapsuleStore:
         """
         with self._cursor() as cur:
             row = cur.execute(
-                "SELECT content, content_sha FROM events WHERE id = ?", (event_id,)
+                "SELECT * FROM events WHERE id = ?", (event_id,)
             ).fetchone()
         if row is None:
             return None
-        return content_sha(row["content"]) == row["content_sha"]
+        return content_sha(self._row_to_event(row)) == row["content_sha"]
 
     def close(self) -> None:
         """Close the shared connection, if any (no-op for on-disk stores)."""
