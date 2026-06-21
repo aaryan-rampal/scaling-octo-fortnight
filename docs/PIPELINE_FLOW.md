@@ -24,13 +24,21 @@ writes to **stderr** — capture with `2>&1`, never bare `> file`.
 |---|---|---|---|---|
 | 0 | Build unified events DB | `scripts/build_all_sources_db.py --fresh --enrich-days 30` | LIVE (vision+vibe enrich on slice) | `data/recall.db` (~271k events) |
 | 1 | Segment + render + retain | `scripts/retain_slice.py --days 30` | LIVE (gemini extract + qwen embed per unit) | Hindsight bank `slice-7d` |
-| 2 | Snapshot the bank | `scripts/dump_bank.py` | free | `data/bank_snapshot.json` |
+| 2 | Snapshot the bank | `scripts/dump_bank.py` | free | recall.db `memories` + `memory_events` (memory layer; `--out` for a JSON snapshot, observability-only) |
 | — | EDA over the snapshot | `scripts/eda_bank.py` | free | stdout |
-| 3 | Mint principles (rung ③) | `scripts/mint_principles.py` | LIVE (gemini propose + qwen novelty embed per cluster) | `data/principles.json` |
-| 4 | Merge + link (rung ④) | `scripts/link_principles.py` | LIVE | `data/principles.merged.json`, `data/edges.json` |
+| 3 | Mint principles (rung ③) | `scripts/mint_principles.py` | LIVE (gemini propose + qwen novelty embed per cluster) | `data/principles.json` (transient rung-③→④ handoff) |
+| 4 | Merge + link (rung ④) | `scripts/link_principles.py` | LIVE | recall.db `principles` / `principle_memories` / `edges` / `edge_memories` (principle layer; `--emit-json` for JSON, observability-only) |
 
 Each step has `--dry-run` / `--limit*` for a free or cheap smoke before the full
 paid run. **Always smoke first.**
+
+**DB-as-truth.** Steps 2 and 4 write recall.db directly via
+`storage.principle_store.PrincipleStore`; a completed run leaves **no JSON at
+rest** (only recall.db + raw exports). Dump owns the memory layer, link owns the
+principle layer; each resets only its own derived tables in one transaction and
+never touches `events` / `capsules` / `media`. `data/principles.json` is the one
+transient file (mint → link handoff). `scripts/load_principles_db.py` remains as
+a fallback that re-loads the JSON artifacts into the DB if they exist.
 
 ## What each rung does
 

@@ -2,9 +2,13 @@
 
 Loads ``data/principles.json`` (rung-③ output), boots the Hindsight bank to
 recall MemoryCards (needed for ledger reconstruction), runs the MERGE pass
-(collapses pairs with cosine >= 0.80), writes ``data/principles.merged.json``,
-then runs the LINKING pass (proposes typed edges for pairs in the 0.60-0.80
-band) and writes ``data/edges.json``.
+(collapses pairs with cosine >= 0.80), then runs the LINKING pass (proposes
+typed edges for pairs in the 0.60-0.80 band). The canonical merged principles +
+edges are written **straight into recall.db** (the principle layer of the
+DB-as-truth pipeline) via :class:`storage.principle_store.PrincipleStore` — no
+JSON at rest. ``--emit-json`` additionally writes
+``data/principles.merged.json`` + ``data/edges.json`` for human inspection
+(observability-only, not the source of truth).
 
 **Observability first** (mirrors mint_principles.py):
 - Every merge-group is logged before any LLM call.
@@ -51,6 +55,7 @@ from pipeline.link import LLMEdgeProposer, run_linking, run_merge
 from pipeline.mint import MemoryCard
 from pipeline.propose import PgVectorReader, QwenEmbedder, recall_to_cards
 from runtime.hindsight import embedded_hindsight
+from storage.principle_store import DEFAULT_DB_PATH, PrincipleStore
 
 BANK = "slice-7d"
 RECALL_QUERY = "personal values, habits, relationships, emotions, recurring patterns"
@@ -166,6 +171,13 @@ def main() -> None:
         default=BANK,
         help=f"Hindsight bank id (default: {BANK}).",
     )
+    ap.add_argument("--db", type=Path, default=DEFAULT_DB_PATH, help="recall.db path.")
+    ap.add_argument(
+        "--emit-json",
+        action="store_true",
+        help="Also write principles.merged.json + edges.json (observability-only; the DB "
+        "is the source of truth). Omit to leave no JSON at rest.",
+    )
     args = ap.parse_args()
 
     paid = not args.dry_run
@@ -221,10 +233,6 @@ def main() -> None:
         len(merged_principles),
         elapsed,
     )
-    MERGED_PATH.parent.mkdir(parents=True, exist_ok=True)
-    MERGED_PATH.write_text(json.dumps([_principle_to_dict(p) for p in merged_principles], indent=2))
-    logger.info("wrote {} merged principles -> {}", len(merged_principles), MERGED_PATH)
-
     # -----------------------------------------------------------------------
     # LINKING pass
     # -----------------------------------------------------------------------
@@ -247,9 +255,30 @@ def main() -> None:
         elapsed,
     )
 
-    EDGES_PATH.parent.mkdir(parents=True, exist_ok=True)
-    EDGES_PATH.write_text(json.dumps([_edge_to_dict(e) for e in edges], indent=2))
-    logger.info("wrote {} edges -> {}", len(edges), EDGES_PATH)
+    # -----------------------------------------------------------------------
+    # Write the principle layer straight into recall.db (source of truth).
+    # The dump stage already wrote the memory layer; this validates each
+    # principle/edge derived_from id against those memories.
+    # -----------------------------------------------------------------------
+    principle_dicts = [_principle_to_dict(p) for p in merged_principles]
+    edge_dicts = [_edge_to_dict(e) for e in edges]
+
+    store = PrincipleStore.open(args.db)
+    try:
+        store.write_principle_layer(principle_dicts, edge_dicts)
+    finally:
+        store.close()
+    logger.info(
+        "wrote {} principles + {} edges into {}", len(principle_dicts), len(edge_dicts), args.db
+    )
+
+    if args.emit_json:
+        MERGED_PATH.parent.mkdir(parents=True, exist_ok=True)
+        MERGED_PATH.write_text(json.dumps(principle_dicts, indent=2))
+        EDGES_PATH.write_text(json.dumps(edge_dicts, indent=2))
+        logger.info(
+            "also wrote JSON (observability-only): {} + {}", MERGED_PATH, EDGES_PATH
+        )
 
     # Final tally
     rel_counts: dict[str, int] = {}

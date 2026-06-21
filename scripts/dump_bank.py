@@ -1,12 +1,23 @@
-"""Dump the live Hindsight memory bank to data/bank_snapshot.json.
+"""Dump the live Hindsight memory bank straight into recall.db.
 
 Reads all memories from the ``slice-7d`` bank (paginated), reconstructs their
 raw-event provenance by re-segmenting ``data/recall.db`` with the same 30-day
-window the retain used, and writes the 9-field snapshot consumed by
-``scripts/eda_bank.py`` and ``scripts/show_bank.py``.
+window the retain used, and writes the memory layer (``memories`` +
+``memory_events``) directly into recall.db via
+:class:`storage.principle_store.PrincipleStore` — **no JSON at rest**.
 
-READ-ONLY — no OpenRouter extraction calls are made. Boots embedded Hindsight
-(needs OPENROUTER_API_KEY in env for embeddings config, but only reads memory).
+This is the dump stage of the DB-as-truth pipeline: it owns the memory layer,
+runs before ``link`` (which owns the principle layer), and resets only its own
+two tables in one transaction (the principle/edge tables and the raw
+``events`` / ``capsules`` / ``media`` are untouched).
+
+``--out`` still writes the legacy JSON snapshot for human inspection / EDA
+(``scripts/eda_bank.py``), but it is **observability-only and not written by
+default** — the DB is the source of truth.
+
+READ-ONLY against Hindsight — no OpenRouter extraction calls are made. Boots
+embedded Hindsight (needs OPENROUTER_API_KEY in env for embeddings config, but
+only reads memory).
 
 Run:
     doppler run --project berkeley-hackathon --config dev -- \\
@@ -28,11 +39,11 @@ from core.logging import configure_logging
 from core.schema import Event
 from pipeline.segment import Unit, segment_recent
 from runtime.hindsight import embedded_hindsight
+from storage.principle_store import DEFAULT_DB_PATH, PrincipleStore
 from storage.store import CapsuleStore
 
 BANK = "slice-7d"
 WINDOW_DAYS = 30
-OUTPUT_PATH = Path("data/bank_snapshot.json")
 
 
 def _paginate_memories(client, bank_id: str) -> list[dict]:
@@ -272,7 +283,7 @@ def main() -> None:
     """Dump the live Hindsight bank to a 9-field JSON snapshot."""
     configure_logging()
 
-    ap = argparse.ArgumentParser(description="Dump Hindsight bank to bank_snapshot.json.")
+    ap = argparse.ArgumentParser(description="Dump Hindsight bank's memory layer into recall.db.")
     ap.add_argument("--bank", default=BANK, help=f"Bank id to read (default: {BANK}).")
     ap.add_argument(
         "--days",
@@ -280,7 +291,14 @@ def main() -> None:
         default=WINDOW_DAYS,
         help=f"Re-segmentation window in days (must match retain --days, default: {WINDOW_DAYS}).",
     )
-    ap.add_argument("--out", type=Path, default=OUTPUT_PATH, help="Output JSON path.")
+    ap.add_argument("--db", type=Path, default=DEFAULT_DB_PATH, help="recall.db path.")
+    ap.add_argument(
+        "--out",
+        type=Path,
+        default=None,
+        help="Optional JSON snapshot path for human inspection (observability-only, "
+        "not the source of truth). Omit to leave no JSON at rest.",
+    )
     args = ap.parse_args()
 
     unit_map = _build_unit_map(args.days)
@@ -295,9 +313,17 @@ def main() -> None:
 
     records = _build_snapshot(memories, unit_map, event_map)
 
-    args.out.parent.mkdir(parents=True, exist_ok=True)
-    args.out.write_text(json.dumps(records, ensure_ascii=False, indent=2), encoding="utf-8")
-    logger.info("wrote {} records to {}", len(records), args.out)
+    store = PrincipleStore.open(args.db)
+    try:
+        store.write_memory_layer(records)
+    finally:
+        store.close()
+    logger.info("wrote {} memory records into {}", len(records), args.db)
+
+    if args.out is not None:
+        args.out.parent.mkdir(parents=True, exist_ok=True)
+        args.out.write_text(json.dumps(records, ensure_ascii=False, indent=2), encoding="utf-8")
+        logger.info("also wrote JSON snapshot (observability-only) to {}", args.out)
 
 
 if __name__ == "__main__":

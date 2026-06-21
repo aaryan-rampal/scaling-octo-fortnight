@@ -6,6 +6,13 @@ to **stderr** via loguru (one line per cluster, per proposal, accept/reject reas
 running count, and final tally). Writes accepted principles to
 ``data/principles.json``.
 
+``data/principles.json`` here is the rung-③ → rung-④ **handoff** file: the link
+stage (``scripts/link_principles.py``) reads it as input, then writes the
+canonical merged principles straight into recall.db. It is therefore *transient*
+in a full run — safe to delete once link has run — and observability-only, not
+the source of truth. The canonical set is ``principles.merged.json``-shaped rows
+in recall.db.
+
 **Observability first**: progress lines appear before any paid call. The first
 log line after boot shows card/cluster counts; only then does LLM spend begin.
 
