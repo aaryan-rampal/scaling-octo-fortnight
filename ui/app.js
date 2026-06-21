@@ -123,20 +123,21 @@ function ensureMap() {
     // spread across the view instead of stacking on top of each other.
     drawMarkers();
     map.resize();
-    fitToMarkers(false);
+    fitToMarkers();
     document.getElementById("map").classList.add("ready"); // one-time fade-in
   });
 }
 function stopSpin() {} // map no longer auto-moves
 
-// frame all pins with padding so they're spread out and labels stay readable
-function fitToMarkers(animate) {
+// center on the cluster at a close zoom so the (near-collinear) pins spread
+// vertically with space between them, instead of stacking at an edge.
+function fitToMarkers() {
   if (!map) return;
-  const pts = SEED.map.filter((m) => m.lat != null && m.lng != null).map((m) => [m.lng, m.lat]);
+  const pts = SEED.map.filter((m) => m.lat != null && m.lng != null);
   if (!pts.length) { map.jumpTo({ center: MAP_CENTER, zoom: MAP_ZOOM }); return; }
-  const b = new maplibregl.LngLatBounds(pts[0], pts[0]);
-  pts.forEach((p) => b.extend(p));
-  map.fitBounds(b, { padding: { top: 74, bottom: 86, left: 58, right: 58 }, maxZoom: 16.4, duration: animate ? 600 : 0 });
+  const cx = pts.reduce((s, m) => s + m.lng, 0) / pts.length;
+  const cy = pts.reduce((s, m) => s + m.lat, 0) / pts.length;
+  map.jumpTo({ center: [cx, cy], zoom: 16.2, pitch: 0, bearing: 0 });
 }
 
 function drawMarkers() {
