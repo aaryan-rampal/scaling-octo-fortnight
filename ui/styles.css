@@ -816,6 +816,11 @@ body {
    LIVE SATELLITE MAP (MapLibre) — custom markers
    ========================================================================= */
 #map { position: relative; }
+/* Make the MapLibre root fill the #map box, but DO NOT touch the
+   canvas-container or the markers it positions — overriding their size/position
+   breaks marker projection (pins get pinned to a corner and don't move on zoom).
+   MapLibre's own CSS sizes the canvas + container; we only need the root to fill. */
+#map .maplibregl-map { position: absolute; inset: 0; width: 100%; height: 100%; }
 #map .maplibregl-canvas { border-radius: inherit; }
 .maplibregl-ctrl-attrib { font-size: 8px !important; background: rgba(10,8,6,.5) !important; border-radius: 6px 0 0 0 !important; }
 .maplibregl-ctrl-attrib a { color: rgba(255,255,255,.6) !important; }
@@ -1017,4 +1022,70 @@ body {
   10%, 90% { transform: translateX(-2px); }
   30%, 70% { transform: translateX(4px); }
   50% { transform: translateX(-4px); }
+}
+
+/* ── create-capsule entry points ────────────────────────────────────────
+   A general way to author a capsule (place + journal + media, flywheel §3),
+   not only by tapping a pre-seeded map pin. */
+
+/* floating action button on the map view */
+.fab {
+  position: absolute;
+  right: 18px; bottom: 18px;
+  z-index: 40;
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 13px 18px;
+  border: none; border-radius: 999px;
+  background: linear-gradient(135deg, var(--amber), var(--rose));
+  color: #1a1308; font-weight: 600; font-size: 14px;
+  box-shadow: 0 10px 26px -8px rgba(0,0,0,.6), inset 0 1px 0 rgba(255,255,255,.25);
+  cursor: pointer;
+  transition: transform .15s var(--easing), filter .2s var(--easing);
+}
+.fab:active { transform: scale(.96); }
+.fab:hover { filter: brightness(1.05); }
+.fab-icon {
+  width: 16px; height: 16px; position: relative; display: inline-block;
+}
+.fab-icon::before, .fab-icon::after {
+  content: ""; position: absolute; background: #1a1308; border-radius: 2px;
+}
+.fab-icon::before { left: 7px; top: 1px; width: 2px; height: 14px; }   /* vertical */
+.fab-icon::after  { left: 1px; top: 7px; width: 14px; height: 2px; }   /* horizontal */
+
+/* editable place-name field in the create form */
+.create-place-input {
+  flex: 1; min-width: 0;
+  background: transparent; border: none;
+  border-bottom: 1px solid var(--glass-brd);
+  color: var(--ink); font-family: var(--serif); font-size: 22px; font-weight: 500;
+  padding: 2px 0; outline: none;
+  transition: border-color .2s var(--easing);
+}
+.create-place-input::placeholder { color: var(--ink-faint); }
+.create-place-input:focus { border-bottom-color: var(--accent); }
+.create-place-input[readonly] { border-bottom-color: transparent; }
+
+/* "Create a capsule" CTA at the top of the Capsules tab */
+.create-cta { margin: 4px 0 16px; width: 100%; }
+
+/* ── create-view location picker (tap-to-place mini map) ────────────────── */
+.create-map {
+  width: 100%;
+  height: 200px;
+  border-radius: var(--radius-card);
+  overflow: hidden;
+  border: 1px solid var(--hairline);
+  margin: 4px 0 6px;
+  position: relative;
+}
+.create-map .maplibregl-map { position: absolute; inset: 0; width: 100%; height: 100%; }
+.loc-hint { font-size: 12px; color: var(--ink-faint); margin: 0 0 10px; }
+/* the dropped pin on the create map */
+.create-pin {
+  width: 18px; height: 18px; border-radius: 50% 50% 50% 0;
+  background: var(--accent);
+  border: 2px solid #fff;
+  transform: rotate(-45deg);
+  box-shadow: 0 4px 10px -2px rgba(0,0,0,.5);
 }

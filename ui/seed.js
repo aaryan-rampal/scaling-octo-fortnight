@@ -7,16 +7,17 @@
  *
  *   places  → capsules (rich, AI-reconstructed memories)
  *   map     → points of interest with real {lat,lng}; discovered=false → locked
- *   moods   → valence/arousal palette (circumplex)
- *   principles / principleEdges → the principle graph (stage 06)
+ *   principles / principleEdges → the principle graph
+ *
+ * Capsules are all `sealed: false` — there is no lock state on capsules; every
+ * one opens directly. `hydrateFromBackend()` appends any real capsules the user
+ * created via the backend on top of these seeds.
  */
 const ICONS = {
   bed: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M2 4v16"/><path d="M2 8h18a2 2 0 0 1 2 2v10"/><path d="M2 17h20"/><path d="M6 8v9"/></svg>',
   coffee: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M17 8h1a4 4 0 1 1 0 8h-1"/><path d="M3 8h14v9a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4Z"/><line x1="6" y1="2" x2="6" y2="4"/><line x1="10" y1="2" x2="10" y2="4"/><line x1="14" y1="2" x2="14" y2="4"/></svg>',
   stage: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M2 20h20"/><path d="M4 20V8l8-5 8 5v12"/><path d="M9 20v-6h6v6"/></svg>',
   build: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 0 0 5.4-5.4l-2.6 2.6-2-2 2.6-2.6Z"/></svg>',
-  tower: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M9 22V8l3-5 3 5v14"/><path d="M9 12h6"/><path d="M7 22h10"/></svg>',
-  tree: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22v-7"/><path d="M9 9a3 3 0 1 1 6 0"/><path d="M7 13a4 4 0 1 1 10 0"/><path d="M5.5 17h13"/></svg>',
 };
 
 const SEED = {
@@ -27,8 +28,7 @@ const SEED = {
       name: "The room on Durant",
       place: "Durant Ave",
       visits: "8:15 AM · where you woke up",
-      sealed: true,
-      mood: { label: "quiet, bracing", hue: 32 },
+      sealed: false,
       music: "Clairo — Bags",
       media: [{ type: "photo", src: "photos/img_2298.jpg" }],
       cover: "center/cover url('photos/img_2298.jpg')",
@@ -62,7 +62,6 @@ const SEED = {
       place: "Telegraph Ave",
       visits: "8:53 AM · before the doors",
       sealed: false,
-      mood: { label: "caffeine optimism", hue: 45 },
       music: "Still Woozy — Goodie Bag",
       media: [{ type: "photo", src: "photos/img_2303.jpg" }],
       cover: "center/cover url('photos/img_2303.jpg')",
@@ -92,7 +91,6 @@ const SEED = {
       place: "South Drive",
       visits: "10:10 AM · lights down",
       sealed: false,
-      mood: { label: "small in a big room", hue: 265 },
       music: "(opening ceremony — no music)",
       media: [{ type: "photo", src: "photos/img_2311.jpg" }, { type: "photo", src: "photos/img_2316.jpg" }],
       cover: "center/cover url('photos/img_2316.jpg')",
@@ -124,8 +122,7 @@ const SEED = {
       name: "The build",
       place: "Bancroft Way",
       visits: "1:53 PM · heads down",
-      sealed: true,
-      mood: { label: "wired, alive", hue: 12 },
+      sealed: false,
       music: "Charli xcx — 365",
       cover: "center/cover url('photos/img_2334.jpg')",
       media: [
@@ -158,20 +155,15 @@ const SEED = {
     },
   ],
 
-  // the explorable world — REAL lat/lng from photo EXIF + two locked campus spots
+  // the explorable world — one pin per real capsule, at its photo-EXIF coords.
+  // (No undiscovered/fogged "travel here" decoy pins — those showed a lock icon.)
   map: [
     { id: "durant",    name: "The room on Durant", lat: 37.867839, lng: -122.256194, discovered: true, capsuleId: "durant" },
     { id: "telegraph", name: "Quargo Coffee",      lat: 37.867930, lng: -122.259000, discovered: true, capsuleId: "telegraph" },
     { id: "ceremony",  name: "Opening ceremony",   lat: 37.871050, lng: -122.259220, discovered: true, capsuleId: "ceremony" },
     { id: "venue",     name: "The build",          lat: 37.869200, lng: -122.259500, discovered: true, capsuleId: "venue" },
-    { id: "campanile", name: "Sather Tower",       lat: 37.872090, lng: -122.257860, discovered: false, icon: ICONS.tower },
-    { id: "glade",     name: "Memorial Glade",     lat: 37.873550, lng: -122.258880, discovered: false, icon: ICONS.tree },
   ],
 
-  moods: [
-    { label: "calm", hue: 158 }, { label: "hopeful", hue: 45 }, { label: "proud", hue: 32 },
-    { label: "wistful", hue: 205 }, { label: "heavy", hue: 255 }, { label: "wired", hue: 12 },
-  ],
   covers: [
     "center/cover url('photos/img_2334.jpg')",
     "center/cover url('photos/img_2316.jpg')",

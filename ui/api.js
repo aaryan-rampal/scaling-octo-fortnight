@@ -103,10 +103,11 @@ const Recall = (() => {
     return {
       id: c.id, icon: (typeof ICON !== "undefined" ? ICON.capsule : ""),
       name: c.place_name, place: c.place_name, visits: "from recall",
-      sealed: false, mood: { label: "captured", hue: 200 }, music: null,
+      sealed: false, music: null,
       cover, media,
       anchor: { place: c.place_name, time: when, photo: cover },
       cues: [], citations: [], principle: "",
+      storyline: c.note || `A capsule sealed at ${c.place_name}.`,
       reflection: "What do you want to carry forward from this?",
       sealDate: "ingested by recall · " + (c.created_at || "").slice(0, 10),
       opener: "what was this moment?", replies: [], fallback: "A captured memory.",

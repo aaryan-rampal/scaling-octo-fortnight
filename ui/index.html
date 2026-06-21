@@ -22,7 +22,7 @@
   <link href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet" />
   <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
 
-  <link rel="stylesheet" href="styles.css?v=9" />
+  <link rel="stylesheet" href="styles.css?v=22" />
 </head>
 <body>
   <!-- hand-painted / "drawn" map filter (static wobble — no continuous motion) -->
@@ -79,6 +79,7 @@
     <!-- VIEW: capsules -->
     <section id="view-places" class="view">
       <p class="section-label">Your capsules</p>
+      <button id="create-capsule-btn" class="primary create-cta">＋ Create a capsule</button>
       <div id="place-list" class="place-list"><!-- injected --></div>
       <p class="hint">Sealed capsules unlock when you come back. The <em>I'm back</em>
         button stands in for real geofencing in this build.</p>
@@ -88,10 +89,15 @@
     <section id="view-create" class="view">
       <button class="back" data-back-map>← map</button>
       <p class="section-label">Seal a capsule</p>
-      <div class="create-loc"><span id="create-loc-icon"></span><span id="create-place"></span></div>
+      <div class="create-loc">
+        <span id="create-loc-icon"></span>
+        <input id="create-place" class="create-place-input" type="text"
+               placeholder="Where are you?" aria-label="Place name" />
+      </div>
       <form id="create-form">
-        <label class="field-label">How are you feeling right now?</label>
-        <div id="mood-row" class="chip-row"><!-- injected --></div>
+        <label class="field-label">Where on the map? (tap to place)</label>
+        <div id="create-map" class="create-map"></div>
+        <p id="create-loc-hint" class="loc-hint">Tap the map to drop this capsule’s pin.</p>
 
         <label class="field-label" for="create-note">Leave a note for future you</label>
         <textarea id="create-note" rows="3" placeholder="what's true today that you might forget…"></textarea>
@@ -103,10 +109,7 @@
         </label>
         <div id="file-preview" class="file-preview"></div>
 
-        <label class="field-label">Or pick a cover</label>
-        <div id="cover-row" class="cover-row"><!-- injected --></div>
-
-        <button type="submit" class="primary">Seal until I return ↩</button>
+        <button type="submit" class="primary">Seal capsule ↩</button>
       </form>
     </section>
 
@@ -118,7 +121,6 @@
         <div class="anchor-meta">
           <p id="anchor-place" class="anchor-place"></p>
           <p id="anchor-time" class="anchor-time"></p>
-          <span id="anchor-mood" class="mood-pill"></span>
         </div>
       </div>
 
@@ -202,8 +204,8 @@
     </div>
   </div>
 
-  <script src="seed.js?v=10"></script>
-  <script src="api.js?v=10"></script>
-  <script src="app.js?v=10"></script>
+  <script src="seed.js?v=22"></script>
+  <script src="api.js?v=22"></script>
+  <script src="app.js?v=22"></script>
 </body>
 </html>
