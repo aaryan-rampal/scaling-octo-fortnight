@@ -17,7 +17,10 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Caveat:wght@400;500;600;700&family=Playfair+Display:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
 
-  <link rel="stylesheet" href="styles.css?v=10" />
+  <link href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet" />
+  <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+
+  <link rel="stylesheet" href="styles.css?v=12" />
 </head>
 <body>
   <svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
@@ -44,10 +47,107 @@
     <!-- VIEW: home -->
     <section id="view-home" class="view active">
       <div class="home-topbar">
-        <img src="logo.svg?v=10" alt="recapsule" class="home-logo" id="logo-home" />
+        <img src="logo.svg?v=12" alt="recapsule" class="home-logo" id="logo-home" />
         <span class="home-brand">recapsule</span>
       </div>
       <p class="home-sub">your memories, grounded</p>
+      <div class="home-hero">
+        <svg class="home-scene-svg" viewBox="0 0 360 200" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <linearGradient id="hsky" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stop-color="#b8cce0"/>
+              <stop offset="55%" stop-color="#d4c8a8"/>
+              <stop offset="100%" stop-color="#c0a870"/>
+            </linearGradient>
+            <radialGradient id="hglow" cx="46%" cy="95%" r="45%">
+              <stop offset="0%" stop-color="rgba(200,144,42,.55)"/>
+              <stop offset="100%" stop-color="transparent"/>
+            </radialGradient>
+          </defs>
+
+          <!-- sky -->
+          <rect width="360" height="150" fill="url(#hsky)"/>
+
+          <!-- distant hills -->
+          <path d="M0 105 Q80 85 160 95 Q240 105 320 88 Q340 84 360 90 L360 150 L0 150 Z" fill="#c0b090" opacity=".5"/>
+
+          <!-- ground -->
+          <path d="M0 140 Q70 130 140 136 Q210 142 280 134 Q320 130 360 136 L360 200 L0 200 Z" fill="#7a5430"/>
+          <!-- grass edge -->
+          <path d="M0 140 Q70 130 140 136 Q210 142 280 134 Q320 130 360 136" fill="none" stroke="#4a7030" stroke-width="4"/>
+
+          <!-- grass blades dark -->
+          <g fill="#3a6020">
+            <path d="M14 140 Q16 124 12 112 Q21 126 23 140"/>
+            <path d="M48 134 Q51 118 46 106 Q55 120 57 134"/>
+            <path d="M82 138 Q85 122 80 110 Q89 124 91 138"/>
+            <path d="M128 136 Q131 120 126 108 Q135 122 137 136"/>
+            <path d="M168 140 Q171 124 166 112 Q175 126 177 140"/>
+            <path d="M218 134 Q221 118 216 106 Q225 120 227 134"/>
+            <path d="M260 138 Q263 122 258 110 Q267 124 269 138"/>
+            <path d="M302 136 Q305 120 300 108 Q309 122 311 136"/>
+            <path d="M338 134 Q341 118 336 106 Q345 120 347 134"/>
+          </g>
+          <!-- grass blades light -->
+          <g fill="#5a8030">
+            <path d="M30 138 Q33 122 28 110 Q37 124 39 138"/>
+            <path d="M64 132 Q67 116 62 104 Q71 118 73 132"/>
+            <path d="M104 136 Q107 120 102 108 Q111 122 113 136"/>
+            <path d="M148 134 Q151 118 146 106 Q155 120 157 134"/>
+            <path d="M192 138 Q195 122 190 110 Q199 124 201 138"/>
+            <path d="M240 132 Q243 116 238 104 Q247 118 249 132"/>
+            <path d="M282 136 Q285 120 280 108 Q289 122 291 136"/>
+            <path d="M322 134 Q325 118 320 106 Q329 120 331 134"/>
+          </g>
+
+          <!-- buried glow -->
+          <ellipse class="buried-glow-anim" cx="164" cy="155" rx="34" ry="10" fill="url(#hglow)"/>
+          <ellipse class="buried-glow-anim" cx="164" cy="153" rx="18" ry="6" fill="rgba(200,144,42,.5)" style="animation-delay:-.8s"/>
+          <!-- marker stake + flag -->
+          <line x1="164" y1="105" x2="164" y2="152" stroke="#2a1c08" stroke-width="1.8" stroke-dasharray="5 3.5" opacity=".7"/>
+          <path d="M164 105 L182 112 L164 119 Z" fill="#c84030"/>
+
+          <!-- twinkling stars (even distribution) -->
+          <circle class="hstar" cx="42" cy="22" r="2.2" fill="#c89030"/>
+          <circle class="hstar" cx="88" cy="11" r="1.6" fill="#c89030"/>
+          <circle class="hstar" cx="146" cy="28" r="2" fill="#c89030"/>
+          <circle class="hstar" cx="210" cy="9" r="1.6" fill="#c89030"/>
+          <circle class="hstar" cx="268" cy="32" r="2.2" fill="#c89030"/>
+          <circle class="hstar" cx="314" cy="15" r="1.6" fill="#c89030"/>
+          <circle class="hstar" cx="344" cy="42" r="1.8" fill="#c89030"/>
+
+          <!-- floating capsule 1 (larger, upper right) -->
+          <g transform="translate(286,56)" class="hcap hcap1">
+            <g transform="rotate(-18)">
+              <rect x="-22" y="-9" width="44" height="18" rx="9" fill="#edd878" stroke="#2a1c08" stroke-width="2.5"/>
+              <ellipse cx="-22" cy="0" rx="9" ry="12" fill="#d4aa3a" stroke="#2a1c08" stroke-width="2.5"/>
+              <ellipse cx="22" cy="0" rx="9" ry="12" fill="#d4aa3a" stroke="#2a1c08" stroke-width="2.5"/>
+              <rect x="-5" y="-10" width="5" height="20" rx="2.5" fill="#c49820" stroke="#2a1c08" stroke-width="1.5"/>
+              <rect x="8" y="-10" width="5" height="20" rx="2.5" fill="#c49820" stroke="#2a1c08" stroke-width="1.5"/>
+              <ellipse cx="-10" cy="-5" rx="5" ry="2.5" fill="rgba(255,255,220,.45)" transform="rotate(-18)"/>
+            </g>
+            <path d="M-36 -15 l2.5 6 l2.5 -6" stroke="#c89030" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" opacity=".7"/>
+            <circle cx="32" cy="9" r="2" fill="#c89030" opacity=".6"/>
+            <circle cx="-28" cy="16" r="1.4" fill="#c89030" opacity=".5"/>
+          </g>
+
+          <!-- floating capsule 2 (smaller, upper left) -->
+          <g transform="translate(56,70)" class="hcap hcap2">
+            <g transform="rotate(-6)">
+              <rect x="-14" y="-6" width="28" height="12" rx="6" fill="#e0c04a" stroke="#2a1c08" stroke-width="2"/>
+              <ellipse cx="-14" cy="0" rx="6" ry="8" fill="#c49820" stroke="#2a1c08" stroke-width="2"/>
+              <ellipse cx="14" cy="0" rx="6" ry="8" fill="#c49820" stroke="#2a1c08" stroke-width="2"/>
+              <rect x="-3" y="-7" width="3" height="14" rx="1.5" fill="#a87c18" stroke="#2a1c08" stroke-width="1"/>
+              <rect x="7" y="-7" width="3" height="14" rx="1.5" fill="#a87c18" stroke="#2a1c08" stroke-width="1"/>
+            </g>
+            <circle cx="-22" cy="-12" r="1.6" fill="#c89030" opacity=".6"/>
+          </g>
+
+          <!-- logo-style dashed arcs (decorative) -->
+          <path d="M66 60 Q105 38 148 54" fill="none" stroke="#2a1c08" stroke-width="1.8" stroke-dasharray="2.5 8.5" stroke-linecap="round" opacity=".3"/>
+          <path d="M198 72 Q238 50 278 66" fill="none" stroke="#2a1c08" stroke-width="1.8" stroke-dasharray="2.5 8.5" stroke-linecap="round" opacity=".28"/>
+        </svg>
+      </div>
       <div class="home-wrap">
 
         <!-- view map button -->
@@ -108,7 +208,7 @@
     <!-- VIEW: discover -->
     <section id="view-discover" class="view">
       <div class="screen-nav">
-        <img src="logo.svg?v=10" alt="recapsule home" class="screen-logo-sm" data-goto-home />
+        <img src="logo.svg?v=12" alt="recapsule home" class="screen-logo-sm" data-goto-home />
       </div>
       <div class="discover-wrap">
         <div class="telescope-area">
@@ -168,88 +268,18 @@
     <!-- VIEW: map -->
     <section id="view-map" class="view">
       <div class="screen-nav">
-        <img src="logo.svg?v=10" alt="recapsule home" class="screen-logo-sm" data-goto-home />
+        <img src="logo.svg?v=12" alt="recapsule home" class="screen-logo-sm" data-goto-home />
       </div>
       <div class="map-head">
         <p class="map-title-green">map</p>
         <span id="map-progress" class="map-progress"></span>
       </div>
 
-      <div class="scroll-frame">
-        <div class="map-frame" id="map-frame">
-          <svg id="map-svg" class="map-svg" viewBox="0 0 360 400" preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg">
-            <defs>
-              <filter id="map-lw" x="-5%" y="-5%" width="110%" height="110%">
-                <feTurbulence type="fractalNoise" baseFrequency="0.02 0.025" numOctaves="1" result="n"/>
-                <feDisplacementMap in="SourceGraphic" in2="n" scale="1.8" xChannelSelector="R" yChannelSelector="G"/>
-              </filter>
-            </defs>
-
-            <rect width="360" height="400" fill="#f0e6d0"/>
-
-            <path d="M 152 30 Q 200 26 280 34 L 348 34 L 348 232 Q 260 238 178 233 L 148 202 Q 143 170 146 100 Z"
-                  fill="#e8d46a" stroke="#c8a430" stroke-width="1.5" opacity=".35" filter="url(#map-lw)"/>
-
-            <ellipse cx="136" cy="80" rx="26" ry="17" fill="#a0c870" stroke="#5a8830" stroke-width="1.5" opacity=".6" filter="url(#map-lw)"/>
-
-            <rect x="108" y="198" width="46" height="36" rx="5" fill="#d8c070" stroke="#b89830" stroke-width="1" opacity=".4" filter="url(#map-lw)"/>
-
-            <path d="M 130 400 Q 127 360 130 300 Q 133 230 130 160 Q 127 90 130 30"
-                  stroke="#c8aa70" stroke-width="8" fill="none" stroke-linecap="round" filter="url(#map-lw)"/>
-            <text transform="rotate(-90, 112, 350)" x="112" y="350" font-family="Caveat,cursive" font-size="9" fill="#8c6040" opacity=".7">Telegraph</text>
-
-            <path d="M 222 400 Q 220 360 222 300 Q 224 230 222 160 Q 220 90 222 30"
-                  stroke="#c8aa70" stroke-width="8" fill="none" stroke-linecap="round" filter="url(#map-lw)"/>
-            <text transform="rotate(-90, 205, 350)" x="205" y="350" font-family="Caveat,cursive" font-size="9" fill="#8c6040" opacity=".7">College</text>
-
-            <path d="M 55 268 Q 100 265 155 268 Q 200 271 265 268 Q 310 266 348 268"
-                  stroke="#c8aa70" stroke-width="8" fill="none" stroke-linecap="round" filter="url(#map-lw)"/>
-            <text x="58" y="262" font-family="Caveat,cursive" font-size="9" fill="#8c6040" opacity=".7">Durant</text>
-
-            <path d="M 55 224 Q 100 221 155 224 Q 200 227 265 224 Q 310 222 348 224"
-                  stroke="#c8aa70" stroke-width="8" fill="none" stroke-linecap="round" filter="url(#map-lw)"/>
-            <text x="58" y="218" font-family="Caveat,cursive" font-size="9" fill="#8c6040" opacity=".7">Bancroft</text>
-
-            <path d="M 55 296 Q 100 294 155 296 Q 185 298 215 296"
-                  stroke="#c8aa70" stroke-width="5" fill="none" opacity=".7" filter="url(#map-lw)"/>
-
-            <path d="M 55 320 Q 100 318 155 320 Q 185 322 215 320"
-                  stroke="#c8aa70" stroke-width="5" fill="none" opacity=".7" filter="url(#map-lw)"/>
-
-            <path d="M 55 350 Q 100 348 155 350 Q 200 352 270 350 Q 310 349 348 350"
-                  stroke="#c8aa70" stroke-width="5" fill="none" opacity=".6" filter="url(#map-lw)"/>
-
-            <path d="M 165 128 Q 155 165 148 200" stroke="#d4a830" stroke-width="4" fill="none" stroke-dasharray="7 4" opacity=".6" filter="url(#map-lw)"/>
-
-            <rect x="182" y="75" width="28" height="20" rx="3" fill="#d4b850" stroke="#b09030" stroke-width="1" opacity=".45" filter="url(#map-lw)"/>
-            <rect x="220" y="95" width="34" height="24" rx="3" fill="#d4b850" stroke="#b09030" stroke-width="1" opacity=".45" filter="url(#map-lw)"/>
-            <rect x="258" y="65" width="26" height="19" rx="3" fill="#d4b850" stroke="#b09030" stroke-width="1" opacity=".45" filter="url(#map-lw)"/>
-            <rect x="240" y="148" width="38" height="26" rx="3" fill="#d4b850" stroke="#b09030" stroke-width="1" opacity=".45" filter="url(#map-lw)"/>
-            <rect x="188" y="152" width="30" height="21" rx="3" fill="#d4b850" stroke="#b09030" stroke-width="1" opacity=".45" filter="url(#map-lw)"/>
-            <rect x="285" y="105" width="32" height="22" rx="3" fill="#d4b850" stroke="#b09030" stroke-width="1" opacity=".4" filter="url(#map-lw)"/>
-
-            <rect x="72" y="278" width="18" height="13" rx="2" fill="#d0bca0" stroke="#b0986a" stroke-width="1" opacity=".4"/>
-            <rect x="70" y="302" width="16" height="11" rx="2" fill="#d0bca0" stroke="#b0986a" stroke-width="1" opacity=".4"/>
-            <rect x="158" y="282" width="20" height="13" rx="2" fill="#d0bca0" stroke="#b0986a" stroke-width="1" opacity=".4"/>
-            <rect x="238" y="286" width="18" height="14" rx="2" fill="#d0bca0" stroke="#b0986a" stroke-width="1" opacity=".4"/>
-            <rect x="72" y="332" width="22" height="13" rx="2" fill="#d0bca0" stroke="#b0986a" stroke-width="1" opacity=".4"/>
-            <rect x="168" y="338" width="18" height="11" rx="2" fill="#d0bca0" stroke="#b0986a" stroke-width="1" opacity=".4"/>
-            <rect x="250" y="332" width="20" height="13" rx="2" fill="#d0bca0" stroke="#b0986a" stroke-width="1" opacity=".4"/>
-
-            <g transform="translate(330, 44)" opacity=".5">
-              <circle r="18" fill="none" stroke="#8c6040" stroke-width="1.5"/>
-              <path d="M0 -14 L-2.5 -5 L0 -1.5 L2.5 -5 Z" fill="#c84030"/>
-              <path d="M0 14 L-2.5 5 L0 1.5 L2.5 5 Z" fill="#8c6040"/>
-              <path d="M-14 0 L-5 -2.5 L-1.5 0 L-5 2.5 Z" fill="#8c6040"/>
-              <path d="M14 0 L5 -2.5 L1.5 0 L5 2.5 Z" fill="#8c6040"/>
-              <circle r="3" fill="#2a1c08"/>
-              <text y="-18" text-anchor="middle" font-family="Caveat,cursive" font-size="8" fill="#8c6040">N</text>
-            </g>
-
-            <rect x="4" y="4" width="352" height="392" rx="8" fill="none" stroke="#8c6040" stroke-width="1.5" stroke-dasharray="8 5" opacity=".4"/>
-
-            <g id="map-markers"></g>
-          </svg>
+      <div class="globe-wrapper">
+        <div class="globe-frame" id="map-frame">
+          <div id="map" class="map"></div>
+          <div class="globe-shading" aria-hidden="true"></div>
+          <div class="globe-atmosphere" aria-hidden="true"></div>
         </div>
       </div>
 
@@ -280,7 +310,7 @@
     <!-- VIEW: principle graph -->
     <section id="view-graph" class="view">
       <div class="screen-nav">
-        <img src="logo.svg?v=10" alt="recapsule home" class="screen-logo-sm" data-goto-home />
+        <img src="logo.svg?v=12" alt="recapsule home" class="screen-logo-sm" data-goto-home />
         <svg class="compass-rose-sm" viewBox="0 0 50 50" width="40" height="40">
           <circle cx="25" cy="25" r="22" fill="none" stroke="#4a7ab0" stroke-width="2"/>
           <text x="25" y="12" text-anchor="middle" font-family="'Caveat',cursive" font-size="10" fill="#2a1c10">N</text>
@@ -383,7 +413,7 @@
     <!-- VIEW: camera -->
     <section id="view-camera" class="view">
       <div class="screen-nav">
-        <img src="logo.svg?v=10" alt="recapsule home" class="screen-logo-sm" data-goto-home />
+        <img src="logo.svg?v=12" alt="recapsule home" class="screen-logo-sm" data-goto-home />
       </div>
       <div class="camera-title-cloud">
         <p class="camera-title-text">Point the<br>camera to<br>the ground</p>
@@ -427,7 +457,7 @@
     <!-- VIEW: drag to bury -->
     <section id="view-drag" class="view">
       <div class="screen-nav">
-        <img src="logo.svg?v=10" alt="recapsule home" class="screen-logo-sm" data-goto-home />
+        <img src="logo.svg?v=12" alt="recapsule home" class="screen-logo-sm" data-goto-home />
       </div>
       <p class="drag-label">Drag capsule</p>
       <div class="drag-scene" id="drag-scene">
@@ -446,8 +476,18 @@
           <span class="soil-particle sp2"></span>
           <span class="soil-particle sp3"></span>
           <span class="soil-particle sp4"></span>
+          <span class="soil-particle sp5"></span>
+          <span class="soil-particle sp6"></span>
+          <span class="soil-particle sp7"></span>
+          <span class="soil-particle sp8"></span>
+          <span class="soil-particle sp9"></span>
+          <span class="soil-particle sp10"></span>
+          <span class="soil-particle sp11"></span>
+          <span class="soil-particle sp12"></span>
         </div>
-        <div class="drag-zone" id="drag-zone"></div>
+        <div class="buried-text" id="buried-text">buried!</div>
+        <div class="xp-float" id="xp-float">+1 memory ✦</div>
+        <div class="drag-zone" id="drag-zone"><span class="drag-zone-hint">drop here</span></div>
 
         <svg class="stump-scene" viewBox="0 0 300 200" fill="none">
           <path d="M0 60 Q50 48 100 54 Q150 60 200 48 Q250 36 300 52 L300 200 L0 200 Z" fill="#8c6848"/>
@@ -520,8 +560,8 @@
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
   </div>
 
-  <script src="seed.js?v=10"></script>
-  <script src="api.js?v=10"></script>
-  <script src="app.js?v=10"></script>
+  <script src="seed.js?v=12"></script>
+  <script src="api.js?v=12"></script>
+  <script src="app.js?v=12"></script>
 </body>
 </html>

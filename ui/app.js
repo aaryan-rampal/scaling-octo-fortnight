@@ -57,6 +57,47 @@ const SoundFX = (() => {
   };
 })();
 
+// --- game feel helpers ---
+function spawnConfetti(count = 32, cx, cy) {
+  const screen = document.querySelector('.screen');
+  if (!screen) return;
+  const sr = screen.getBoundingClientRect();
+  const ox = cx != null ? cx - sr.left : sr.width / 2;
+  const oy = cy != null ? cy - sr.top  : sr.height * 0.38;
+  const colors = ['#edd878','#c84030','#4a7230','#c89030','#d4aa3a','#e07040','#5a80c0','#c84060'];
+  for (let i = 0; i < count; i++) {
+    const el = document.createElement('span');
+    el.className = 'cpiece';
+    const angle = (Math.random() * 360) * Math.PI / 180;
+    const dist  = 50 + Math.random() * 130;
+    const sx = (Math.cos(angle) * dist).toFixed(1);
+    const sy = (Math.sin(angle) * dist - 60).toFixed(1);
+    const size = (4 + Math.random() * 7).toFixed(1);
+    el.style.cssText = [
+      `left:${ox}px`, `top:${oy}px`,
+      `background:${colors[Math.floor(Math.random() * colors.length)]}`,
+      `width:${size}px`, `height:${size}px`,
+      `border-radius:${Math.random() > .5 ? '50%' : '3px'}`,
+      `--sx:${sx}px`, `--sy:${sy}px`,
+      `--rot:${(Math.random() * 720).toFixed()}deg`,
+      `--cdur:${(.7 + Math.random() * .7).toFixed(2)}s`,
+      `animation-delay:${(Math.random() * .18).toFixed(2)}s`,
+    ].join(';');
+    screen.appendChild(el);
+    el.classList.add('pop');
+    el.addEventListener('animationend', () => el.remove(), { once: true });
+  }
+}
+
+function shakeScreen() {
+  const s = document.querySelector('.screen');
+  if (!s) return;
+  s.classList.remove('shake');
+  void s.offsetWidth;
+  s.classList.add('shake');
+  s.addEventListener('animationend', () => s.classList.remove('shake'), { once: true });
+}
+
 // pins highlighted by a principle "trace"
 const highlight = new Set();
 let highlightTimer;
@@ -87,6 +128,7 @@ function show(name) {
   document.querySelectorAll(".tab").forEach((t) =>
     t.classList.toggle("active", TAB_FOR_VIEW[name] === t.dataset.tab));
   document.querySelector(".screen").scrollTo({ top: 0, behavior: reduceMotion ? "auto" : "smooth" });
+  if (name === 'map' && map) setTimeout(() => map.resize(), 60);
 }
 const switchTab = (tab) => show(tab === "capsules" ? "places" : tab);
 
@@ -102,138 +144,121 @@ function toast(msg) {
   toastTimer = setTimeout(() => t.classList.remove("show"), 2600);
 }
 
-// --- 1. ILLUSTRATED SVG MAP ---
-let svgVB = { x: 0, y: 0, w: 360, h: 400 };
-
-function latLngToXY(lat, lng) {
-  return {
-    x: (lng - (-122.263)) / 0.011 * 360,
-    y: (37.876 - lat) / 0.012 * 400,
-  };
-}
-
-function setVB() {
-  const svg = document.getElementById("map-svg");
-  if (svg) svg.setAttribute("viewBox", `${svgVB.x} ${svgVB.y} ${svgVB.w} ${svgVB.h}`);
-}
-
-function initMapPanZoom() {
-  const svg = document.getElementById("map-svg");
-  if (!svg || svg._pzInited) return;
-  svg._pzInited = true;
-  let dragging = false, lx = 0, ly = 0, ld = 0;
-  const MIN_W = 80, MAX_W = 720;
-
-  svg.addEventListener("mousedown", (e) => { dragging = true; lx = e.clientX; ly = e.clientY; svg.style.cursor = "grabbing"; });
-  document.addEventListener("mousemove", (e) => {
-    if (!dragging) return;
-    const sx = svg.clientWidth, sy = svg.clientHeight;
-    svgVB.x -= (e.clientX - lx) / sx * svgVB.w;
-    svgVB.y -= (e.clientY - ly) / sy * svgVB.h;
-    lx = e.clientX; ly = e.clientY;
-    setVB();
-  });
-  document.addEventListener("mouseup", () => { dragging = false; svg.style.cursor = ""; });
-
-  svg.addEventListener("touchstart", (e) => {
-    if (e.touches.length === 1) { dragging = true; lx = e.touches[0].clientX; ly = e.touches[0].clientY; }
-    else if (e.touches.length === 2) { ld = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY); }
-  }, { passive: true });
-  svg.addEventListener("touchmove", (e) => {
-    if (e.touches.length === 1 && dragging) {
-      const sx = svg.clientWidth, sy = svg.clientHeight;
-      svgVB.x -= (e.touches[0].clientX - lx) / sx * svgVB.w;
-      svgVB.y -= (e.touches[0].clientY - ly) / sy * svgVB.h;
-      lx = e.touches[0].clientX; ly = e.touches[0].clientY;
-      setVB();
-    } else if (e.touches.length === 2) {
-      const d = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
-      const scale = ld / d;
-      const cx = svgVB.w * 0.5 + svgVB.x, cy = svgVB.h * 0.5 + svgVB.y;
-      const nw = Math.max(MIN_W, Math.min(MAX_W, svgVB.w * scale));
-      const nh = nw * (400 / 360);
-      svgVB.x = cx - nw / 2; svgVB.y = cy - nh / 2; svgVB.w = nw; svgVB.h = nh;
-      ld = d;
-      setVB();
-    }
-  }, { passive: true });
-  svg.addEventListener("touchend", () => { dragging = false; });
-
-  svg.addEventListener("wheel", (e) => {
-    e.preventDefault();
-    const scale = e.deltaY > 0 ? 1.12 : 0.9;
-    const rect = svg.getBoundingClientRect();
-    const px = (e.clientX - rect.left) / rect.width * svgVB.w + svgVB.x;
-    const py = (e.clientY - rect.top) / rect.height * svgVB.h + svgVB.y;
-    const nw = Math.max(MIN_W, Math.min(MAX_W, svgVB.w * scale));
-    const nh = nw * (400 / 360);
-    svgVB.x = px - (px - svgVB.x) * (nw / svgVB.w);
-    svgVB.y = py - (py - svgVB.y) * (nh / svgVB.h);
-    svgVB.w = nw; svgVB.h = nh;
-    setVB();
-  }, { passive: false });
-}
+// --- 1. SATELLITE MAP (MapLibre + globe frame) ---
+const MAP_CENTER = [-122.2588, 37.8698];
+const MAP_ZOOM = 15.4;
+let map = null, markerObjs = [], idleTimer = null, idleAnim = null;
 
 function ensureMap() {
-  const svg = document.getElementById("map-svg");
-  if (!svg) return;
-  initMapPanZoom();
+  if (map || typeof maplibregl === 'undefined') return;
+  map = new maplibregl.Map({
+    container: 'map',
+    attributionControl: false,
+    center: MAP_CENTER, zoom: MAP_ZOOM, pitch: 0, bearing: 0,
+    style: {
+      version: 8,
+      sources: {
+        sat: {
+          type: 'raster', tileSize: 256,
+          tiles: ['https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'],
+          attribution: 'Imagery © Esri',
+        },
+      },
+      layers: [{ id: 'sat', type: 'raster', source: 'sat' }],
+    },
+  });
+  map.addControl(new maplibregl.AttributionControl({ compact: true }));
+  map.on('load', () => { drawMarkers(); map.resize(); document.getElementById('map').classList.add('ready'); });
+  map.on('dragstart', stopIdleDrift);
+  map.on('dragend', scheduleIdleDrift);
 }
 
+function scheduleIdleDrift() {
+  clearTimeout(idleTimer);
+  cancelAnimationFrame(idleAnim);
+  idleTimer = setTimeout(() => {
+    if (!map) return;
+    let last = performance.now();
+    const tick = (now) => {
+      const dt = now - last; last = now;
+      if (map) {
+        const c = map.getCenter();
+        map.setCenter([c.lng + 0.000008 * dt, c.lat], { duration: 0 });
+      }
+      idleAnim = requestAnimationFrame(tick);
+    };
+    idleAnim = requestAnimationFrame(tick);
+  }, 5000);
+}
+
+function stopIdleDrift() {
+  clearTimeout(idleTimer);
+  cancelAnimationFrame(idleAnim);
+}
+
+function stopSpin() { stopIdleDrift(); }
+
 function drawMarkers() {
-  const group = document.getElementById("map-markers");
-  if (!group) return;
-  group.innerHTML = "";
+  if (!map) return;
+  markerObjs.forEach(m => m.remove());
+  markerObjs = [];
   let found = 0;
-  SEED.map.forEach((poi) => {
+  SEED.map.forEach(poi => {
     const disc = isDiscovered(poi);
     if (disc) found++;
     const cap = poi.capsuleId ? getPlace(poi.capsuleId) : null;
     const locked = cap && isLocked(cap);
-    const { x, y } = latLngToXY(poi.lat, poi.lng);
-    const shortName = poi.name.split(" ").slice(0, 2).join(" ");
 
-    const g = document.createElementNS("http://www.w3.org/2000/svg", "g");
-    g.setAttribute("class", `map-poi ${disc ? (cap ? (locked ? "cap sealed" : "cap open") : "empty") : "fog"}`);
-    g.setAttribute("transform", `translate(${x.toFixed(1)}, ${y.toFixed(1)})`);
-    g.setAttribute("data-id", poi.id);
+    const wrap = document.createElement('div');
+    wrap.className = 'mk-pill-wrap' + (disc ? (cap ? (locked ? ' sealed' : '') : ' empty') : ' fog-mk') + (highlight.has(poi.id) ? ' highlight' : '');
 
     if (!disc) {
-      g.innerHTML = `
-        <circle cx="0" cy="0" r="14" fill="rgba(154,120,96,0.3)" stroke="#7a6050" stroke-width="1.5" stroke-dasharray="3 2"/>
-        <text y="5" text-anchor="middle" font-family="Caveat,cursive" font-size="15" fill="#9a7860" opacity=".7">?</text>`;
+      wrap.innerHTML = `
+        <div class="mk-pill-inner">
+          <svg viewBox="0 0 36 26" width="36" height="26" fill="none">
+            <circle cx="18" cy="13" r="11" fill="rgba(154,120,96,.35)" stroke="#7a6050" stroke-width="1.5" stroke-dasharray="3 2"/>
+            <text x="18" y="18" text-anchor="middle" font-family="Caveat,cursive" font-size="14" fill="#9a7860" opacity=".8">?</text>
+          </svg>
+        </div>`;
     } else if (cap) {
-      const fillColor = locked ? "#d4aa3a" : "#edd878";
-      g.innerHTML = `
-        <circle class="poi-ring" cx="0" cy="0" r="22" fill="none" stroke="${locked ? "#9a7860" : "#c8902a"}" stroke-width="1.5" style="animation-delay:${Math.random() * 2}s"/>
-        <g transform="rotate(-12)">
-          <rect x="-15" y="-7" width="30" height="14" rx="7" fill="${fillColor}" stroke="#2a1c08" stroke-width="1.8"/>
-          <ellipse cx="-15" cy="0" rx="7" ry="9" fill="${locked ? "#b08020" : "#d4aa3a"}" stroke="#2a1c08" stroke-width="1.8"/>
-          <ellipse cx="15" cy="0" rx="7" ry="9" fill="${locked ? "#b08020" : "#d4aa3a"}" stroke="#2a1c08" stroke-width="1.8"/>
-          <rect x="-4" y="-8" width="3.5" height="16" rx="1.75" fill="#c49820" stroke="#2a1c08" stroke-width="1"/>
-          <rect x="8" y="-8" width="3.5" height="16" rx="1.75" fill="#c49820" stroke="#2a1c08" stroke-width="1"/>
-          ${locked ? '<path d="M-3 -1 a3 3 0 0 1 6 0" fill="none" stroke="#2a1c08" stroke-width="1.2"/><rect x="-2" y="-1" width="4" height="3" rx="0.5" fill="#2a1c08"/>' : ""}
-        </g>
-        <text class="poi-label" y="26" text-anchor="middle" font-family="Caveat,cursive" font-size="11" fill="#2a1c10" font-weight="600">${shortName}</text>`;
+      const fc = locked ? '#d4aa3a' : '#edd878';
+      const ec = locked ? '#b08020' : '#d4aa3a';
+      wrap.innerHTML = `
+        <div class="mk-pill-inner">
+          <div class="mk-ring"></div>
+          <svg viewBox="0 0 52 22" width="52" height="22" fill="none">
+            <rect x="4" y="3" width="44" height="16" rx="8" fill="${fc}" stroke="#2a1c08" stroke-width="1.8"/>
+            <ellipse cx="5" cy="11" rx="8" ry="10" fill="${ec}" stroke="#2a1c08" stroke-width="1.8"/>
+            <ellipse cx="47" cy="11" rx="8" ry="10" fill="${ec}" stroke="#2a1c08" stroke-width="1.8"/>
+            <rect x="21" y="2.5" width="4" height="17" rx="2" fill="#c49820" stroke="#2a1c08" stroke-width="1"/>
+            <rect x="27" y="2.5" width="4" height="17" rx="2" fill="#c49820" stroke="#2a1c08" stroke-width="1"/>
+          </svg>
+        </div>
+        <span class="mk-pill-label">${poi.name.split(' ').slice(0,2).join(' ')}</span>`;
     } else {
-      g.innerHTML = `
-        <circle cx="0" cy="0" r="12" fill="rgba(200,144,42,0.2)" stroke="#c8902a" stroke-width="1.5" stroke-dasharray="4 2"/>
-        <text y="5" text-anchor="middle" font-family="Caveat,cursive" font-size="16" fill="#c8902a">+</text>
-        <text class="poi-label" y="22" text-anchor="middle" font-family="Caveat,cursive" font-size="10" fill="#9a7860">${shortName}</text>`;
+      wrap.innerHTML = `
+        <div class="mk-pill-inner">
+          <svg viewBox="0 0 32 32" width="32" height="32" fill="none">
+            <circle cx="16" cy="16" r="13" fill="rgba(200,144,42,.2)" stroke="#c8902a" stroke-width="1.5" stroke-dasharray="4 2"/>
+            <text x="16" y="21" text-anchor="middle" font-family="Caveat,cursive" font-size="18" fill="#c8902a">+</text>
+          </svg>
+        </div>
+        <span class="mk-pill-label">${poi.name.split(' ').slice(0,2).join(' ')}</span>`;
     }
 
-    g.addEventListener("click", (e) => { e.stopPropagation(); onPoiClick(poi); });
-    if (highlight.has(poi.id)) g.classList.add("highlight");
-    group.appendChild(g);
+    wrap.addEventListener('click', e => { e.stopPropagation(); onPoiClick(poi); });
+    const marker = new maplibregl.Marker({ element: wrap, anchor: 'bottom' })
+      .setLngLat([poi.lng, poi.lat])
+      .addTo(map);
+    markerObjs.push(marker);
   });
-
-  const mp = document.getElementById("map-progress");
+  const mp = document.getElementById('map-progress');
   if (mp) mp.textContent = `${found} / ${SEED.map.length} discovered`;
 }
 
 function renderMap() {
   ensureMap();
-  drawMarkers();
+  if (map && map.isStyleLoaded && map.isStyleLoaded()) drawMarkers();
 }
 
 function onPoiClick(poi) {
@@ -244,12 +269,15 @@ function onPoiClick(poi) {
 }
 
 function visit(poi) {
+  stopIdleDrift();
+  if (map) map.easeTo({ center: [poi.lng, poi.lat], zoom: 16.6, duration: 700, essential: true });
   setTimeout(() => {
     discovered.add(poi.id);
     SoundFX.discover();
     drawMarkers();
     toast(poi.capsuleId ? `Back at ${poi.name}` : `Discovered ${poi.name} — seal a memory here`);
-  }, 400);
+    scheduleIdleDrift();
+  }, 1500);
 }
 
 // --- 2. CREATE a capsule ---
@@ -406,7 +434,7 @@ function openingSequence(wasLocked, after) {
   });
   SoundFX.dig();
   if (wasLocked) setTimeout(() => SoundFX.unlock(), 450);
-  setTimeout(() => SoundFX.open(), 1000);
+  setTimeout(() => { SoundFX.open(); shakeScreen(); spawnConfetti(36); }, 1000);
   setTimeout(() => { ov.classList.remove("show"); after(); }, 2050);
 }
 
@@ -419,6 +447,8 @@ function tracePrinciple(cap) {
   highlight.clear();
   ids.forEach((id) => highlight.add(id));
   switchTab("map");
+  const target = SEED.map.find((p) => ids.includes(p.id));
+  if (map && target) map.easeTo({ center: [target.lng, target.lat], zoom: 16, duration: 700, essential: true });
   drawMarkers();
   SoundFX.shimmer();
   const names = SEED.map.filter((p) => ids.includes(p.id)).map((p) => p.name).join(", ");
@@ -781,33 +811,48 @@ function initDrag() {
     capsuleOrig.style.top = curY + "px";
     if (curY >= GROUND_THRESH - 20) stumpScene.classList.add("receiving");
     else stumpScene.classList.remove("receiving");
+    const dz = document.getElementById('drag-zone');
+    if (curY >= GROUND_THRESH - 80) dz.classList.add('near');
+    else dz.classList.remove('near');
     e.preventDefault();
   };
   const onEnd = () => {
     if (!dragging) return;
     dragging = false;
     if (curY >= GROUND_THRESH - 30) {
-      // burial animation: sink + scale down
-      capsuleOrig.style.transition = "top .35s ease-in, transform .35s ease-in, opacity .3s .15s ease";
-      capsuleOrig.style.top = (GROUND_THRESH + 80) + "px";
-      capsuleOrig.style.transform = "translateX(-50%) scale(0.5)";
-      capsuleOrig.style.opacity = "0";
+      // shake the stump
+      stumpScene.classList.add('receiving');
+      capsuleOrig.style.transition = 'top .35s ease-in, transform .35s ease-in, opacity .25s .12s ease';
+      capsuleOrig.style.transform = 'translateX(-50%) scale(0.4)';
+      capsuleOrig.style.top = (GROUND_THRESH + 100) + 'px';
+      capsuleOrig.style.opacity = '0';
 
-      // soil particles burst
-      capsuleOrig.querySelectorAll(".soil-particle").forEach((p) => {
-        p.classList.add("burst");
-      });
+      // soil burst
+      capsuleOrig.querySelectorAll('.soil-particle').forEach(p => p.classList.add('burst'));
+
+      // screen shake + confetti
+      shakeScreen();
+      const capRect = capsuleOrig.getBoundingClientRect();
+      spawnConfetti(28, capRect.left + capRect.width / 2, capRect.top + capRect.height / 2);
+
+      // buried text + XP float
+      const bt = document.getElementById('buried-text');
+      if (bt) { bt.classList.add('show'); setTimeout(() => bt.classList.remove('show'), 900); }
+      const xp = document.getElementById('xp-float');
+      if (xp) { xp.classList.add('show'); setTimeout(() => xp.classList.remove('show'), 1500); }
 
       setTimeout(() => {
-        capsuleOrig.style.transition = "";
-        capsuleOrig.style.top = "20px";
-        capsuleOrig.style.transform = "translateX(-50%)";
-        capsuleOrig.style.opacity = "1";
-        capsuleOrig.querySelectorAll(".soil-particle").forEach((p) => p.classList.remove("burst"));
-        stumpScene.classList.remove("receiving");
+        capsuleOrig.style.transition = '';
+        capsuleOrig.style.top = '20px';
+        capsuleOrig.style.transform = 'translateX(-50%)';
+        capsuleOrig.style.opacity = '1';
+        capsuleOrig.querySelectorAll('.soil-particle').forEach(p => p.classList.remove('burst'));
+        stumpScene.classList.remove('receiving');
+        const dz = document.getElementById('drag-zone');
+        if (dz) dz.classList.remove('near');
         const poi = SEED.map.find((p) => !p.capsuleId) || SEED.map[0];
         startCreate(poi);
-      }, 600);
+      }, 650);
     } else {
       capsuleOrig.style.transition = "top .3s var(--easing)";
       capsuleOrig.style.top = "20px";
