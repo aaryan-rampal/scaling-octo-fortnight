@@ -25,6 +25,7 @@ import sqlite3
 import subprocess
 import tempfile
 from collections.abc import Iterator
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
@@ -35,6 +36,8 @@ from loguru import logger
 
 from core.logging import log_progress
 from models.photo import PhotoRecord
+from observability.sentry import gen_ai_span, record_gen_ai_usage
+from observability.usage import UsageDict
 
 # Apple's Core Data epoch (2001-01-01 UTC) as seconds past the Unix epoch.
 # ``ZASSET.ZDATECREATED`` is stored in seconds since this epoch (mirrors the
@@ -221,6 +224,10 @@ OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 #: Cheap vision-capable OpenRouter model; overridable via env for tuning/cost.
 #: Defaults to the same Gemini Flash family the embedded runtime already uses.
 DEFAULT_VISION_MODEL = os.environ.get("RECALL_VISION_MODEL", "google/gemini-3.5-flash")
+
+#: Concurrent vision enrichments for cache misses. Each is a blocking httpx call;
+#: fanning them out parallelizes the slice's photos. 8 stays under rate limits.
+DEFAULT_VISION_WORKERS = 8
 
 #: Library-relative ``original_path`` is resolved against this root to find the
 #: on-disk binary. Defaults to the standard macOS Photos library; override for a
@@ -410,14 +417,17 @@ def _call_vision_model(data_url: str, api_key: str, model: str) -> dict[str, Any
             }
         ],
     }
-    resp = httpx.post(
-        f"{OPENROUTER_BASE_URL}/chat/completions",
-        headers={"Authorization": f"Bearer {api_key}"},
-        json=payload,
-        timeout=_VISION_TIMEOUT_S,
-    )
-    resp.raise_for_status()
-    choices = resp.json().get("choices") or []
+    with gen_ai_span(operation="chat", model=model, request_data={"task": "photo_vision"}) as span:
+        resp = httpx.post(
+            f"{OPENROUTER_BASE_URL}/chat/completions",
+            headers={"Authorization": f"Bearer {api_key}"},
+            json=payload,
+            timeout=_VISION_TIMEOUT_S,
+        )
+        resp.raise_for_status()
+        body = resp.json()
+        record_gen_ai_usage(span, UsageDict(body.get("usage")))
+        choices = body.get("choices") or []
     if not choices:
         return None
     content = (choices[0].get("message") or {}).get("content")
@@ -456,19 +466,25 @@ def enrich_photos(
     """
     cache = _load_vision_cache(cache_path)
     key = api_key or os.environ.get("OPENROUTER_API_KEY")
-    enriched: list[PhotoRecord] = []
-    dirty = False
-    for index, record in enumerate(records):
-        result = cache.get(record.id)
-        if result is None and record.kind == "photo":
-            logger.info("photos: vision cache miss, enriching {} (OpenRouter call)", record.id)
-            result = _enrich_one(record, library_root, model, key, cache)
-            dirty = dirty or result is not None
-        enriched.append(_apply_vision(record, result))
-        log_progress("photos-vision", index, record.id)
-    if dirty:
+    misses = [r for r in records if cache.get(r.id) is None and r.kind == "photo"]
+    if misses:
+        logger.info(
+            "photos: {} vision cache misses, enriching with {} workers",
+            len(misses),
+            DEFAULT_VISION_WORKERS,
+        )
+        with ThreadPoolExecutor(max_workers=DEFAULT_VISION_WORKERS) as pool:
+            futures = {
+                pool.submit(_enrich_one, r, library_root, model, key): r for r in misses
+            }
+            for index, future in enumerate(as_completed(futures)):
+                record = futures[future]
+                result = future.result()
+                if result is not None:
+                    cache[record.id] = result
+                log_progress("photos-vision", index, record.id)
         _save_vision_cache(cache_path, cache)
-    return enriched
+    return [_apply_vision(record, cache.get(record.id)) for record in records]
 
 
 def _enrich_one(
@@ -476,13 +492,14 @@ def _enrich_one(
     library_root: str,
     model: str,
     api_key: str | None,
-    cache: dict[str, dict[str, Any]],
 ) -> dict[str, Any] | None:
-    """Enrich a single uncached photo, writing the result into ``cache`` in place.
+    """Enrich a single uncached photo and return its vision result.
 
-    Returns the ``{description, tags}`` result, or ``None`` when no image (neither
-    original nor a local thumbnail) is on disk (skipped, not fatal). Raises if a
-    call is needed but no key is set.
+    Pure with respect to shared state — it makes no cache writes, so it is safe to
+    run concurrently in a thread pool; the caller merges the returned result into
+    the cache on its own thread. Returns the ``{description, tags}`` result, or
+    ``None`` when no image (neither original nor a local thumbnail) is on disk
+    (skipped, not fatal). Raises if a call is needed but no key is set.
     """
     path = _resolve_image_path(record, library_root)
     if path is None:
@@ -494,11 +511,7 @@ def _enrich_one(
         )
     with _sendable_image(path) as sendable:
         data_url = _encode_image_data_url(sendable)
-        result = _call_vision_model(data_url, api_key, model)
-    if result is None:
-        return None
-    cache[record.id] = result
-    return result
+        return _call_vision_model(data_url, api_key, model)
 
 
 def _apply_vision(record: PhotoRecord, result: dict[str, Any] | None) -> PhotoRecord:

@@ -28,6 +28,7 @@ import argparse
 import json
 import os
 from collections.abc import Callable, Iterator
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 import httpx
@@ -36,6 +37,8 @@ from loguru import logger
 from core.logging import log_progress
 from core.schema import Event, write_events_jsonl
 from models.spotify import SpotifyStreamRecord
+from observability.sentry import gen_ai_span, record_gen_ai_usage
+from observability.usage import UsageDict
 from storage.persist import persist_events
 
 #: Files holding streaming history within the export folder.
@@ -50,6 +53,11 @@ DEFAULT_OUTPUT = "data/spotify_events.jsonl"
 #: On-disk cache of ``artist name -> short vibe``. Keyed by artist so re-running
 #: over the same artists never re-calls the LLM (the call is the only cost).
 DEFAULT_VIBE_CACHE = Path("data/artist_vibes.json")
+
+#: Concurrent OpenRouter vibe lookups for cache misses. Each is a blocking httpx
+#: call (~3.5s); fanning them out turns a serial crawl over hundreds of artists
+#: into parallel batches. 8 keeps well under OpenRouter rate limits.
+DEFAULT_VIBE_WORKERS = 8
 
 #: OpenRouter chat-completions endpoint + model, matching ``runtime.hindsight``.
 _OPENROUTER_CHAT_URL = "https://openrouter.ai/api/v1/chat/completions"
@@ -117,17 +125,21 @@ def fetch_artist_vibe(artist: str) -> str:
     api_key = os.environ.get("OPENROUTER_API_KEY")
     if not api_key:
         raise RuntimeError("OPENROUTER_API_KEY is not set; cannot fetch artist vibes")
-    resp = httpx.post(
-        _OPENROUTER_CHAT_URL,
-        headers={"Authorization": f"Bearer {api_key}"},
-        json={
-            "model": VIBE_MODEL,
-            "messages": [{"role": "user", "content": _VIBE_PROMPT.format(artist=artist)}],
-        },
-        timeout=30.0,
-    )
-    resp.raise_for_status()
-    text = resp.json()["choices"][0]["message"]["content"]
+    span_req = {"task": "artist_vibe"}
+    with gen_ai_span(operation="chat", model=VIBE_MODEL, request_data=span_req) as span:
+        resp = httpx.post(
+            _OPENROUTER_CHAT_URL,
+            headers={"Authorization": f"Bearer {api_key}"},
+            json={
+                "model": VIBE_MODEL,
+                "messages": [{"role": "user", "content": _VIBE_PROMPT.format(artist=artist)}],
+            },
+            timeout=30.0,
+        )
+        resp.raise_for_status()
+        payload = resp.json()
+        record_gen_ai_usage(span, UsageDict(payload.get("usage")))
+        text = payload["choices"][0]["message"]["content"]
     return text.strip().strip("\"'").rstrip(".")[:_VIBE_MAX_CHARS]
 
 
@@ -136,32 +148,40 @@ def resolve_vibes(
     *,
     cache: dict[str, str],
     resolver: VibeResolver = fetch_artist_vibe,
+    max_workers: int = DEFAULT_VIBE_WORKERS,
 ) -> dict[str, str]:
     """Return a vibe for each artist, calling ``resolver`` only for cache misses.
 
-    Mutates ``cache`` in place with any newly resolved artists so the caller can
-    persist it. Idempotent: a second call over the same artists makes no
-    resolver calls.
+    Cache misses are resolved **concurrently** in a thread pool — the resolver is
+    a blocking ``httpx`` call per artist, so fanning them out turns hundreds of
+    serial OpenRouter round-trips into a handful of parallel batches. The shared
+    ``cache`` is mutated only on the calling thread (after each future returns),
+    never inside a worker, so no lock is needed. Idempotent: a second call over
+    the same artists makes no resolver calls.
 
     Args:
         artists: Artist names to resolve (duplicates are fine).
         cache: Existing ``artist -> vibe`` map; updated in place.
         resolver: Callable that produces a vibe for an uncached artist. Defaults
             to the live OpenRouter call; tests inject a stub.
+        max_workers: Concurrent resolver calls for cache misses.
 
     Returns:
         The subset of ``cache`` covering the requested artists.
     """
-    out: dict[str, str] = {}
-    for index, artist in enumerate(artists):
-        if not artist:
-            continue
-        if artist not in cache:
-            logger.info("spotify: vibe cache miss, resolving {!r} (OpenRouter call)", artist)
-            cache[artist] = resolver(artist)
-        out[artist] = cache[artist]
-        log_progress("spotify-vibes", index, artist)
-    return out
+    requested = [a for a in artists if a]
+    misses = list(dict.fromkeys(a for a in requested if a not in cache))
+    if misses:
+        logger.info(
+            "spotify: {} vibe cache misses, resolving with {} workers", len(misses), max_workers
+        )
+        with ThreadPoolExecutor(max_workers=max_workers) as pool:
+            futures = {pool.submit(resolver, artist): artist for artist in misses}
+            for index, future in enumerate(as_completed(futures)):
+                artist = futures[future]
+                cache[artist] = future.result()
+                log_progress("spotify-vibes", index, artist)
+    return {artist: cache[artist] for artist in requested}
 
 
 def enrich_records(
