@@ -1,14 +1,60 @@
 # RETURN — Sponsor & Track Playbook (Cal Hacks 2026)
 
 Hour-0 reference. Per-sponsor deep dives (offer · prize/criteria · workshop · concrete
-RETURN integration · how to win), produced by isolated research agents using web + Slack.
-Status: **all 10 briefs complete.**
+RETURN integration · how to win). **This rev re-swept *all* ~31 sponsor/cohost Slack
+channels** (not just the original 10), so it covers tracks the earlier doc never mentioned
+(Browserbase, TokenRouter, Pika, Cognition/Devin, Terac, …) and corrects stale entries.
 
-> **Two corrections from the final briefs:**
-> 1. **Anthropic has a NAMED track** ("Best Use of Claude": Tungsten Cube + **$5,000 API
->    credits**) — Claude is a *co-host*, not just an enabling sponsor. Real target, competitive.
-> 2. **ElevenLabs > Deepgram for our hero feature** — only ElevenLabs does **voice cloning**,
->    so "hear your past self in *your own* voice" is only possible there. Deepgram can't clone.
+> **Provenance of this doc:** each sponsor below is tagged with how fresh its data is:
+> **[SLACK-VERIFIED]** = read live from the sponsor's channel this sweep (2026-06-21);
+> **[PRIOR-PASS]** = retained from the previous web+Slack research pass, **not** re-read
+> this sweep because the Slack API was timing out under concurrent load — trust but
+> re-confirm at the booth; **[COULD-NOT-VERIFY]** = channel timed out on every attempt and
+> we have no reliable data — listed so they aren't silently dropped, not as a recommendation.
+
+> **Three corrections vs. the previous doc:**
+> 1. **ElevenLabs is NOT a confirmed sponsor.** Its channel has no rep, no offer, no prize —
+>    only hackers asking for credits, one explicitly noting *"elevenlabs isn't even a sponsor
+>    of this event… I can't see their logo anywhere."* The old "ElevenLabs > Deepgram, voice
+>    cloning hero beat" plan is **dead** — **Deepgram is the voice lane.**
+> 2. **The field is much bigger than 10.** Real, previously-undocumented cash/credit tracks:
+>    **Browserbase $2,000**, **TokenRouter $1,000/$500/$300**, **Pika 5k+5k credits**,
+>    **Cognition/Devin** (memory-layer track), **Terac $1,000 + $250 credits/team**.
+> 3. **Anthropic channel id was wrong** in the research dispatch (`C0B7SFEQ2FL` is the intro
+>    channel). The real one is **`#spons-anthropic` = `C0B7SJ4U10S`** — $25 self-serve credits
+>    link still live; mentors Tyler Lacroix & Marcus Wong at the Claude booth.
+
+---
+
+## What we actually built (so "fit" claims are honest)
+
+The integration stories below are grounded in the **principle pipeline that exists on the
+`aaryan-principles` branch**, not the north-star flywheel. What's real:
+
+- **The raw→principles ladder (v0).** `Event` (canonical per-item type) → **gap-segment**
+  per source into `Unit`s (`pipeline/segment.py`, zero LLM) → **render + Hindsight retain**
+  into one Postgres/pgvector bank (`pipeline/render.py`; self→Experience, others→World via
+  tags) → **cluster-first minting** of principles (`pipeline/mint.py`).
+- **Rung ③ minting is cluster-first** (`docs/rung3-minting-strategy.md`): recall a memory
+  pile, cluster by Hindsight's own embeddings, drop singletons, one LLM call per cluster
+  proposing a one-line principle citing ≥2 `memory_id`s, then **non-LLM citation
+  verification** (cited id must be in the cluster) + an **embedding novelty check** + a
+  **ledger-derived confidence** (never the LLM's self-report).
+- **Rung ④ is a principle *graph*** (`core/principle.py`): typed grounded edges
+  (`supports/refines/generalizes/contradicts`), each with its own evidence ledger drawn
+  from a bounded memory-layer neighborhood.
+- **Memory-quality enrichments** (latest commits): contacts handle→name join, photo
+  **vision** captions via a cheap OpenRouter vision model (local thumbnails, 30-day window),
+  spotify artist-vibe cache, and a retain-prompt slang guard.
+- **Inference:** OpenRouter only (`gemini-3.5-flash` for retain/mint, `qwen3-embedding-8b`
+  truncated to 2000-dim for vectors, Claude models available). No local model loads.
+
+So the honest one-liners: our pipeline is a **multi-step LLM chain** (→ observability/eval
+tracks: Arize, Sentry), it **routes everything through one OpenRouter-compatible endpoint**
+(→ TokenRouter near-drop-in), it has a **vision pre-pass** (→ media tracks), and it is a
+**persistent memory layer with provenance** (→ Devin memory-layer track). The agentic swarm
+and contradiction flywheel are **NOT built** — don't pitch fit that depends on them (Fetch
+swarm, etc.) as if it exists.
 
 ---
 
@@ -17,406 +63,402 @@ Status: **all 10 briefs complete.**
 🏆 **Ddoski's World — $5,000.** Consumer / social / real-world apps. RETURN (location-based
 memory + wellbeing) is the natural fit. Overall judging = **Impact · Functionality ·
 Technical Complexity · Creativity.** Strengths are Impact + Creativity; make the working
-demo (Functionality) and the principle-graph engine (Technical Complexity) *visible*.
+demo (Functionality) and the **principle-graph engine** (Technical Complexity) *visible* —
+the cluster-first minting + grounded edges *is* the technical-complexity story.
 
-## Stackable sponsor prizes — priority order
+## Sponsor prizes — priority order (by reward × fit × confirmed-effort)
 
-Many sponsors confirmed **stackable** with a Ddoski grand prize (Fetch explicitly; teams are
-openly combining Anthropic+Sentry+Arize). Fetch is the **only track that *requires* using its
-product**, and its core must work through ASI:One.
+| Sponsor | Prize | Status | Effort | Why it fits RETURN |
+|---|---|---|---|---|
+| **Anthropic** ⭐ | Tungsten Cube + **$5,000 API credits** (Best Use of Claude) | PRIOR-PASS track / SLACK-VERIFIED credits | Low | Claude is our model. Name caching the principle-graph context, structured-output minting, Batch ingestion. Build with Claude Code. |
+| **Browserbase** 🆕 | **$2,000 cash** (Best Use of Browserbase) | SLACK-VERIFIED | Med | Browser-automation ingestion adapter for a web-only source (Claude.ai export, Spotify web) → feeds the same `Event`→principle pipeline. Highest single cash prize. |
+| **The Token Company** | **$2,000** + Claude Max 6mo/member + interview | PRIOR-PASS | Low–Med | Compress the large recalled-memory + principle-graph context fed to minting/REFLECT. Compounding savings. |
+| **TokenRouter** (PaleBlueDot) 🆕 | **$1,000 / $500 / $300** (credits) | SLACK-VERIFIED | **Low** | We already call an OpenRouter-compatible endpoint — TokenRouter is a base-URL+key swap. Pitch: **Zero-Data-Retention routing for personal memory data**. |
+| **Fetch.ai** | **$1,500 / 1k / 500** + interviews | PRIOR-PASS | Low–Med | Stackable, mandatory product use. Wrap RETURN's recall as one discoverable uAgent on ASI:One (Chat Protocol). |
+| **Terac** 🆕 | **$1,000** most-creative + $250 credits/team | SLACK-VERIFIED | Med | "MCP for human labor." Hire humans to label whether a minted principle is *actually true of the user* → measurable before/after on principle quality. Maps onto our ledger. |
+| **Arize** | ~$1,000 (booth-judged) | PRIOR-PASS | Low | Observability/eval over the multi-step minting chain. Groundedness evaluator over principle citations → measured improvement. |
+| **Cognition / Devin** 🆕 | Named track (amount TBC) | SLACK-VERIFIED | Med | Judge said a **memory layer / MCP server that extends Devin** is *favorable*. RETURN's principle pipeline **is** a persistent memory layer — expose it as an MCP Devin can query. |
+| **Pika** 🆕 | 5k+5k credits (Best creative use of Pika MCP) | SLACK-VERIFIED | Med | "Bring a reconstructed moment to life": feed a minted principle / moment to Pika MCP → short video capsule. Strongest *visual* demo beat. |
+| **Sentry** | Switch 2 + guaranteed interview | PRIOR-PASS | Low | Best Use of SDK; one distributed trace browser→FastAPI→`gen_ai.*` spans over the pipeline. Bonus for observability. |
+| **Deepgram** | Switch 2 | SLACK-VERIFIED | Med | Voice "talk to past you" — STT (Nova-3) + TTS (Aura-2) + Voice Agent. Voice must be *core*. **This is the voice lane** (ElevenLabs is out). |
+| **Simular / Sai** | $500/member | SLACK-VERIFIED | Low–Med | SimuLang as a GUI ingestion layer; or just use Sai to generate the demo video (one-prompt) — cheap way to claim the per-member payout. |
+| **Redis** | TBC (confirm at booth) | PRIOR-PASS | Low | **SemanticCache only**, and only if we measure a repeat-query rate. Vector/queues/graph are redundant or premature — out of v1. |
+| **Poke** (Interaction Co) | None posted (thematic) | SLACK-VERIFIED | Low | Surface a reflection into the user's real iMessage thread via the SEND API. Memorable beat, but **no prize** → low priority. |
+| **Runpod** | None posted | SLACK-VERIFIED | — | GPU host *if* we ever self-host inference (privacy/local-Gemma north-star). No track posted. Ask reps for credits. |
 
-| Sponsor | Prize | Effort | Why it fits |
-|---|---|---|---|
-| **Anthropic** ⭐ | Tungsten Cube + **$5,000 API credits** + Applied-AI office hour | Low | "Best Use of Claude." Claude is our core model. Name the features (prompt caching, adaptive thinking, structured outputs, Batch API). Build with Claude Code. |
-| **The Token Company** | **$2,000** + Claude Max 6mo/member + interview | Low–Med | Compress our overlapping REFLECT/swarm context. Compounding token savings. |
-| **Fetch.ai** | **$1,500** / 1k / 500 + interviews | Low–Med | Stackable. Wrap RETURN's memory/swarm as a discoverable uAgent on ASI:One (mandatory Chat Protocol). |
-| **Arize** | ~$1,000 | Low | Observability/eval over our multi-step LLM pipeline. Booth-judged on traces + evaluator + measured improvement. |
-| **Sentry** | Switch 2 + guaranteed interview | Low | Best Use of SDK; bonus for observability. One distributed trace click→pipeline. |
-| **Deepgram** | Switch 2 | Med | Voice "talk to past you" — STT/TTS/Voice-Agent. Voice must be *core*. |
-| **ElevenLabs** | TBC (booth) | Med | **Voice cloning** = past self in your own voice. Our strongest voice fit; no track posted yet. |
-| **Redis** | TBC (confirm at booth) | Low–Med | Our queues (Streams) + SemanticCache for the swarm. Correct-primitive story. |
-| **Simular/Sai** | $500/member | Med | Automate cross-app ingestion via SimuLang; Sai orchestrates RETURN over iMessage. |
-| **Poke** | None (thematic) | Low | Send capsule nudges into the user's real iMessage. Memorable demo beat. |
+**Voice decision (revised):** **Deepgram leads the voice lane.** ElevenLabs is no longer a
+participating sponsor, so "past self in your own cloned voice" can't win an ElevenLabs prize
+(there isn't one); if you want voice cloning for the hero beat it's a generic capability, not
+a track. Keep voice on Deepgram end-to-end to stay eligible for their Switch 2.
 
-**Voice decision (Hour-0):** if you commit to voice as a *core* interaction, **ElevenLabs is
-the primary** (cloning enables the hero beat) and Deepgram is the fallback/STT layer. You
-cannot win the ElevenLabs prize without keeping it end-to-end on ElevenLabs; you cannot win
-Deepgram's without voice being fundamental. Pick one to lead.
+**No fit / skip (verified):** **QNX** (embedded hardware + Raspberry Pi, zero software
+overlap), **Cognichip** (chip-design EDA), **HRT** (quant trading, no track), **Zoox**
+(autonomous vehicles), **Skydeck** / **The House Fund** (VC/accelerator — relationship, not a
+prize track; worth a Sunday conversation if fundraising), **Overshoot** (rep no-show),
+**Context** (channel empty), **Annapurna** / **Fieldguide** (track "coming soon", never posted
+as of this sweep).
 
 ---
 
-## 1. ARIZE AI — observability/eval — **~$1,000**
+## 1. ANTHROPIC — "Best Use of Claude" — **Tungsten Cube + $5,000 API credits** · [PRIOR-PASS track / SLACK-VERIFIED credits]
 
-**Win condition (verbatim from Laurie, Arize, in Slack):** judged at the **booth**, not on
-stage. They want to see (1) live **traces** of RETURN's pipeline in an Arize project, (2) at
-least one custom **evaluator**, (3) a concrete **"we measured X, changed Y, X improved"**
-story. *"Your hack doesn't have to be finished to show that you used Arize."* Judging from
-noon Sun Jun 21.
+**Channel:** `#spons-anthropic` = **C0B7SJ4U10S** (the intro channel `C0B7SFEQ2FL` is a
+different channel — don't confuse them).
 
-**Offer / tooling**
-- Prize ~$1k. Use **hosted Arize AX** (app.arize.com) over local Phoenix — judges look at
-  *your Arize environment* at the booth; a shared hosted project URL is easiest to show.
-- Workshop slides: https://docs.google.com/presentation/d/1o6lvVAnHxbern869j0DCdCm69X0fxtWFI3U-rKFSY1w/edit
-- Colab: https://colab.research.google.com/drive/1IubxfSOb4TQPlBMkSV--aQxfT-csml6S
-- Skills repo: https://github.com/Arize-ai/arize-skills
-- Workshop: Floor 2 (Ddoski's Classroom), ran ~2pm Sat — use Colab+slides. Mentor: **Laurie
-  Voss (@lvoss)**, at booth all day.
+**Track (Devpost, prior pass):** Claude is a *co-host*. Criteria reward Claude **Code** usage
+explicitly: (1) Technical Complexity (innovative use of Claude Code beyond basics), (2)
+Creative Use Case, (3) Impact & Practicality. Competitive.
 
-**Integration (OpenRouter = OpenAI-compatible → auto-traced by the OpenAI instrumentor):**
-```bash
-pip install arize-phoenix-otel openinference-instrumentation-openai \
-            openinference-instrumentation-anthropic
-```
+**Credits (Slack-verified this sweep):** **$25** self-serve, near-instant —
+`https://claude.com/offers?offer_code=fb3203ec-b5d7-48a4-ab38-5fe5d9bcd026`. A separate
+**.edu credits** program exists; apply from a **personal account on your school email** (an
+account under an org plan whose owner lacks an `.edu` email gets rejected — confirmed by a
+hacker hitting exactly that). Mentors **Tyler Lacroix [Mentor/Anthropic] (@tylerlacroix0)**
+and **Marcus Wong (@manhinwong)** — DM them or hit the **Claude booth**. Workshop slides
+(approx): a Google Slides deck linked in-channel.
+
+**Models (exact IDs):** `claude-opus-4-8` ($5/$25 per 1M, 1M ctx) — REFLECT/mint; `claude-
+sonnet-4-6` ($3/$15) — high-volume extraction; `claude-haiku-4-5` ($1/$5) — cheap classify.
+
+**Integration (the cost-engineering *is* the story):**
+- **Minting → Claude + prompt caching.** The recalled cluster + principle-graph context is a
+  large stable prefix re-sent per cluster → put it first with `cache_control:{type:"ephemeral"}`.
+- **Structured-output minting.** Have the proposer return typed `{principle_text, cited_ids}`
+  via `json_schema` → our non-LLM citation verifier consumes it deterministically.
+- **Batch ingestion** (50% cheaper) on Sonnet/Haiku for the chat.db backfill.
+- **Build with Claude Code and say so.** Cross-check exact model prices against the
+  `claude-api` skill before quoting.
+
+**Win:** demo a live minted principle the user never stated (Creative + Technical at once);
+name the Claude features in the pitch.
+
+---
+
+## 2. BROWSERBASE 🆕 — "Best Use of Browserbase" — **$2,000 cash** · [SLACK-VERIFIED]
+
+**Channel:** `#spons-browserbase` = C0B8LT0ASBA. **Prize:** $2,000 cash (highest single cash
+prize in the field). **Criteria:** "best use of Browserbase" — no finer breakdown posted
+(per @shrey, Browserbase). **Mandatory product use:** yes.
+
+**Offer:** promo code **STARTERPACK** on the free Developer plan at browserbase.com.
+**Workshop:** Sat 5pm — "build a browser agent in <15 min" (Shake Shack provided). **Rep:**
+@shrey (table or DM).
+
+**Integration (Med):** Browserbase = cloud headless browser (Playwright-in-the-cloud). Add a
+**browser-automation ingestion adapter** for a source with no clean export — log into a
+web app, scrape the user's own data, normalize to our canonical `Event`, and let it rise
+through the *same* segment→retain→mint pipeline. Cleanest target: auto-pull a **Claude.ai
+chat export** or **Spotify web** history via the browser, persisting through
+`storage/persist.py` like every other adapter. Demo: "we point Browserbase at a web source
+we have no API for, and seconds later a principle traces back to it."
+
+**Win:** show one real web source ingested end-to-end with provenance intact to the scraped page.
+
+---
+
+## 3. THE TOKEN COMPANY — Compression — **$2,000 + Claude Max 6mo/member + interview** · [PRIOR-PASS]
+
+> Not re-read this sweep (channel timed out). Re-confirm details at the booth.
+
+**Prize (prior pass):** 1st $2,000 + Claude Code 5× Max (6mo) per member + boosted MTS
+interview; 2nd $1,000. Challenge: build a system that **compresses LLM inputs while preserving
+useful information** — they reward creative approaches, not only calling their API.
+
+**Product:** drop-in compression API (deterministic token deletion). `pip install
+the-token-company`; wrap an Anthropic client with `with_compression(...)`; `aggressiveness`
+0.05–0.8; wrap exact IDs/quotes in `<ttc_safe>…</ttc_safe>`.
+
+**Integration (highest-ROI first):**
+- **(A) Minting/REFLECT context** — compress the recalled memory pile + principle-graph
+  context at `aggressiveness≈0.2`, `<ttc_safe>` the `memory_id`s and exact quotes (the
+  ledger must survive verbatim — our non-LLM citation check fails if an id is mangled).
+- **(B)** Per-cluster proposer calls compress → savings compound across clusters.
+- **Winning edge:** a live cumulative `tokens_saved` dashboard + raw-vs-compressed Claude
+  output side-by-side proving the minted principle is unchanged.
+
+---
+
+## 4. TOKENROUTER (PaleBlueDot AI) 🆕 — "Best Use of TokenRouter" — **$1,000 / $500 / $300** (credits) · [SLACK-VERIFIED]
+
+**Channel:** `#spons-palebluedot-ai` = C0B7W79BH60. **Prize:** 1st $1,000 · 2nd $500 · 3rd
+$300, paid as TokenRouter credits. **Criteria:** meaningfully use TokenRouter as your LLM
+routing layer (not spelled out further). **Mandatory:** yes. **Rep:** @christine.dai.
+
+**Offer:** **$50** hacker credits/person via the redemption Apps-Script link in-channel
+(vouchers ran out ~05:23 PT 06-21 → **DM @christine.dai** for more). TokenRouter pitch: no
+platform fee (vs OpenRouter's ~5.5%), RBAC, audit logs, **Zero Data Retention by default**;
+backed by PaleBlueDot ($150M raise, >$1B val).
+
+**Integration (Low — near drop-in):** RETURN already routes **all** inference through one
+OpenRouter-compatible endpoint (`runtime/hindsight.py` sets `LLM_PROVIDER`/base URL +
+`OPENROUTER_API_KEY`). TokenRouter is API-compatible → swap base URL + key. **The pitch writes
+itself:** *"a personal-memory app ingests your iMessage — Zero-Data-Retention routing means
+your raw data never lands in a third-party log."* That's a real architectural argument, not a
+forced integration. Best effort-to-reward ratio in the field.
+
+**Win:** show the one-line config swap + the ZDR/audit-log story for sensitive personal data.
+
+---
+
+## 5. FETCH.AI — "Best Use of Agentverse" — **$1,500 / $1,000 / $500 + interviews** (mandatory, stackable) · [PRIOR-PASS]
+
+> Not re-read this sweep (channel timed out). Re-confirm at the Tilden workshop/booth.
+
+**Prize/criteria (prior pass):** $3,000 pool + internship interviews. Rubric: Functionality
+25% · Use of Fetch Tech 20% · Innovation 20% · Real-World Impact 20% · UX 15%. **Using the
+product is MANDATORY** — agents on Agentverse + **Chat Protocol**, core must work through
+**ASI:One**. **Stackable** with a Ddoski grand prize.
+
+**Access:** promo `BERKELEYAIAV`; `pip install uagents`; ASI:One API `https://api.asi1.ai/v1`.
+
+**Integration (thin):** wrap RETURN's **recall + principle query** as **one "RETURN Memory
+Agent" uAgent** whose `ChatMessage` handler calls our existing pipeline (`pipeline/show.py`
+recall + the minted principle graph). MVP ≈ 1 file (`mailbox=True,
+publish_agent_details=True`, `Protocol(spec=chat_protocol_spec)`). **Do not** pitch the
+retriever/critic/arbiter swarm as agents — that swarm is **not built**.
+
+---
+
+## 6. TERAC 🆕 — "MCP for Human Labor" — **$1,000 most-creative + $250 credits/team** · [SLACK-VERIFIED]
+
+**Challenge (verbatim, @jack / Terac, cross-posted):** *"Use Terac to recruit real humans,
+collect feedback on something in your project, use that data to improve it, demonstrate a
+measurable before-and-after."* Each team gets **$250 in Terac annotation credits**; **$1,000
+to the most creative team.** **Judging:** Model Improvement 40% · Annotation Environment 35% ·
+Use of Human Data 25%. Docs: terac.com/mcp, terac.com/docs/researchers/mcp/install.
+
+**Integration (Med — and a genuinely strong fit for our provenance story):** the hardest open
+problem in our pipeline (`docs/rung3-minting-strategy.md`) is **behavioral corroboration** —
+telling a real principle from a fluent confabulation, which has *no labeled ground truth*.
+Terac supplies exactly that: **hire humans to label whether each minted principle is actually
+true of the user**, feed those labels back as `weakens`/`supports` rows into the evidence
+**ledger**, recompute confidence, and show **principle precision before vs. after**. That is a
+clean, measurable before/after that hits all three judging axes — and it stays inside the
+§2 invariant (the labels are high-priority evidence rising through the ledger, not a principle
+written directly).
+
+**Win:** before/after principle-quality table driven by real human labels routed through the ledger.
+
+---
+
+## 7. ARIZE — observability/eval — **~$1,000 (booth-judged)** · [PRIOR-PASS]
+
+> Not re-read this sweep (channel timed out). Re-confirm at the booth.
+
+**Win condition (prior pass):** judged at the **booth**. Show (1) live **traces** of the
+pipeline in an Arize project, (2) ≥1 custom **evaluator**, (3) a concrete *"measured X, changed
+Y, X improved"* story.
+
+**Integration:** OpenRouter is OpenAI-compatible → auto-traced by the OpenAI instrumentor.
 ```python
-# instrumentation.py — import FIRST, before openai/anthropic
+# import FIRST
 from phoenix.otel import register
 tp = register(project_name="return-pipeline", auto_instrument=True, batch=True)
 tracer = tp.get_tracer(__name__)
-
 @tracer.chain
-def reflect_synthesis(memories): ...     # REFLECT cross-memory synthesis
+def mint_cluster(cards): ...        # rung ③ per-cluster proposer
 @tracer.chain
-def detect_contradiction(a, b): ...      # NLI alignment/contradiction
-@tracer.tool
-def retriever(query): ...                # swarm Retriever
-@tracer.agent
-def arbiter(candidate): ...              # swarm Arbiter
+def reflect_synthesis(memories): ... # REFLECT
 ```
-MCP for Claude Code: `claude mcp add arize-tracing-assistant uvx arize-tracing-assistant@latest`
-
-**Evals to build (LLM-as-judge over real traces):** principle-extraction faithfulness;
-contradiction-detection precision (catch false-positive contradictions sent to the user);
-**REFLECT groundedness/hallucination** (most demo-able).
-
-**Winning booth story:** "REFLECT was hallucinating beliefs unsupported by the memories. We
-traced the pipeline in Arize, ran a groundedness evaluator over ~50 REFLECT traces, found
-~30% unsupported (a cluster of low-groundedness spans), saw the retriever returning weakly-
-related memories, tightened the retrieval threshold + added a grounding instruction, re-ran:
-groundedness → ~90%. Here are the two trace sets side by side." (Screenshot before/after.)
+**Evaluator:** principle-citation **groundedness** — does each cited `memory_id` actually
+support the minted text? (LLM-judge over real mint traces.) **Booth story:** "minting cited
+weakly-related memories; we ran a groundedness evaluator over ~50 mint traces, found ~30%
+unsupported, tightened the cluster cosine threshold + added the novelty check, re-ran:
+groundedness → ~90%. Two trace sets side by side."
 
 ---
 
-## 2. SENTRY — Best Use of SDK — **Nintendo Switch 2 + guaranteed interview**
+## 8. COGNITION / DEVIN 🆕 — "Most technically impressive project built with Devin" · [SLACK-VERIFIED]
 
-**Prize + criteria (verbatim, Stephanie Lipp, Sentry):** Switch 2 + guaranteed interview
-(internship/new-grad). Judged on *"strong technical execution paired with clear
-communication, collaborative problem-solving… how your team worked together under pressure.
-**Bonus points if you leveraged observability or error monitoring.**"* → Lead with the
-teamwork story; back it with a real observability story.
+**Channel:** `#spons-cognition` = C0B7W7K830U. **Prize amount not posted in Slack** (merch +
+extra credits for workshop attendees). **Criteria (verbatim, @albert.chen):** *"The main
+criteria is that you build using Devin, but we may be favorable if you integrate / extend
+Devin in the project itself."* He confirmed to a hacker that **building a memory layer / MCP
+server that extends Devin qualifies** and is favored. **Mandatory:** build using Devin.
 
-**Offer:** Free account is enough — **you do NOT need the GitHub Student plan** (mentor Ryan
-Albrecht, Slack: *"it's about using the Sentry API, which you can do with a regular free
-account… if you hit usage limits lmk and I'll fix it"*). Free hacker pack: 50K errors, 5GB
-logs, $20 **Seer** AI-debugging credits, free 1yr. Sign up at sentry.io, grab DSN. Workshop
-"How to fix bugs" Sat 5–6pm, Ddoski's Classroom. Mentors: @stephanie.lipp, @ryan.albrecht
-(usage limits), @olegbezr. Get booth help **early** Sunday.
+**Access:** **Devin Cloud** = workshop-attendees only (both workshops now past → window
+likely closed). **Devin Desktop + CLI** = open to all via form (forms.gle/tau3o9s2MwAagEow5),
+accounts provisioned ~30 min. **Reps:** @albert.chen, @katie.
 
-**Integration**
-- Backend: `pip install "sentry-sdk[fastapi]"`
-```python
-import sentry_sdk
-from sentry_sdk.integrations.anthropic import AnthropicIntegration
-sentry_sdk.init(dsn="https://<key>@o<org>.ingest.sentry.io/<project>",
-    traces_sample_rate=1.0, enable_logs=True, send_default_pii=True,
-    integrations=[AnthropicIntegration(include_prompts=True)])
-```
-- OpenRouter/swarm calls aren't an auto-instrumented SDK → emit manual `gen_ai.*` spans so
-  the **AI Agents dashboard** lights up:
-```python
-with sentry_sdk.start_span(op="gen_ai.invoke_agent", name="invoke_agent REFLECT") as s:
-    s.set_data("gen_ai.agent.name", "REFLECT Synthesizer")
-    with sentry_sdk.start_span(op="gen_ai.chat", name="chat claude-opus") as c:
-        c.set_data("gen_ai.request.model", "anthropic/claude-opus")
-        c.set_data("gen_ai.input.messages", json.dumps(messages))
-        ...
-```
-- Frontend: `npm install @sentry/react`; set `tracePropagationTargets` to the API origin so
-  **frontend + backend share ONE distributed trace** (the showpiece). Wrap in
-  `Sentry.ErrorBoundary` (React 19: `reactErrorHandler`).
+**Integration (Med):** two angles — (1) use Devin Desktop/CLI to write RETURN's code; (2) the
+stronger one — **expose RETURN as a memory MCP server Devin can query.** Our principle pipeline
+(segment → retain → cluster → mint → graph) **is** a persistent, provenance-carrying memory
+layer; an MCP endpoint that returns "principles + evidence for this person" is exactly the
+"extend Devin with a memory layer" the judge said they favor.
 
-**Winning 60-sec demo:** (1) click "REFLECT" in React → show the single waterfall trace
-browser→FastAPI→`gen_ai.invoke_agent`→Claude `gen_ai.chat`+extraction spans, point at the
-slow span. (2) Force a failed extraction → it surfaces with breadcrumbs + the exact LLM input
-that broke it → let **Seer** root-cause it ("we didn't stare at a terminal for 2 hours" =
-their workshop pitch). (3) Token/cost per swarm agent in the AI Agents view. (4) Narrate how
-the team split the work — they literally judge that.
+**Win:** Devin calling our memory MCP and getting back grounded principles, live.
 
 ---
 
-## 3. THE TOKEN COMPANY — Compression Challenge — **$2,000 + Claude Max 6mo/member + interview**
+## 9. PIKA 🆕 — "Best creative use of Pika MCP" — **5,000 + 5,000 credits** · [SLACK-VERIFIED]
 
-**Prize (verbatim, Taaha):** 1st $2,000 + Claude Code 5× Max (6mo) for every member +
-boosted MTS interview; 2nd $1,000. Challenge: *"Build any system… that compresses LLM inputs
-while preserving useful information"* — they reward **building/creative approaches** to
-context optimization/retrieval/encoding, not only calling their API. (Full criteria doc is
-login-gated — open it signed-in or ask Taaha.)
+**Channel:** `#spons-pika` = C0B7L7VSFH9. **Track:** Best creative use of Pika MCP (@yutian
+jessie.ma). **Credits:** 5,000 for signup + joining the track (Google Form in-channel),
+another 5,000 for the workshop, extra for sharing a build in-channel. **Steps to get credits:**
+onboard at pika.me → connect Pika MCP to your agent/Claude Code → finish agent authorization.
+**Mandatory:** yes. **Reps:** @yutianjessie.ma, @emma.
 
-**Product:** drop-in prompt/context **compression API** (deterministic token deletion, not
-summarization). Models bear-1/1.1/**bear-2**; ~10–40% token reduction at flat accuracy
-(light compression can *raise* accuracy). Free tier = first **50M input tokens free**.
-```bash
-pip install the-token-company   # key format ttc-...
-```
-```python
-from anthropic import Anthropic
-from thetokencompany.anthropic import with_compression
-client = with_compression(Anthropic(api_key=KEY), compression_api_key="ttc-...")
-# system + user msgs auto-compressed; assistant msgs passthrough (preserves prompt caching)
-```
-`aggressiveness` 0.05–0.2 for content the model answers from, 0.5–0.8 for background;
-wrap IDs/exact quotes in `<ttc_safe>…</ttc_safe>` (never compressed). Workshop Sat 6pm,
-Floor 5 Tilden. Contacts: Taaha Khan, Rasmus. Booth = front corner of main room.
+**Integration (Med — strongest *visual* demo hook):** after a principle/moment is minted, call
+Pika MCP to generate a short **video capsule** representing it (e.g. "late-night creative
+sprints with close friends"). Makes the abstract principle tangible on stage. Wire the MCP from
+the FastAPI backend or a Claude Code session post-mint.
 
-**Integration (highest-ROI first):**
-- **(A) REFLECT** — compress recalled facts + principle-graph context at `aggressiveness=0.2`,
-  `<ttc_safe>` principle IDs + exact quotes. Biggest single win.
-- **(B) Swarm Critic/Retriever** — use `with_compression(...)` so every agentic-loop call is
-  compressed → savings compound across iterations.
-- **(C) "Talk to past you" temporal snapshots** — large, self-redundant; compress at 0.5–0.7.
-
-**Winning edge:** a **live cumulative token-savings dashboard** across a full RETURN session
-(savings *compound* via the swarm loop) + a **raw-vs-compressed Claude output side-by-side**
-proving no quality loss. To beat API-only teams: add a thin **RETURN-specific semantic dedup**
-pass before their API (collapse near-duplicate episodic facts / overlapping snapshots),
-benchmarked against control — hits their "creative approaches" language.
+**Win:** principle → 10-second generated capsule, shown live as the "bring your memory to life" beat.
 
 ---
 
-## 4. REDIS — credits $50 (`CALHACKER2026`) — **prize TBC, confirm at booth**
+## 10. SENTRY — Best Use of SDK — **Switch 2 + guaranteed interview** · [PRIOR-PASS]
 
-**Status:** **No named prize/criteria announced** in 30d of #spons-redis (only credits +
-workshop). **Confirm "Best Use of Redis" at the booth.** $50/participant credits, code
-`CALHACKER2026`; free tier at redis.io/try-free (free DB ~30MB — fine for queues + a cache
-index, NOT a large vector corpus; our pgvector memory stays in Postgres). Workshop **4–5pm,
-5th Floor Tilden** (confirmed). Reps: Simran Regmi, Justin.
+> Not re-read this sweep (channel timed out). Re-confirm at the booth.
 
-**Integration (Redis = horizontal plumbing; Hindsight/pgvector = the vertical):**
-- **(a) Two work queues → Redis Streams + consumer groups.** `time_capsule_queue` /
-  `ui_queue` as streams; HIGH/NORMAL = two streams or a priority field. Consumer groups give
-  the Retriever/Critic/Arbiter swarm at-least-once delivery; `XAUTOCLAIM` reclaims crashed
-  workers (restartability for free). Introspect with `XPENDING`/`XINFO`/`XLEN`.
-- **(b) HIGHEST-ROI ADD → RedisVL `SemanticCache`** in front of the swarm's recall so a
-  near-duplicate capsule skips the multi-agent LLM round-trip:
-```python
-from redisvl.extensions.cache.llm import SemanticCache
-cache = SemanticCache(name="contradiction_cache", distance_threshold=0.15, ttl=3600, redis_url=REDIS_URL)
-hit = cache.check(prompt=capsule_text, num_results=1)
-verdict = hit[0]["response"] if hit else run_swarm(capsule_text)
-if not hit: cache.store(prompt=capsule_text, response=verdict, metadata={"principle_ids": ids})
-```
-  Demo: "second near-identical capsule returns in ~1ms vs a multi-agent LLM call."
-- **Do NOT** use Redis for graph/principles — RedisGraph is **EOL**; principles stay in
-  Postgres+pgvector. Stating this boundary to judges signals architectural judgment.
+**Criteria (prior pass):** strong technical execution + clear communication + teamwork;
+**bonus for observability/error monitoring.** Free account suffices.
 
-**Win:** use Redis for what it's best at (Streams queue + SemanticCache), put a **number** on
-stage (cache latency vs cold path, $ saved per N dup capsules), run `XPENDING`/`XINFO` live
-to prove durability, and hit the 4–5pm workshop to confirm the prize + meet Simran/Justin.
+**Integration:** `sentry-sdk[fastapi]` on the backend; `AnthropicIntegration(include_prompts=
+True)`. OpenRouter calls aren't auto-instrumented → emit manual `gen_ai.*` spans so the **AI
+Agents dashboard** lights up over the minting chain. Frontend `@sentry/react` +
+`tracePropagationTargets` → **one distributed trace** browser→FastAPI→mint spans.
+**Demo:** click "mint" in React → single waterfall trace → force a failed extraction → it
+surfaces with the exact LLM input → Seer root-causes it.
 
 ---
 
-## 5. INTERACTION CO / POKE — **no prize (thematic), but a real, easy integration**
+## 11. DEEPGRAM — voice experience — **Nintendo Switch 2** · [SLACK-VERIFIED]
 
-**Verdict:** no prize/criteria posted → no judging upside, but Poke has a **real API** and is
-a drop-in delivery channel for RETURN's core nudge feature. Worth a **small time-boxed build**
-(few hours) for a memorable general-judging beat; we're already in an imessage-poc worktree.
+**Channel:** `#spons-deepgram` = C0B7L7SLN2F. **Prize:** Switch 2 for the *"most creative &
+well-executed voice-powered experience."* **Criteria (verbatim, @naomi.carrigan):** use ≥1
+Deepgram voice product (STT/TTS/Voice Agent) as the **CORE** experience, "not just an
+afterthought." Judged on creativity · how fundamental voice is · technical execution.
+**Mandatory:** yes.
 
-**Surface:** Poke = proactive AI assistant in iMessage/WhatsApp/Telegram (Apple-approved as
-the first 3rd-party AI agent on Messages). Two integration paths:
-- **SEND API (recommended):** `POST https://poke.com/api/v1/inbound/api-message`, `Authorization: Bearer <V2 key>`
-  (key from poke.com/kitchen), body `{"message": "..."}` → delivered into the user's iMessage.
-  ~20-line FastAPI outbound call.
-- **MCP (stretch):** Poke calls *your* MCP server's tools (`list_nearby_capsules`,
-  `unlock_capsule`) keyed by `X-Poke-User-Id`. Templates: github.com/InteractionCo/poke-mcp-examples.
-  Open question: whether Poke calls tools proactively/on schedule — verify at booth.
+**Offer:** **$200** credits at https://dpgr.am/ucb-ai-signup (Nova-3 STT, Aura-2 TTS, Voice
+Agent). Docs dpgr.am/ucb-ai-docs; Discord dpgr.am/ucb-ai-discord. **Workshop:** Sat 2–3pm
+(STT→LLM→TTS on one WebSocket — exactly our "talk to past you" loop). **Mentor:** @naomi.carrigan.
 
-Workshop Sat 2pm, Tilden Floor 5. Access: DM reps Claudia (@claudia) / Hannah (@hannah).
+**Integration (Med, voice as core):** **Nova-3 STT** → spoken reflections become `Event`s that
+feed the same pipeline; **Aura-2 TTS** → voice the past-self answer; **Voice Agent API** → the
+"talk to past you" loop with `think.prompt` built from the principle-graph snapshot at that
+timestamp. **This is the voice lane** now that ElevenLabs is out.
 
-**Plan:** on a geofence "you've returned" event or capsule unlock, RETURN fires the SEND API
-with the reflection prompt → Poke surfaces it in the user's real iMessage thread (and can
-handle the reply). Demo: *"RETURN's location capsules reach you in the iMessage thread you
-already live in — no new app."* Do **not** build the MCP server unless the SEND API lands
-early and reps confirm proactive calls.
+**Win:** speak a capsule live (transcribe + sentiment), then ask your past self aloud and hear
+it answer grounded only in that snapshot.
 
 ---
 
-## 6. ANTHROPIC — "Best Use of Claude" — **Tungsten Cube + $5,000 API credits**
+## 12. SIMULAR (Sai / SimuLang) — **$500/member** · [SLACK-VERIFIED]
 
-**Track confirmed (Devpost):** Claude is a *co-host*. Prize = Tungsten Cube + $5,000 API
-credits (+ a related listing mentions an **Applied-AI office hour + SF office invite** —
-confirm at booth). **Criteria:** (1) Technical Complexity — innovative use of Claude **Code**
-beyond basics; (2) Creative Use Case — novel, beyond standard dev workflows; (3) Impact &
-Practicality. Criteria reward Claude **Code** usage explicitly. Competitive — teams already
-forming on "Anthropic+Sentry+Arize."
+**Channel:** `#spons-simular` = C0B7SJKM6R0. **Prize:** ~$500/team-member; criteria at
+sai.work/prize; must meaningfully use **Sai or SimuLang**. Eligibility chores: follow Sai on
+socials, post with the tag, email screenshots to zening@simular.ai. **Reps:** @zening, @jiachen.
 
-**Credits (today, in Slack):** **$25** self-serve →
-`https://claude.com/offers?offer_code=fb3203ec-b5d7-48a4-ab38-5fe5d9bcd026` (near-instant).
-Separate **Claude Code credits form** from Anthropic (organizer Collin H. confirmed — submit
-early). `.edu` credits = larger separate program; apply from a **personal account on your
-school email**, not an org-linked one (org-without-.edu-owner gets rejected). Workshop already
-happened — ping channel/booth for slides. Submission deadline **6/21 11:00 AM PDT**.
+**Access:** 2-day unlimited trial via an **invite code** (capacity-limited, get one **in
+person** at booth/workshop). **Workshop:** Sat 12–1pm, Floor 2 — headline demo is literally
+*"orchestrate Claude Code in iMessage."*
 
-**Models (exact IDs):** `claude-opus-4-8` ($5/$25 per 1M, 1M ctx) — REFLECT, Critic/Arbiter;
-`claude-sonnet-4-6` ($3/$15) — high-volume extraction/NLI; `claude-haiku-4-5` ($1/$5) — cheap
-classify/retriever pre-filter. On Opus 4.8, `temperature`/`top_p`/`budget_tokens` are removed
-→ use `thinking:{type:"adaptive"}` + `output_config:{effort:"high"}`.
-
-**Integration (the cost-engineering *is* the story):**
-- **REFLECT → Opus 4.8 + adaptive thinking + prompt caching.** The 4-network memory context
-  is a large stable prefix re-sent every call → put it first with
-  `cache_control:{type:"ephemeral"}` (cache reads ~0.1× input). This is what makes repeated
-  synthesis affordable on $25. Volatile capsule/question goes *after* the breakpoint.
-- **Swarm → manual tool-use loop + structured outputs.** Critic/Arbiter return typed
-  `{contradicts, principle_id, confidence, evidence}` via `json_schema` → deterministic
-  flywheel, no regex. Retriever on Haiku/Sonnet pre-filters.
-- **Passive ingestion → Batch API (50% cheaper)** on Sonnet/Haiku for the non-latency-
-  sensitive chat.db backfill, typed Events via json_schema.
-- **"Talk to past you" → prompt caching per temporal snapshot** (snapshot = cached prefix).
-
-**Win:** demo a live REFLECT surfacing a cross-memory principle the user never stated (hits
-Creative + Technical at once); show the contradiction flywheel sharpening a principle; **name
-the Claude features** in the pitch (caching the principle graph, adaptive thinking, structured-
-output routing, Batch ingestion); **build with Claude Code and say so.** Cross-check the exact
-RETURN model strategy against the `claude-api` skill before quoting prices.
+**Integration (Low–Med):** **SimuLang** = "Playwright for the desktop" (Claude Code skill) → a
+GUI ingestion layer for apps with no export (Notes, Photos captions) that POST to our
+ingest path. **Caveat:** Sai's hosted desktop is **Windows**, so macOS chat.db work stays a
+local daemon — use Sai for the **one-prompt demo video** (cheap way to claim the per-member
+payout even if SimuLang ingestion doesn't land).
 
 ---
 
-## 7. DEEPGRAM — voice experience — **Nintendo Switch 2**
+## 13. REDIS — credits $50 (`CALHACKER2026`) — **prize TBC** · [PRIOR-PASS]
 
-**Prize + criteria (confirmed, Naomi Carrigan, Deepgram):** Switch 2 for the "most creative &
-well-executed voice-powered experience." Must use ≥1 Deepgram voice product (STT/TTS/Voice
-Agent) as the **CORE** experience, *"not just an afterthought."* Judged on 3 axes: (1) how
-**creative** the voice component is; (2) how **fundamental** voice is; (3) technical execution.
+> Not re-read this sweep (channel timed out). Confirm whether a prize exists at the booth.
 
-**Offer:** $200 credits via event link **https://dpgr.am/ucb-ai-signup** (plenty — Nova-3 STT
-$0.0048/min, Aura-2 TTS $0.030/1k chars, Voice Agent $0.075/min). Docs dpgr.am/ucb-ai-docs;
-Discord dpgr.am/ubc-ai-discord. **Workshop Sat 2–3pm** builds exactly our hero pipeline
-(STT→LLM→TTS on one WebSocket) — go. Mentor: Naomi Carrigan (@naomi.carrigan). `pip install deepgram-sdk`.
-
-**Integration (voice as core):**
-- **Nova-3 STT** → spoken capsules/journal entries feed Hindsight (voice as an ingestion primitive).
-- **Aura-2 TTS** → *voice* your past self; distinct voice per temporal snapshot (older = warmer/slower).
-- **Voice Agent API (Flux + LLM + Aura-2, one WebSocket)** → the "talk to past you" loop; the
-  `think.prompt` is built from the principle-graph snapshot at that timestamp (≤25k chars).
-  Note: Flux requires `version:"v2"`, no `smart_format`; set `eager_eot_threshold ≤ eot_threshold`.
-- **Audio Intelligence** (sentiment/topics/intents, same `/listen` call) → mood tag (-1..1) on
-  the memory, auto-category, intents feeding REFLECT.
-
-**Win — the beat:** on stage, speak a new capsule (live transcribe + sentiment), open the
-past-self persona pinned to an earlier snapshot, ask it aloud "was I happy back then?" → it
-answers **in a voice**, reasoning only from that snapshot, audibly not knowing what came
-later. Nails all 3 axes (typing can't "talk to past you" → voice is fundamental).
+**Architecture verdict (`docs/raw-to-principles-research.md` §4): Redis is OUT of v1.** The
+vertical runs on SQLite + Postgres/pgvector via Hindsight. Per capability: vector search
+**redundant** (pgvector), Agent Memory Server **redundant+weaker** (Hindsight synthesizes),
+Streams **premature** (single-user volume), graph **dead** (RedisGraph EOL 2025-01-31). **The
+one defensible play:** RedisVL **`SemanticCache`** in front of recall — *and only after
+instrumenting a repeat-query rate.* Be honest on stage: system latency ∝ hit-rate (~25–30% at
+a 30% hit rate), not the "160×" marketing figure. Stating this boundary to judges signals
+architectural judgment.
 
 ---
 
-## 8. ELEVENLABS — **no track posted yet (booth) — but our STRONGEST voice fit**
+## 14. POKE (Interaction Co) — **no prize posted (thematic)** · [SLACK-VERIFIED]
 
-**Status:** re-checked Slack — **still no rep, offer, or prize posted** (only hackers asking
-for credits). **Booth is the source of truth**; they hand out Creator-tier codes physically
-and any track ("best use of ElevenLabs / Conversational AI") gets announced there.
+**Channel:** `#spons-interaction-co` = C0B7SHD2090. **No prize/criteria anywhere in-channel.**
+Access via DM **@claudia** (also @hannah, @nathanrhee). **Workshop:** Sat 2pm, Tilden Floor 5.
+Poke = AI assistant in iMessage/WhatsApp/Telegram with a working SEND API.
 
-**Why it beats Deepgram for RETURN:** **voice cloning** (IVC: clone from <2 min audio, **free
-tier = 3 slots**) → the past self speaks in the user's *own* cloned voice. Deepgram's Aura
-cannot clone arbitrary voices, so the emotional hero beat is **only possible on ElevenLabs.**
-Also leads on emotive TTS and a richer agent platform (ElevenAgents: builder + client tools +
-MCP). Deepgram still wins on raw STT cost/latency.
-
-**Product:** TTS `eleven_multilingual_v2` (emotive narration), `eleven_flash_v2_5` (~75ms,
-half-price, real-time); STT **Scribe v2** (`scribe_v1` removed Jul 9 2026 — don't use);
-ElevenAgents conversational platform (BYO Claude LLM). Free tier 10k credits/mo + 3 IVC slots,
-**no commercial license** (fine for demo). `pip install elevenlabs`.
-
-**Integration:** clone **per temporal snapshot** (`past-self-2024` vs `-2026`) via
-`client.voices.ivc.create(files=[...voice notes...])`; narrate capsules with TTS stream;
-run the reflection loop as a Conversational Agent voiced with the clone, injecting the
-snapshot graph as a **client tool** (`recall_snapshot`) so it answers as the past you. Frontend
-`@elevenlabs/react` for mic-in/audio-out; agent config + graph tool server-side in FastAPI;
-agent LLM = Claude.
-
-**Win:** judge presses play → hears a past version of the user speaking in the user's **own
-voice**, then a live spoken back-and-forth grounded in real snapshot data. To win *their*
-prize keep it end-to-end on ElevenLabs (Scribe v2 Realtime for STT). If no track materializes,
-this still powers the grand-prize hero demo.
+**Integration (Low):** on a reflection event, POST to the Poke SEND API → the prompt lands in
+the user's real iMessage thread. Memorable "no new app" beat — but **no prize → low priority**;
+do it only if the core demo is already done.
 
 ---
 
-## 9. FETCH.AI — "Best Use of Agentverse" — **$1,500 / $1,000 / $500 + interviews** (stackable, mandatory)
+## 15. RUNPOD — **no prize posted** · [SLACK-VERIFIED]
 
-**Prize/criteria (fetch.ai event page + hackpack):** $3,000 pool (1st $1.5k / 2nd $1k / 3rd
-$500), each + internship interview. Rubric: Functionality 25% · **Use of Fetch.ai Tech 20%** ·
-Innovation 20% · Real-World Impact 20% · UX/Presentation 15%. **Using the product is
-MANDATORY** — agents registered on Agentverse + **Chat Protocol** (mandatory), core must work
-through **ASI:One** (no custom frontend required). **Stackable with a Ddoski grand prize
-(confirmed in Slack).**
-
-**Access:** promo `BERKELEYAIAV` → 1mo ASI:One Pro + Agentverse Premium. `pip install uagents`;
-helper `npx create-fetch-agent`. ASI:One API `https://api.asi1.ai/v1` (model `asi1`), keys at
-asi1.ai/dashboard/api-keys. Heavy mentor presence in #cohost-fetch-ai (RV, Gautam, Dev
-Chauhan…); live workshop 5th Floor Tilden; demo target https://chat.asi1.ai/.
-
-**Integration (thin, stackable):** wrap RETURN's memory as **one discoverable "RETURN Memory
-Agent"** uAgent — its `ChatMessage` handler calls our existing principle-graph/swarm logic.
-MVP ≈ 1 file: register with `mailbox=True, publish_agent_details=True`, include a
-`Protocol(spec=chat_protocol_spec)`, `agent.include(proto, publish_manifest=True)` → auto-
-discoverable on ASI:One. Add good keywords + README on Agentverse (affects routing). Stretch:
-expose Retriever/Critic/Arbiter as agents that talk to each other (scores Functionality).
-
-**Win:** clear the mandatory bar cleanly (live ASI:One demo, no frontend needed); lean on our
-**existing swarm** as the differentiator (near-free); write strong keywords/README; get a
-mentor's eyes on it at the Tilden workshop. ~1 evening for the MVP wrapper.
+**Channel:** `#spons-runpod` = C0B7P7MH8JZ. Channel is participants asking for GPU credits with
+**no rep reply**; no prize/criteria/workshop posted. **Fit:** only relevant if we ever
+self-host inference (the north-star local-Gemma/privacy angle) — H200s could host it. Today we
+use OpenRouter, so this is off-path. Ask reps directly about credits if pursuing.
 
 ---
 
-## 10. SIMULAR (Sai / SimuLang) — "#SaiCal" — **$500/person** ($100 GC + $400 credits)
+## Appendix A — No fit / skip (verified)
 
-**Prize/criteria (Slack, Zening Chen):** $500/person on winning team. Judged on creativity
-(bonus for novel use) + technical execution + real-world impact; **must meaningfully use Sai
-OR SimuLang.** Eligibility chores: every teammate follows Sai (X/IG/LinkedIn), post with
-**#SaiCal** tagging Sai, email screenshots to **zening@simular.ai**. (Precedent: Agent S
-powered last year's 1st-place winner.)
+| Sponsor | Channel | Why skip |
+|---|---|---|
+| **QNX** | #spons-qnx | Hardware/embedded track — must run QNX OS on a Raspberry Pi + Physical AI. Zero overlap with a pure-software memory app. Hardware loaned at workshop; mentor @john. |
+| **Cognichip** | #spons-cognichip | AI chip-design EDA platform. No NLP/memory integration path. |
+| **HRT** | #spons-hrt | Quant trading firm; channel is pure banter, no track posted. Likely recruiting-only. |
+| **Zoox** | #spons-zoox | Autonomous vehicles. No fit. |
+| **Skydeck** | #spons-skydeck | UC Berkeley accelerator — relationship/program, not a prize track. Mentor Peter Milford (@pmilford) at tables. Worth a chat only if seeking acceleration. |
+| **The House Fund** | #spons-the-house-fund | Pre-Seed/Seed VC. No prize. RETURN fits their thesis — talk to Jeremy Fiance (@fiance) Sunday if fundraising. |
+| **Overshoot AI** | #spons-overshoot-ai | Rep no-show; only participants pinging "where are you." No data. |
+| **Context** | #spons-context | Channel verified empty (clean zero-row API response). |
+| **Annapurna Labs** | #cohost-annapurna-labs | AWS silicon (Inferentia/Trainium). Track "coming soon," never posted as of this sweep. Watch for a criteria post. |
+| **Fieldguide** | #spons-fieldguide | Audit/advisory AI. Hacker guide still says "Coming Soon"; no criteria posted. |
 
-**Access:** 2-day unlimited-credit trial gated by an **invite code** — capacity-limited, get
-one **in person** (booth 3rd floor by entrance, or the workshop). **Blocker:** without a code,
-Sai login only offers "Founder plan" — grab a code ASAP. Workshop 12–1pm Floor 2; headline
-demo is literally *"orchestrate Claude Code in iMessage"* — our territory.
+## Appendix B — COULD-NOT-VERIFY (Slack API timed out every attempt this sweep)
 
-**What they are:** **Sai** = hosted computer-use agent (remote desktop is **Windows**).
-**SimuLang** = OSS "Playwright for the desktop" (TS, drives apps via accessibility tree);
-installs as a **Claude Code skill** (`simulang init-claude` → `/simulang <task>`).
+No reliable data was retrievable for these — listed so they aren't silently dropped, **not** as
+recommendations. Re-check the channels directly when Slack load drops, or visit the booths.
 
-**Integration (lead with SimuLang):**
-- **SimuLang = RETURN's universal cross-app ingestion layer.** chat.db stays the fast path for
-  iMessage; SimuLang covers apps with no clean export (Notes, Photos captions, web apps) by
-  driving the GUI and POSTing to our FastAPI `/ingest`. Generate each extractor live via
-  `/simulang`. Makes "passive ingestion across apps" real.
-- **Sai orchestrates RETURN over iMessage** (mirrors their headline demo): text a location →
-  Sai triggers ingest/query → Claude composes the capsule → texted back.
-- **Caveat:** Sai's desktop is Windows → chat.db/macOS SimuLang work runs as a **local daemon
-  on our Mac**; use Sai for the iMessage-orchestration + demo-video layer. Don't promise Sai
-  reading chat.db.
+| Sponsor | Channel | What we know / couldn't confirm |
+|---|---|---|
+| **Orkes** | #spons-orkes (C0B7P3W8CDT) | Workflow-orchestration platform (Conductor OSS). Channel timed out on history **and** search across 6+ attempts (bot may not be a member). Prize/criteria/credits/workshop/reps — all **unknown**. |
+| **Armor-IQ** | #spons-armor-iq (C0B8LTVCF96) | AI/cybersecurity. Channel timed out on every attempt. All details **unknown**; likely no fit but unconfirmed. |
+| **Midjourney** | #spons-midjourney (C0B7SHD3SUS) | Image generation. Channel timed out on history + search. Prize/criteria **unknown**. (A media track could pair with Pika as a "memory → image" beat — verify first.) |
+| **Band** | #spons-band (C0B7QHA3X0E) | Channel timed out on every attempt. Product/prize **unknown**. |
+| **Ultimate Fighting Bots** | #spons-ultimate-fighting-bots (C0B7UEEKGNM) | Robotics/combat-bots, almost certainly hardware. Channel timed out. Prize **unknown**; likely no fit. |
+| **Terac** | #spons-terac (C0B7QH5QDT8) | *Channel itself* timed out, but Terac's full challenge was captured from a cross-post (see §6) — so Terac is **documented**, only its own channel was unreadable this sweep. |
 
-**Win:** demo `/simulang` writing a **brand-new extractor live** for an app you've never seen
-(a judge's Notes / a web app) → memory appears location-tagged seconds later. Use Sai's
-one-prompt video feature for the submission (dogfooding scores). Don't fluff the follow/
-#SaiCal/email logistics.
+> **Methodology note:** the original 10-sponsor doc was produced by isolated research agents
+> over web + Slack. This sweep added the ~21 previously-undocumented channels via 5 parallel
+> Sonnet subagents reading Slack. Concurrent load caused sustained `conversations_history`
+> timeouts; `conversations_search_messages` was the working fallback for several channels. The
+> [PRIOR-PASS] sponsors (Token Co, Sentry, Arize, Redis, Fetch) could not be re-read this
+> sweep and are retained from the previous verified pass — re-confirm at their booths.
 
 ---
 
-## Action items (tonight / Hour-0)
+## Action items (Hour-0)
 
 **Pick the lane:** Ddoski's World (grand) + **Anthropic** (core) are non-negotiable. Then the
-near-free observability stack (Arize + Sentry), then Token Co. **One voice decision:**
-ElevenLabs-led (cloning hero beat) vs Deepgram-led — don't split effort.
+near-free + high-confidence tier: **TokenRouter** (one-line swap, $1k), **Browserbase** ($2k
+cash, one ingestion adapter), **Arize + Sentry** (observability over the minting chain),
+**Terac** (human-labeled principle quality — fits our hardest open problem). **Pika** for the
+visual beat; **Deepgram** if you commit to voice as core. **Cognition/Devin** if you expose
+RETURN as a memory MCP.
 
-- [ ] **Submit to Ddoski's World** on Devpost; confirm overall criteria.
-- [ ] **Anthropic:** redeem $25 link + submit the Claude Code credits form; build with Claude Code; add prompt caching over the 4-network context + structured-output contradiction routing. (cross-check models via `claude-api` skill)
-- [ ] **Token Company:** grab `ttc-` key, wrap REFLECT with `compress()`, instrument cumulative `tokens_saved`; open the login-gated criteria doc signed-in.
-- [ ] **Fetch.ai:** apply promo `BERKELEYAIAV`; ship the 1-file RETURN Memory uAgent on ASI:One (mandatory if chasing this prize).
-- [ ] **Arize:** sign up app.arize.com, add tracing import, build a groundedness evaluator, capture before/after. (booth-judged — highest-confidence $1k)
-- [ ] **Sentry:** free sentry.io account, 3 init blocks, `gen_ai.*` spans, `tracePropagationTargets`; rehearse click→trace→failure→Seer.
-- [ ] **Voice (pick one):** ElevenLabs — grab booth code, clone past-self from voice notes (IVC, 3 free slots); **or** Deepgram — $200 via dpgr.am/ucb-ai-signup, attend 2–3pm workshop.
-- [ ] **Redis:** attend 4–5pm Tilden workshop, **confirm prize criteria**, add SemanticCache to the swarm.
-- [ ] **Simular (optional):** grab an invite code in person, `/simulang` a new extractor for the demo; do the #SaiCal follow/post/email chores.
-- [ ] **Poke (optional):** V2 key from Claudia/Hannah, one SEND-API POST for the iMessage nudge demo.
+- [ ] **Anthropic:** redeem $25; build with Claude Code; cache the principle-graph context.
+- [ ] **TokenRouter:** DM @christine.dai for credits; swap base URL+key; ZDR pitch.
+- [ ] **Browserbase:** code `STARTERPACK`; add one browser-ingestion adapter feeding the pipeline.
+- [ ] **Terac:** grab $250 team credits; label minted principles; before/after precision table.
+- [ ] **Arize:** trace `mint_cluster`/REFLECT; groundedness evaluator over citations; before/after.
+- [ ] **Sentry:** `gen_ai.*` spans over the chain; one distributed trace; rehearse failure→Seer.
+- [ ] **Pika:** onboard pika.me, connect MCP, principle → video capsule.
+- [ ] **Deepgram (if voice):** $200 via dpgr.am/ucb-ai-signup; STT→LLM→TTS loop on the snapshot.
+- [ ] **Cognition (optional):** Devin Desktop via form; expose RETURN as a memory MCP.
+- [ ] **Simular (optional):** invite code in person; or just Sai-generate the demo video.
+- [ ] **Fetch (if chasing):** promo `BERKELEYAIAV`; 1-file RETURN Memory uAgent on ASI:One.
+- [ ] **Redis (out of v1):** confirm a prize exists at the booth; SemanticCache only if measured.
 
-**Human-needed verifications:** Redis prize criteria (booth), Token Co criteria doc (login),
-ElevenLabs track (booth), Anthropic office-hour detail (booth), Fetch hackpack exact weights (login).
+**Human-needed verifications (booth):** Token Co / Sentry / Arize / Redis / Fetch prize details
+(channels timed out — retained from prior pass); the COULD-NOT-VERIFY channels in Appendix B;
+Cognition prize amount; Pika/Browserbase exact judging breakdowns.
