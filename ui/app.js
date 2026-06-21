@@ -95,8 +95,8 @@ function toast(msg) {
 }
 
 // --- 1. LIVE SATELLITE MAP (MapLibre + Esri World Imagery) ---
-const MAP_CENTER = [-122.2588, 37.8698]; // Berkeley Southside (real photo cluster)
-const MAP_ZOOM = 15.4;
+const MAP_CENTER = [-122.2584, 37.8703]; // centroid of the real photo cluster
+const MAP_ZOOM = 16.2;
 let map = null, markerObjs = [], spinning = false, spinReq = null;
 
 function ensureMap() {
@@ -119,15 +119,33 @@ function ensureMap() {
   });
   map.addControl(new maplibregl.AttributionControl({ compact: true }));
   map.on("load", () => {
-    // STATIC: no auto-rotation, no pitch, no fly-in. Just frame the pins so they
-    // spread across the view instead of stacking on top of each other.
+    // STATIC: no auto-rotation, no pitch, no fly-in. Frame the pins, then push
+    // any that overlap apart in screen space so none hide behind another.
     drawMarkers();
     map.resize();
     fitToMarkers();
+    setTimeout(declutter, 90);
     document.getElementById("map").classList.add("ready"); // one-time fade-in
   });
+  map.on("moveend", declutter);
 }
 function stopSpin() {} // map no longer auto-moves
+
+// the POIs sit on a near-vertical line (Telegraph/Bancroft), so they overlap.
+// Project to pixels, repel any closer than MIN, re-apply as marker offsets.
+function declutter() {
+  if (!map || !markerObjs.length) return;
+  const MIN = 62;
+  const it = markerObjs.map((m) => { m.setOffset([0, 0]); const o = map.project(m.getLngLat()); return { m, x: o.x, y: o.y, ox: o.x, oy: o.y }; });
+  for (let pass = 0; pass < 80; pass++) {
+    for (let i = 0; i < it.length; i++) for (let j = i + 1; j < it.length; j++) {
+      const a = it[i], b = it[j];
+      let dx = a.x - b.x, dy = a.y - b.y, d = Math.hypot(dx, dy) || 0.01;
+      if (d < MIN) { const push = (MIN - d) / 2, ux = dx / d, uy = dy / d; a.x += ux * push; a.y += uy * push; b.x -= ux * push; b.y -= uy * push; }
+    }
+  }
+  it.forEach((p) => p.m.setOffset([p.x - p.ox, p.y - p.oy]));
+}
 
 // center on the cluster at a close zoom so the (near-collinear) pins spread
 // vertically with space between them, instead of stacking at an edge.
@@ -651,3 +669,9 @@ show("map");
 hydrateFromBackend();
 
 if(location.search.includes("demo=venue")){active=getPlace("venue");reveal();}
+
+// TEMP debug
+if (location.search.includes("dbg")) {
+  const log = () => { if(map){ const c=map.getCenter(); document.title = `c=${c.lng.toFixed(4)},${c.lat.toFixed(4)} z=${map.getZoom().toFixed(2)} w=${map.getContainer().clientWidth}`; } };
+  setTimeout(log, 2500);
+}
