@@ -10,11 +10,10 @@ const getPlaces = () => SEED.places;
 const getPlace = (id) => SEED.places.find((p) => p.id === id);
 const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-// runtime state
+// runtime state. Capsules have no lock state — every one opens directly. The
+// only gating left is the map's fog-of-war: undiscovered pins you "travel" to.
 const discovered = new Set(SEED.map.filter((m) => m.discovered).map((m) => m.id));
-const unlocked = new Set(getPlaces().filter((p) => !p.sealed).map((p) => p.id));
 const isDiscovered = (poi) => discovered.has(poi.id);
-const isLocked = (p) => p.sealed && !unlocked.has(p.id);
 
 // --- inline icons (SVG, never emoji) ---
 const ICON = {
@@ -78,7 +77,11 @@ function show(name) {
   document.querySelectorAll(".tab").forEach((t) =>
     t.classList.toggle("active", TAB_FOR_VIEW[name] === t.dataset.tab));
   document.querySelector(".screen").scrollTo({ top: 0, behavior: reduceMotion ? "auto" : "smooth" });
-  if (name === "map" && map) setTimeout(() => map.resize(), 60); // MapLibre needs a resize when re-shown
+  // The map view just became visible, so its container now has a real size —
+  // (re)initialize and reframe the map against that size. This is also the path
+  // that fixes the "pins in the corner" symptom: the map is never drawn while
+  // hidden/0-sized, only here, once #map is actually laid out.
+  if (name === "map") refreshMapView();
 }
 const switchTab = (tab) => show(tab === "capsules" ? "places" : tab);
 
@@ -95,62 +98,98 @@ function toast(msg) {
 }
 
 // --- 1. LIVE SATELLITE MAP (MapLibre + Esri World Imagery) ---
+// Rebuilt from scratch. The previous version initialized MapLibre while its
+// container was still hidden/0-sized (boot ran before the view was shown, behind
+// an async lock gate), so every marker projected to the top-left origin and the
+// pins clumped in the corner. A pile of setTimeout(resize/redraw) hacks tried to
+// recover and were flaky.
+//
+// This version is built on one invariant: NOTHING touches the map until its
+// container has a real, non-zero layout size. `whenMapSized()` resolves only
+// once #map measures > 0, and every public entry point (ensureMap/renderMap/
+// drawMarkers/fitToMarkers) is a no-op until both the style has loaded AND the
+// container is sized (`mapReady`). Markers are therefore only ever projected
+// against a correctly-sized viewport — they can't land in the corner.
 const MAP_CENTER = [-122.2588, 37.8698]; // Berkeley Southside (real photo cluster)
 const MAP_ZOOM = 15.4;
-let map = null, markerObjs = [], spinning = false, spinReq = null;
+let map = null;            // the MapLibre instance (null until the container is sized)
+let markerObjs = [];       // live maplibregl.Marker objects, cleared on every redraw
+let mapReady = false;      // true once style is loaded AND container is sized
+let mapInitStarted = false; // guards against constructing the map twice
 
-function ensureMap() {
-  if (map || typeof maplibregl === "undefined") return;
-  map = new maplibregl.Map({
-    container: "map",
-    attributionControl: false,
-    center: MAP_CENTER, zoom: MAP_ZOOM, pitch: 0, bearing: 0,
-    style: {
-      version: 8,
-      sources: {
-        sat: {
-          type: "raster", tileSize: 256,
-          tiles: ["https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"],
-          attribution: "Imagery © Esri",
-        },
-      },
-      layers: [{ id: "sat", type: "raster", source: "sat" }],
-    },
+const mapEl = () => document.getElementById("map");
+const isSized = (el) => !!el && el.clientWidth > 0 && el.clientHeight > 0;
+
+// Resolve once #map has a real laid-out size. ResizeObserver fires as soon as the
+// box is measured; we also check synchronously in case it's already sized.
+function whenMapSized() {
+  return new Promise((resolve) => {
+    const el = mapEl();
+    if (!el) return; // no container → never resolves; nothing to draw anyway
+    if (isSized(el)) { resolve(el); return; }
+    if ("ResizeObserver" in window) {
+      const ro = new ResizeObserver(() => {
+        if (isSized(el)) { ro.disconnect(); resolve(el); }
+      });
+      ro.observe(el);
+    } else {
+      // No ResizeObserver: poll on animation frames until the box has a size.
+      const tick = () => (isSized(el) ? resolve(el) : requestAnimationFrame(tick));
+      requestAnimationFrame(tick);
+    }
   });
-  map.addControl(new maplibregl.AttributionControl({ compact: true }));
-  map.on("load", () => {
-    // STATIC: no auto-rotation, no pitch, no fly-in. Just frame the pins so they
-    // spread across the view instead of stacking on top of each other.
-    drawMarkers();
-    map.resize();
-    fitToMarkers();
-    document.getElementById("map").classList.add("ready"); // one-time fade-in
-    // The map is often created before its container has its final laid-out size
-    // (boot runs renderMap before the view is fully shown, and there's an async
-    // lock gate). At 0-size the imagery is blank AND every marker projects to the
-    // top-left origin. So after sizing settles, resize, then REDRAW markers and
-    // refit so the pins land on their real coordinates. This is what fixes both
-    // the "blank map" and the "pins clumped top-left" symptoms.
-    [120, 350, 800].forEach((ms) => setTimeout(() => { map.resize(); drawMarkers(); fitToMarkers(); }, ms));
-  });
-  const mapEl = document.getElementById("map");
-  if (mapEl && "ResizeObserver" in window) {
-    new ResizeObserver(() => {
-      if (!map) return;
-      map.resize();
-      drawMarkers(); // reproject pins to the new size
-    }).observe(mapEl);
-  }
 }
-function stopSpin() {} // map no longer auto-moves
 
-// Frame ALL pins so they fit the viewport and spread out, instead of jumping to
-// a hardcoded zoom that's too tight (which pushed the spread-out pins toward a
-// corner). fitBounds computes the right center+zoom from the pins' bounding box.
+const SAT_STYLE = {
+  version: 8,
+  sources: {
+    sat: {
+      type: "raster", tileSize: 256,
+      tiles: ["https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"],
+      attribution: "Imagery © Esri",
+    },
+  },
+  layers: [{ id: "sat", type: "raster", source: "sat" }],
+};
+
+// Construct the MapLibre instance — but only after the container is sized, so the
+// canvas and every marker project against the real viewport from the very first
+// frame. Idempotent: safe to call repeatedly; the real work runs at most once.
+function ensureMap() {
+  if (mapInitStarted || typeof maplibregl === "undefined") return;
+  mapInitStarted = true;
+  whenMapSized().then((el) => {
+    map = new maplibregl.Map({
+      container: el,
+      style: SAT_STYLE,          // Esri satellite raster — without this the map is black
+      attributionControl: false,
+      center: MAP_CENTER, zoom: MAP_ZOOM, pitch: 0, bearing: 0,
+      // The container is sized, so MapLibre measures the right dimensions itself.
+    });
+    map.addControl(new maplibregl.AttributionControl({ compact: true }));
+    map.on("load", () => {
+      mapReady = true;
+      el.classList.add("ready"); // one-time fade-in
+      drawMarkers();
+      fitToMarkers();
+    });
+    // If the box later changes size (orientation, tab re-show), keep the canvas
+    // and marker projection in sync. No redraw-on-a-timer guesswork.
+    if ("ResizeObserver" in window) {
+      new ResizeObserver(() => { if (map) map.resize(); }).observe(el);
+    }
+  });
+}
+
+function stopSpin() {} // map no longer auto-moves (kept for callers)
+
+// Frame ALL pins so they fit the viewport with margin. fitBounds derives the
+// right center+zoom from the pins' bounding box; a single pin gets a fixed zoom;
+// no pins falls back to the default Berkeley framing.
 function fitToMarkers() {
-  if (!map) return;
+  if (!mapReady || !map) return;
   const pts = SEED.map.filter((m) => m.lat != null && m.lng != null);
-  if (!pts.length) { map.jumpTo({ center: MAP_CENTER, zoom: MAP_ZOOM }); return; }
+  if (!pts.length) { map.jumpTo({ center: MAP_CENTER, zoom: MAP_ZOOM, pitch: 0, bearing: 0 }); return; }
   if (pts.length === 1) {
     map.jumpTo({ center: [pts[0].lng, pts[0].lat], zoom: 16, pitch: 0, bearing: 0 });
     return;
@@ -168,47 +207,90 @@ function fitToMarkers() {
   });
 }
 
+// Build one marker element for a POI (fog / capsule / empty).
+//
+// CRITICAL: MapLibre positions a marker by writing `transform: translate(x,y)`
+// onto the *element it's given*. Our marker CSS animates/transforms `.mk` (the
+// `mkin` sketch-in keyframe + hover/active scale), and an animated `transform`
+// OVERRIDES MapLibre's positioning translate — which snapped every pin to the map
+// origin (the "stuck in the top-left corner" bug). The fix: hand MapLibre a plain
+// wrapper it can freely transform, and put the styled/animated `.mk` element
+// INSIDE it. MapLibre moves the wrapper; our CSS only ever transforms the child.
+function markerElement(poi) {
+  const disc = isDiscovered(poi);
+  const cap = poi.capsuleId ? getPlace(poi.capsuleId) : null;
+
+  const wrapper = document.createElement("div"); // MapLibre owns this transform
+  const el = document.createElement("button");   // our styled/animated marker
+  el.className = "mk";
+  let inner;
+  if (!disc) {
+    el.classList.add("fog");
+    el.setAttribute("aria-label", `Locked — travel to ${poi.name} to discover it`);
+    inner = `<span class="mk-dot">${ICON.lock}</span><span class="mk-label">${poi.name}</span>`;
+  } else if (cap) {
+    el.classList.add("cap");
+    el.setAttribute("aria-label", `Open capsule — ${poi.name}`);
+    inner = `<span class="mk-dot"><span class="mk-seam"></span></span><span class="mk-label">${poi.name}</span>`;
+  } else {
+    el.classList.add("empty");
+    el.setAttribute("aria-label", `Seal a capsule at ${poi.name}`);
+    inner = `<span class="mk-dot">${ICON.plus}</span><span class="mk-label">${poi.name}</span>`;
+  }
+  if (highlight.has(poi.id)) el.classList.add("highlight");
+  el.innerHTML = inner;
+  el.addEventListener("click", (e) => { e.stopPropagation(); onPoiClick(poi); });
+  wrapper.appendChild(el);
+  return wrapper;
+}
+
+// Rebuild all markers from SEED.map. No-op until the map is ready, so a marker is
+// never placed against a 0-sized viewport. Skips POIs missing coordinates.
 function drawMarkers() {
-  if (!map) return;
+  if (!mapReady || !map) return;
   markerObjs.forEach((m) => m.remove());
   markerObjs = [];
   let found = 0;
   SEED.map.forEach((poi) => {
-    const disc = isDiscovered(poi);
-    if (disc) found++;
-    const cap = poi.capsuleId ? getPlace(poi.capsuleId) : null;
-
-    const el = document.createElement("button");
-    el.className = "mk";
-    let inner;
-    if (!disc) {
-      el.classList.add("fog");
-      el.setAttribute("aria-label", `Locked — travel to ${poi.name} to discover it`);
-      inner = `<span class="mk-dot">${ICON.lock}</span><span class="mk-label">${poi.name}</span>`;
-    } else if (cap) {
-      el.classList.add("cap");
-      const locked = isLocked(cap);
-      if (locked) el.classList.add("sealed");
-      el.setAttribute("aria-label", `${locked ? "Sealed" : "Open"} capsule — ${poi.name}`);
-      inner = `<span class="mk-dot"><span class="mk-seam"></span>${locked ? `<span class="mk-lock">${ICON.lock}</span>` : ""}</span><span class="mk-label">${poi.name}</span>`;
-    } else {
-      el.classList.add("empty");
-      el.setAttribute("aria-label", `Seal a capsule at ${poi.name}`);
-      inner = `<span class="mk-dot">${ICON.plus}</span><span class="mk-label">${poi.name}</span>`;
-    }
-    if (highlight.has(poi.id)) el.classList.add("highlight");
-    el.innerHTML = inner;
-    el.addEventListener("click", (e) => { e.stopPropagation(); onPoiClick(poi); });
-    markerObjs.push(new maplibregl.Marker({ element: el, anchor: "center" }).setLngLat([poi.lng, poi.lat]).addTo(map));
+    if (poi.lat == null || poi.lng == null) return; // can't place without coords
+    if (isDiscovered(poi)) found++;
+    const marker = new maplibregl.Marker({ element: markerElement(poi), anchor: "center" })
+      .setLngLat([poi.lng, poi.lat])
+      .addTo(map);
+    markerObjs.push(marker);
   });
   const mp = document.getElementById("map-progress");
   if (mp) mp.textContent = `${found}/${SEED.map.length} discovered`;
 }
 
-// renderMap() keeps the old name so the rest of the app calls it unchanged
+// Public entry point the rest of the app calls. Kicks off init (once), and once
+// the map is ready, refreshes the markers. Calls made before the map is ready are
+// harmless — the load handler does the first draw, and later calls redraw.
 function renderMap() {
   ensureMap();
-  if (map && map.isStyleLoaded && map.isStyleLoaded()) drawMarkers();
+  if (mapReady) drawMarkers();
+}
+
+// Called by show("map"): the container may have just gained its size, so make
+// sure the map is initialized and (once ready) resized + reframed to its pins.
+function refreshMapView() {
+  ensureMap();
+  if (!mapReady || !map) return;
+  map.resize();
+  drawMarkers();
+}
+
+// Move the camera to a point — safe to call before the map exists or has loaded
+// (e.g. right after the very first capsule is sealed, while the map is still
+// initializing). If not ready yet, the move is deferred to the load handler.
+function flyTo(lng, lat, zoom = 16) {
+  ensureMap();
+  const go = () => map.easeTo({ center: [lng, lat], zoom, duration: 700, essential: true });
+  if (mapReady && map) { go(); return; }
+  whenMapSized().then(() => {
+    if (mapReady) go();
+    else map && map.once("load", go);
+  });
 }
 
 function onPoiClick(poi) {
@@ -221,7 +303,7 @@ function onPoiClick(poi) {
 // travel to a locked spot, then discover it
 function visit(poi) {
   stopSpin();
-  if (map) map.easeTo({ center: [poi.lng, poi.lat], zoom: 16.6, duration: 700, essential: true });
+  flyTo(poi.lng, poi.lat, 16.6);
   setTimeout(() => {
     discovered.add(poi.id);
     SoundFX.discover();
@@ -407,9 +489,9 @@ document.getElementById("create-form").addEventListener("submit", async (e) => {
       await hydrateFromBackend();          // single source of truth → no dupes
       const savedPoi = SEED.map.find((m) => m.capsuleId === (saved && saved.id));
       renderMap(); renderPlaces();
-      if (savedPoi && map) {
+      if (savedPoi) {
         switchTab("map");
-        map.easeTo({ center: [savedPoi.lng, savedPoi.lat], zoom: 16, duration: 700 });
+        flyTo(savedPoi.lng, savedPoi.lat, 16);
       } else {
         switchTab("capsules");             // no coords → lives in the list
       }
@@ -443,27 +525,22 @@ function renderPlaces() {
   const list = document.getElementById("place-list");
   list.innerHTML = "";
   getPlaces().forEach((p) => {
-    const locked = isLocked(p);
     const el = document.createElement("article");
     el.className = "place";
     el.tabIndex = 0;
     el.setAttribute("role", "button");
-    el.setAttribute("aria-label", locked ? `Sealed capsule at ${p.name} — return to open` : `Open capsule at ${p.name}`);
+    el.setAttribute("aria-label", `Open capsule at ${p.name}`);
     el.innerHTML = `
       <div class="place-cover" style="background:${p.cover}"></div>
       <div class="place-scrim"></div>
       <div class="place-glyph">${p.icon}</div>
       <div class="place-top">
         <span class="place-loc">${ICON.pin}${p.place}</span>
-        <span class="place-badge ${locked ? "sealed" : "open"}">
-          ${locked ? ICON.lock + "Sealed" : ICON.unlocked + "Open"}
-        </span>
       </div>
       <div class="place-body">
         <h3 class="pname">${p.name}</h3>
         <div class="pmeta">${p.visits || ""}</div>
-      </div>
-      ${locked ? `<button class="imback">I'm back ↩</button>` : ``}`;
+      </div>`;
     const go = () => openCapsule(p);
     el.addEventListener("click", go);
     el.addEventListener("keydown", (e) => {
@@ -473,24 +550,19 @@ function renderPlaces() {
   });
 }
 
-// open a capsule — big unearth/open animation (~80% screen) + sound, then the
-// same reveal page you'd see right after finishing/sealing it.
+// open a capsule — big open animation (~80% screen) + sound, then the same
+// reveal page you'd see right after sealing it. (No lock/unearth state: every
+// capsule opens directly.)
 function openCapsule(cap) {
-  const wasLocked = isLocked(cap);
-  if (wasLocked) {
-    unlocked.add(cap.id);
-    renderMap();
-    renderPlaces();
-  }
   active = cap;
   const proceed = () => { if (cap.cues && cap.cues.length) openPlace(cap.id); else reveal(); };
-  openingSequence(wasLocked, proceed);
+  openingSequence(proceed);
 }
 
-// the big capsule graphic + dig/open sound, then the page
-function openingSequence(wasLocked, after) {
+// the big capsule graphic + open sound, then the page
+function openingSequence(after) {
   const ov = document.getElementById("opening");
-  document.getElementById("opening-text").textContent = wasLocked ? "unearthing…" : "opening…";
+  document.getElementById("opening-text").textContent = "opening…";
 
   if (reduceMotion) { SoundFX.open(); after(); return; }
 
@@ -499,9 +571,8 @@ function openingSequence(wasLocked, after) {
   ov.querySelectorAll(".cap3d, .cap-top, .cap-bottom, .cap-burst, .cap-rays, .dust").forEach((el) => {
     el.style.animation = "none"; void el.offsetWidth; el.style.animation = "";
   });
-  // sound: dig as it rises, (unlock if sealed), then the "pop" as the lid opens (~1s in)
+  // sound: dig as it rises, then the "pop" as the lid opens (~1s in)
   SoundFX.dig();
-  if (wasLocked) setTimeout(() => SoundFX.unlock(), 450);
   setTimeout(() => SoundFX.open(), 1000);
 
   setTimeout(() => { ov.classList.remove("show"); after(); }, 2050);
@@ -521,7 +592,7 @@ function tracePrinciple(cap) {
   drawMarkers();
   SoundFX.shimmer();
   const target = SEED.map.find((p) => ids.includes(p.id));
-  if (map && target) map.easeTo({ center: [target.lng, target.lat], zoom: 16, duration: 700, essential: true });
+  if (target) flyTo(target.lng, target.lat, 16);
   const names = SEED.map.filter((p) => ids.includes(p.id)).map((p) => p.name).join(", ");
   toast(`This principle was formed at: ${names || cap.name}`);
   clearTimeout(highlightTimer);
@@ -585,16 +656,17 @@ function reveal() {
     ${active.music ? `<span class="rm-music">♪ ${active.music}</span>` : ""}`;
 
   // --- media: photos + video (text lives in the storyline below)
+  const coverPhoto = (active.anchor && active.anchor.photo) || "";
   const media = active.media && active.media.length
     ? active.media
-    : [{ type: "photo", src: (active.anchor.photo.match(/url\(['"]?([^'")]+)/) || [])[1] }];
+    : [{ type: "photo", src: (coverPhoto.match(/url\(['"]?([^'")]+)/) || [])[1] }];
   document.getElementById("reveal-media").innerHTML = media.map((m) =>
     m.type === "video"
       ? `<video class="rm-item rm-video" src="${m.src}" poster="${m.poster || ""}" muted loop playsinline controls preload="metadata"></video>`
       : (m.src ? `<div class="rm-item rm-photo" style="background:center/cover url('${m.src}')"></div>` : "")
   ).join("");
 
-  const html = active.storyline.replace(/\*([^*]+)\*/g, "<em>$1</em>")
+  const html = (active.storyline || "").replace(/\*([^*]+)\*/g, "<em>$1</em>")
     .replace(/\{(\d+)\}/g, (_, i) => {
       const cite = (active.citations || [])[Number(i)];
       return `<sup class="cited" title="${cite ? cite.label : ""}">[${cite ? cite.n : "?"}]</sup>`;
@@ -755,8 +827,8 @@ document.getElementById("graph").addEventListener("click", () => {
 document.querySelectorAll(".tab").forEach((t) => t.addEventListener("click", () => switchTab(t.dataset.tab)));
 document.querySelectorAll("[data-back-map]").forEach((b) => b.addEventListener("click", () => show("map")));
 
-// --- "create a capsule" entry points: map FAB + Capsules-tab button ---
-document.getElementById("fab-create").addEventListener("click", startCreateStandalone);
+// --- "create a capsule" entry point: the Capsules-tab button (the map FAB was
+// removed — it didn't fit the home view). ---
 document.getElementById("create-capsule-btn").addEventListener("click", startCreateStandalone);
 
 // --- pull any capsules already ingested by the recall backend (capsule-ingest) ---
