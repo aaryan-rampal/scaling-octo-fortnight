@@ -7,6 +7,11 @@
 *.egg-info/
 build/
 dist/
+node_modules/
+.vite/
+
+# superseded canvas mock (replaced by backend_viz/)
+poc_demo/web_viz/
 
 # data & runtime
 data/
