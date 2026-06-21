@@ -848,3 +848,53 @@ body {
 @media (prefers-reduced-motion: reduce) {
   .mk.cap .mk-dot::after, .mk.highlight .mk-dot { animation: none; }
 }
+
+/* =========================================================================
+   CAPSULE DATA MODEL on the reveal page:
+   place · coordinates · time · mood (agent-derived) · music · media
+   ========================================================================= */
+.rmeta { display: flex; flex-wrap: wrap; gap: 7px; align-items: center; margin: 2px 0 14px; }
+.rmeta span { font-size: 11px; color: var(--ink-dim); }
+.rm-place { display: inline-flex; align-items: center; gap: 4px; font-weight: 500; color: var(--ink); }
+.rm-place svg { width: 13px; height: 13px; color: var(--amber); }
+.rm-coord, .rm-time { font-family: var(--mono); font-size: 10px; color: var(--gold); }
+.rm-mood {
+  display: inline-flex; align-items: center; gap: 6px;
+  background: var(--glass); border: 1px solid var(--hairline); border-radius: 999px;
+  padding: 4px 10px 4px 8px;
+}
+.rm-mood::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: hsl(var(--h) 62% 62%); box-shadow: 0 0 7px hsl(var(--h) 70% 60% / .8); }
+.rm-music {
+  display: inline-flex; align-items: center; gap: 4px;
+  background: rgba(30,215,96,.12); border: 1px solid rgba(30,215,96,.3);
+  color: #6fe3a0 !important; border-radius: 999px; padding: 4px 10px;
+}
+.rmedia { display: flex; gap: 8px; overflow-x: auto; margin-bottom: 16px; padding-bottom: 2px; -ms-overflow-style: none; scrollbar-width: none; }
+.rmedia::-webkit-scrollbar { display: none; }
+.rm-item {
+  flex: 0 0 auto; width: 132px; height: 168px; border-radius: 14px;
+  border: 1px solid var(--hairline); box-shadow: 0 8px 20px -10px rgba(0,0,0,.8);
+  object-fit: cover; background-size: cover; background-position: center;
+}
+.rm-video { background: #000; }
+
+/* =========================================================================
+   "DRAWN" MAP LOOK — painted/illustrated satellite, no continuous motion.
+   ========================================================================= */
+#map { opacity: 0; transition: opacity .7s var(--easing); }   /* one-time draw-in */
+#map.ready { opacity: 1; }
+#map .maplibregl-canvas {
+  filter: url(#watercolor) saturate(1.5) contrast(1.08) brightness(1.04) sepia(.12);
+}
+/* paper / paint wash over the imagery (markers sit above this) */
+#map::after {
+  content: ""; position: absolute; inset: 0; z-index: 2; pointer-events: none;
+  background:
+    radial-gradient(120% 90% at 50% 0%, rgba(232,193,136,.10), transparent 55%),
+    linear-gradient(160deg, rgba(40,30,18,.10), rgba(20,14,8,.18));
+  mix-blend-mode: multiply;
+}
+/* markers sketch in (draw-in, not map movement) */
+.mk { animation: mkin .45s var(--easing) both; }
+@keyframes mkin { from { opacity: 0; transform: scale(.4); } to { opacity: 1; transform: scale(1); } }
+@media (prefers-reduced-motion: reduce) { #map { transition: none; } .mk { animation: none; } }

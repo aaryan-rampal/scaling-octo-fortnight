@@ -29,6 +29,8 @@ const SEED = {
       visits: "8:15 AM · where you woke up",
       sealed: true,
       mood: { label: "quiet, bracing", hue: 32 },
+      music: "Clairo — Bags",
+      media: [{ type: "photo", src: "photos/img_2298.jpg" }],
       cover: "center/cover url('photos/img_2298.jpg')",
       anchor: { place: "Durant Ave · Southside", time: "Sat Jun 20, 2026 · 8:15 AM", photo: "center/cover url('photos/img_2298.jpg')" },
       cues: [
@@ -61,6 +63,8 @@ const SEED = {
       visits: "8:53 AM · before the doors",
       sealed: false,
       mood: { label: "caffeine optimism", hue: 45 },
+      music: "Still Woozy — Goodie Bag",
+      media: [{ type: "photo", src: "photos/img_2303.jpg" }],
       cover: "center/cover url('photos/img_2303.jpg')",
       anchor: { place: "Telegraph Ave · Southside", time: "Sat Jun 20, 2026 · 8:53 AM", photo: "center/cover url('photos/img_2303.jpg')" },
       cues: [
@@ -89,6 +93,8 @@ const SEED = {
       visits: "10:10 AM · lights down",
       sealed: false,
       mood: { label: "small in a big room", hue: 265 },
+      music: "(opening ceremony — no music)",
+      media: [{ type: "photo", src: "photos/img_2311.jpg" }, { type: "photo", src: "photos/img_2316.jpg" }],
       cover: "center/cover url('photos/img_2316.jpg')",
       anchor: { place: "South Drive · UC Berkeley", time: "Sat Jun 20, 2026 · 10:10 AM", photo: "center/cover url('photos/img_2311.jpg')" },
       cues: [
@@ -120,7 +126,13 @@ const SEED = {
       visits: "1:53 PM · heads down",
       sealed: true,
       mood: { label: "wired, alive", hue: 12 },
+      music: "Charli xcx — 365",
       cover: "center/cover url('photos/img_2334.jpg')",
+      media: [
+        { type: "video", src: "photos/vid_venue.mp4", poster: "photos/vid_venue.jpg" },
+        { type: "photo", src: "photos/img_2333.jpg" },
+        { type: "photo", src: "photos/img_2334.jpg" },
+      ],
       anchor: { place: "Bancroft Way · the venue lawn", time: "Sat Jun 20, 2026 · 1:53 PM", photo: "center/cover url('photos/img_2334.jpg')" },
       cues: [
         { type: "photo · EXIF", text: "Tent full of laptops; a llama on the lawn outside. 37.8692, -122.2595.", time: "01:53 PM" },

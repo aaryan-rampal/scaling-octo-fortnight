@@ -104,7 +104,7 @@ function ensureMap() {
   map = new maplibregl.Map({
     container: "map",
     attributionControl: false,
-    center: MAP_CENTER, zoom: 13.4, pitch: 0, bearing: -18,
+    center: MAP_CENTER, zoom: MAP_ZOOM, pitch: 0, bearing: 0,
     style: {
       version: 8,
       sources: {
@@ -119,28 +119,13 @@ function ensureMap() {
   });
   map.addControl(new maplibregl.AttributionControl({ compact: true }));
   map.on("load", () => {
+    // STATIC: no auto-rotation, no pitch, no fly-in. It just sits there.
     drawMarkers();
     map.resize();
-    if (reduceMotion) { map.jumpTo({ center: MAP_CENTER, zoom: MAP_ZOOM, pitch: 50 }); return; }
-    map.flyTo({ center: MAP_CENTER, zoom: MAP_ZOOM, pitch: 55, bearing: -14, duration: 3200, essential: true });
-    map.once("moveend", startSpin);
+    document.getElementById("map").classList.add("ready"); // one-time fade-in (no map movement)
   });
-  map.on("dragstart", stopSpin);
 }
-
-function startSpin() {
-  if (reduceMotion || spinning) return;
-  spinning = true;
-  let last = performance.now();
-  const step = (t) => {
-    if (!spinning || !map) return;
-    map.setBearing(map.getBearing() + (t - last) * 0.004); // slow orbit
-    last = t;
-    spinReq = requestAnimationFrame(step);
-  };
-  spinReq = requestAnimationFrame(step);
-}
-function stopSpin() { spinning = false; if (spinReq) cancelAnimationFrame(spinReq); }
+function stopSpin() {} // map no longer auto-moves
 
 function drawMarkers() {
   if (!map) return;
@@ -195,7 +180,7 @@ function onPoiClick(poi) {
 // travel to a locked spot, then discover it
 function visit(poi) {
   stopSpin();
-  if (map) map.flyTo({ center: [poi.lng, poi.lat], zoom: 17.2, pitch: 62, duration: 1900, essential: true });
+  if (map) map.easeTo({ center: [poi.lng, poi.lat], zoom: 16.6, duration: 700, essential: true });
   setTimeout(() => {
     discovered.add(poi.id);
     SoundFX.discover();
@@ -342,7 +327,7 @@ function tracePrinciple(cap) {
   drawMarkers();
   SoundFX.shimmer();
   const target = SEED.map.find((p) => ids.includes(p.id));
-  if (map && target) map.flyTo({ center: [target.lng, target.lat], zoom: 16.4, pitch: 55, duration: 1600, essential: true });
+  if (map && target) map.easeTo({ center: [target.lng, target.lat], zoom: 16, duration: 700, essential: true });
   const names = SEED.map.filter((p) => ids.includes(p.id)).map((p) => p.name).join(", ");
   toast(`This principle was formed at: ${names || cap.name}`);
   clearTimeout(highlightTimer);
@@ -397,6 +382,26 @@ document.getElementById("reveal-btn").addEventListener("click", reveal);
 function reveal() {
   document.querySelector("#view-reveal .section-label").textContent =
     active.userCreated ? "Your note, sealed" : "The night, reconstructed";
+
+  // --- capsule data model: place · coordinates · time · mood (agent-read) · music
+  const poi = SEED.map.find((m) => m.capsuleId === active.id);
+  const coords = poi ? `${poi.lat.toFixed(5)}, ${poi.lng.toFixed(5)}` : "";
+  document.getElementById("reveal-meta").innerHTML = `
+    <span class="rm-place">${ICON.pin}${active.anchor.place}</span>
+    ${coords ? `<span class="rm-coord">${coords}</span>` : ""}
+    <span class="rm-time">${active.anchor.time}</span>
+    <span class="rm-mood" style="--h:${active.mood.hue}">${active.mood.label} · read by recapsule</span>
+    ${active.music ? `<span class="rm-music">♪ ${active.music}</span>` : ""}`;
+
+  // --- media: photos + video (text lives in the storyline below)
+  const media = active.media && active.media.length
+    ? active.media
+    : [{ type: "photo", src: (active.anchor.photo.match(/url\(['"]?([^'")]+)/) || [])[1] }];
+  document.getElementById("reveal-media").innerHTML = media.map((m) =>
+    m.type === "video"
+      ? `<video class="rm-item rm-video" src="${m.src}" poster="${m.poster || ""}" muted loop playsinline controls preload="metadata"></video>`
+      : (m.src ? `<div class="rm-item rm-photo" style="background:center/cover url('${m.src}')"></div>` : "")
+  ).join("");
 
   const html = active.storyline.replace(/\*([^*]+)\*/g, "<em>$1</em>")
     .replace(/\{(\d+)\}/g, (_, i) => {
@@ -564,3 +569,5 @@ renderMap();
 renderPlaces();
 renderGraph();
 show("map");
+
+if(location.search.includes("demo=venue")){active=getPlace("venue");reveal();}
