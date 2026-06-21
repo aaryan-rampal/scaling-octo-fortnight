@@ -18,25 +18,22 @@ from pathlib import Path
 API = "http://127.0.0.1:8000/api/capsules"
 PHOTOS = Path(__file__).resolve().parents[2] / "ui" / "photos"
 
-# (title/place, lat, lng, photo, note) — the 4 mainline capsules + a few more,
-# spread across Berkeley Southside / campus on the real Cal Hacks timeline.
+# The original mainline capsules, verbatim: real place names, photo-EXIF coords,
+# the same photo cover, and the mainline storyline as the note (the {n} citation
+# markers stripped, since the backend stores plain text).
 CAPSULES = [
     ("The room on Durant", 37.867839, -122.256194, "img_2298.jpg",
-     "The morning of — half-dark room on Durant. I said yes to the team before I felt ready."),
+     "The morning of, in a half-dark room on Durant, you answered the team "
+     "before you'd decided you were ready."),
     ("Quargo Coffee", 37.867930, -122.259000, "img_2303.jpg",
-     "Quiet Telegraph, fog not burned off yet. The last calm before 24 hours of noise."),
+     "You walked a quiet Telegraph for coffee — the last calm before "
+     "twenty-four hours of noise."),
     ("Opening ceremony", 37.871050, -122.259220, "img_2316.jpg",
-     "In the dark before any code, I watched the sponsors' numbers climb and let myself believe."),
+     "In the dark before any code, you watched the sponsors' numbers climb "
+     "and let yourself believe the weekend mattered."),
     ("The build", 37.869200, -122.259500, "img_2334.jpg",
-     "Somewhere between the llama and the robots, the four of us stopped planning and started building."),
-    ("Sather Tower", 37.872090, -122.257860, "img_2311.jpg",
-     "Climbed up between commits. The whole bay laid out, and a clock that's older than all of us."),
-    ("Memorial Glade", 37.873550, -122.258880, "img_2320.jpg",
-     "Grass, sun, twenty minutes of not staring at a screen. Needed this more than I knew."),
-    ("Doe Library steps", 37.872400, -122.259600, "img_2307.jpg",
-     "Sat on the steps debugging. Strangers studying all around — a good kind of alone."),
-    ("Bancroft & Telegraph", 37.868700, -122.258700, "img_2321.jpg",
-     "Late-night food run. Everything closed except the one place that's always open."),
+     "Somewhere between the llama and the robots, the four of you stopped "
+     "planning and started building."),
 ]
 
 
