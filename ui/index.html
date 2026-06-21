@@ -22,7 +22,7 @@
   <link href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet" />
   <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
 
-  <link rel="stylesheet" href="styles.css?v=9" />
+  <link rel="stylesheet" href="styles.css?v=11" />
 </head>
 <body>
   <!-- hand-painted / "drawn" map filter (static wobble — no continuous motion) -->
@@ -61,6 +61,9 @@
       </div>
       <div id="map" class="map"></div>
       <p id="map-info" class="map-info">Tap a glowing capsule to open it. Tap a dim pin to travel there and seal a memory.</p>
+      <button id="fab-create" class="fab" aria-label="Create a new capsule">
+        <span class="fab-icon"></span><span class="fab-label">New capsule</span>
+      </button>
     </section>
 
     <!-- VIEW: principle graph (Obsidian-style) -->
@@ -79,6 +82,7 @@
     <!-- VIEW: capsules -->
     <section id="view-places" class="view">
       <p class="section-label">Your capsules</p>
+      <button id="create-capsule-btn" class="primary create-cta">＋ Create a capsule</button>
       <div id="place-list" class="place-list"><!-- injected --></div>
       <p class="hint">Sealed capsules unlock when you come back. The <em>I'm back</em>
         button stands in for real geofencing in this build.</p>
@@ -88,7 +92,11 @@
     <section id="view-create" class="view">
       <button class="back" data-back-map>← map</button>
       <p class="section-label">Seal a capsule</p>
-      <div class="create-loc"><span id="create-loc-icon"></span><span id="create-place"></span></div>
+      <div class="create-loc">
+        <span id="create-loc-icon"></span>
+        <input id="create-place" class="create-place-input" type="text"
+               placeholder="Where are you?" aria-label="Place name" />
+      </div>
       <form id="create-form">
         <label class="field-label">How are you feeling right now?</label>
         <div id="mood-row" class="chip-row"><!-- injected --></div>
@@ -202,8 +210,8 @@
     </div>
   </div>
 
-  <script src="seed.js?v=10"></script>
-  <script src="api.js?v=10"></script>
-  <script src="app.js?v=10"></script>
+  <script src="seed.js?v=11"></script>
+  <script src="api.js?v=11"></script>
+  <script src="app.js?v=11"></script>
 </body>
 </html>

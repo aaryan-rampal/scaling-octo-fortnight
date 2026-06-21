@@ -204,8 +204,10 @@ function visit(poi) {
 
 // --- 2. CREATE a capsule ---
 let createPoi = null, selMood = null, selCover = null, selFiles = [];
-function startCreate(poi) {
-  createPoi = poi;
+
+// Shared reset for the create form, used by both entry paths (a map pin, or a
+// standalone "New capsule" with a user-named place).
+function resetCreateForm() {
   selMood = SEED.moods[0];
   selCover = SEED.covers[0];
   selFiles = [];
@@ -213,7 +215,6 @@ function startCreate(poi) {
   document.getElementById("create-files").value = "";
   document.getElementById("filedrop-label").textContent = "＋ add a photo or video — recall reads its EXIF location & time";
   document.getElementById("create-loc-icon").innerHTML = ICON.pin;
-  document.getElementById("create-place").textContent = poi.name;
   document.getElementById("mood-row").innerHTML = SEED.moods
     .map((m, i) => `<button type="button" class="mchip${i ? "" : " sel"}" style="--h:${m.hue}" data-i="${i}">${m.label}</button>`)
     .join("");
@@ -221,7 +222,38 @@ function startCreate(poi) {
     .map((c, i) => `<button type="button" class="cover-sw${i ? "" : " sel"}" style="background:${c}" data-i="${i}" aria-label="Cover ${i + 1}"></button>`)
     .join("");
   document.getElementById("create-note").value = "";
+}
+
+// From a discovered map pin: place name is fixed to the pin.
+function startCreate(poi) {
+  createPoi = poi;
+  resetCreateForm();
+  const place = document.getElementById("create-place");
+  place.value = poi.name;
+  place.readOnly = true;
   show("create");
+}
+
+// Standalone: no pin. The user names the place; lat/lng come from device
+// geolocation if granted (the API treats them as optional). This is the general
+// "I want to make a capsule right now" entry — a capsule is a place + journal +
+// media (flywheel §3), and a pin is not required to author one.
+function startCreateStandalone() {
+  createPoi = { id: `cap-${Date.now()}`, name: "", lat: null, lng: null, standalone: true };
+  resetCreateForm();
+  const place = document.getElementById("create-place");
+  place.value = "";
+  place.readOnly = false;
+  show("create");
+  place.focus();
+  // Best-effort current location; silently skipped if denied/unavailable.
+  if (navigator.geolocation) {
+    navigator.geolocation.getCurrentPosition(
+      (pos) => { createPoi.lat = pos.coords.latitude; createPoi.lng = pos.coords.longitude; },
+      () => {},
+      { enableHighAccuracy: false, timeout: 4000, maximumAge: 60000 }
+    );
+  }
 }
 
 document.getElementById("mood-row").addEventListener("click", (e) => {
@@ -256,6 +288,14 @@ document.getElementById("create-files").addEventListener("change", (e) => {
 
 document.getElementById("create-form").addEventListener("submit", async (e) => {
   e.preventDefault();
+  // Place name comes from the (now editable) field; required, per the API.
+  const placeName = document.getElementById("create-place").value.trim();
+  if (!placeName) {
+    toast("Give this place a name first.");
+    document.getElementById("create-place").focus();
+    return;
+  }
+  createPoi.name = placeName;
   const note = document.getElementById("create-note").value.trim() || "No words — just being here.";
   const id = "c" + Date.now();
   const media = selFiles.map((f) => f.type.startsWith("video")
@@ -275,11 +315,21 @@ document.getElementById("create-form").addEventListener("submit", async (e) => {
   };
   SEED.places.push(cap);
   createPoi.capsuleId = id;
+  // A standalone capsule has no pre-seeded map pin — add one so it appears on the
+  // map (only if we captured coordinates; otherwise it lives in the Capsules tab).
+  if (createPoi.standalone && createPoi.lat != null && createPoi.lng != null
+      && !SEED.map.some((m) => m.id === createPoi.id)) {
+    SEED.map.push({
+      id: createPoi.id, name: createPoi.name, lat: createPoi.lat, lng: createPoi.lng,
+      discovered: true, capsuleId: id,
+    });
+    cap.mapId = createPoi.id;
+  }
   discovered.add(createPoi.id);
   createPoi._justRevealed = true;
   renderMap();
   renderPlaces();
-  switchTab("map");
+  switchTab(createPoi.standalone && createPoi.lat == null ? "capsules" : "map");
 
   // send to the recall backend if one is configured (the capsule-ingest path).
   // the journal note rides along as a `text` media file = new raw_data (flywheel §3).
@@ -619,6 +669,10 @@ document.getElementById("graph").addEventListener("click", () => {
 // --- tabs + back nav ---
 document.querySelectorAll(".tab").forEach((t) => t.addEventListener("click", () => switchTab(t.dataset.tab)));
 document.querySelectorAll("[data-back-map]").forEach((b) => b.addEventListener("click", () => show("map")));
+
+// --- "create a capsule" entry points: map FAB + Capsules-tab button ---
+document.getElementById("fab-create").addEventListener("click", startCreateStandalone);
+document.getElementById("create-capsule-btn").addEventListener("click", startCreateStandalone);
 
 // --- pull any capsules already ingested by the recall backend (capsule-ingest) ---
 async function hydrateFromBackend() {
