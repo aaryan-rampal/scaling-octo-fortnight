@@ -1,3 +1,5 @@
+recapsule
+
 # Recall — iMessage memory POC
 
 Ingests your local iMessages, builds memory networks with
