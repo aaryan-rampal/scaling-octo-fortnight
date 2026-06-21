@@ -621,6 +621,9 @@
   .digup[data-phase="empty"] .d-empty { display: block; }
   .digup[data-phase="data"]  .d-data  { display: flex; }
   .digup.has-cam .cam-fallback { display: none; }
+  /* the dig-up flow no longer uses the camera; hide the (empty) video element so
+     the cam-fallback backdrop shows cleanly behind the falling mementos. */
+  #digCam { display: none; }
 
   /* ---- phase: map ---- */
   .dig-map { position: absolute; inset: 0; background: #d8e6e8; }
@@ -1897,12 +1900,11 @@
 
     function startEmptying(){
       setDigPhase('empty');
-      startDigCam();
+      // No camera when opening a capsule — the cam-fallback backdrop shows instead.
       dropMementos();
       setTimeout(async () => {
         const cap = await capDataPromise;
         renderFilm(cap);
-        stopDigCam();
         setDigPhase('data');
       }, 2700);
     }
