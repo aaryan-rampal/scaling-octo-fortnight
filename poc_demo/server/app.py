@@ -21,16 +21,30 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import Any
 
-from fastapi import FastAPI
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from hindsight_client import Hindsight
 
 from poc_demo.server import data
+from poc_demo.server.capsules import (
+    DEFAULT_MEDIA_ROOT,
+    UnsupportedMediaError,
+    build_capsule,
+)
 from recall.hindsight_runtime import embedded_hindsight
+from recall.store import CapsuleStore
 
 DEFAULT_BANK = os.environ.get("RECALL_BANK", "imessage-v0")
 
 _state: dict[str, Any] = {}
+
+#: The SQLite raw_data store. One instance for the process; each method opens its
+#: own short-lived connection so it is safe across worker threads.
+_store = CapsuleStore()
+
+#: Where capsule media binaries are written. Module-level so tests can point it
+#: at a temp dir without touching the upload-handling code.
+MEDIA_ROOT = DEFAULT_MEDIA_ROOT
 
 
 @asynccontextmanager
@@ -46,7 +60,7 @@ app = FastAPI(title="Recall demo API", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:5173"],
-    allow_methods=["GET"],
+    allow_methods=["GET", "POST"],
     allow_headers=["*"],
 )
 
@@ -75,3 +89,60 @@ async def networks(bank: str = DEFAULT_BANK) -> dict[str, Any]:
     """
     base_url = _state["base_url"]
     return await asyncio.to_thread(_fetch_networks, base_url, bank)
+
+
+# ---- capsule write-path (active raw_data) --------------------------------
+#
+# Persists user-created capsules (place + media) to the SQLite store. Conversion
+# to canonical Events + Hindsight retain + the swarm is the next stage and is not
+# done here — see TIME_CAPSULE_FLYWHEEL.md. The store is the seam where that
+# downstream work picks the capsule up.
+
+
+def _create_capsule(
+    place_name: str,
+    lat: float | None,
+    lng: float | None,
+    uploads: list[tuple[str, bytes, str | None]],
+) -> dict[str, Any]:
+    """Build, persist, and serialize a capsule (blocking)."""
+    capsule = build_capsule(place_name, lat, lng, uploads, media_root=MEDIA_ROOT)
+    _store.add_capsule(capsule)
+    return capsule.to_dict()
+
+
+@app.post("/api/capsules", status_code=201)
+async def create_capsule(
+    place_name: str = Form(...),
+    lat: float | None = Form(None),
+    lng: float | None = Form(None),
+    media: list[UploadFile] = File(default=[]),  # noqa: B008 — FastAPI param marker
+) -> dict[str, Any]:
+    """Create a capsule from a place and uploaded media (multipart/form-data).
+
+    Files are saved to disk; metadata is persisted to SQLite. File I/O runs in a
+    worker thread so the event loop is never blocked.
+    """
+    if not place_name.strip():
+        raise HTTPException(status_code=422, detail="place_name is required")
+    uploads = [(f.filename or "upload", await f.read(), f.content_type) for f in media]
+    try:
+        return await asyncio.to_thread(_create_capsule, place_name, lat, lng, uploads)
+    except UnsupportedMediaError as exc:
+        raise HTTPException(status_code=415, detail=str(exc)) from exc
+
+
+@app.get("/api/capsules")
+async def list_capsules() -> dict[str, Any]:
+    """Return all stored capsules, newest first."""
+    capsules = await asyncio.to_thread(_store.list_capsules)
+    return {"capsules": [c.to_dict() for c in capsules]}
+
+
+@app.get("/api/capsules/{capsule_id}")
+async def get_capsule(capsule_id: str) -> dict[str, Any]:
+    """Return a single capsule by id, or 404 if it does not exist."""
+    capsule = await asyncio.to_thread(_store.get_capsule, capsule_id)
+    if capsule is None:
+        raise HTTPException(status_code=404, detail="capsule not found")
+    return capsule.to_dict()

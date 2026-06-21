@@ -1,0 +1,197 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>RETURN — Capsule Tester</title>
+<style>
+  :root {
+    --bg: #0f1115; --panel: #181b22; --ink: #e8eaed; --muted: #9aa3b2;
+    --accent: #c0633a; --line: #262b35; --ok: #3fb27f;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; font: 15px/1.5 -apple-system, system-ui, sans-serif;
+    background: var(--bg); color: var(--ink); padding: 24px;
+  }
+  .wrap { max-width: 860px; margin: 0 auto; }
+  h1 { font-size: 22px; margin: 0 0 2px; }
+  h1 .dot { color: var(--accent); }
+  .sub { color: var(--muted); margin: 0 0 24px; font-size: 13px; }
+  .card {
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: 14px; padding: 20px; margin-bottom: 24px;
+  }
+  label { display: block; font-size: 12px; color: var(--muted); margin: 12px 0 4px; }
+  input[type=text], input[type=number] {
+    width: 100%; padding: 10px 12px; border-radius: 9px;
+    border: 1px solid var(--line); background: #11141a; color: var(--ink); font-size: 15px;
+  }
+  .row { display: flex; gap: 12px; }
+  .row > div { flex: 1; }
+  .drop {
+    margin-top: 12px; border: 1.5px dashed var(--line); border-radius: 11px;
+    padding: 22px; text-align: center; color: var(--muted); cursor: pointer;
+    transition: border-color .15s, background .15s;
+  }
+  .drop:hover, .drop.over { border-color: var(--accent); background: #1d2129; }
+  .drop input { display: none; }
+  .previews { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+  .previews .thumb { width: 64px; height: 64px; border-radius: 8px; object-fit: cover;
+    border: 1px solid var(--line); }
+  .previews .chip { font-size: 11px; color: var(--muted); padding: 4px 8px;
+    border: 1px solid var(--line); border-radius: 8px; align-self: center; }
+  button.seal {
+    margin-top: 18px; width: 100%; padding: 12px; border: 0; border-radius: 10px;
+    background: var(--accent); color: white; font-size: 15px; font-weight: 600; cursor: pointer;
+  }
+  button.seal:disabled { opacity: .5; cursor: default; }
+  .status { margin-top: 10px; font-size: 13px; min-height: 18px; }
+  .status.ok { color: var(--ok); }
+  .status.err { color: #e0685f; }
+  .gallery { display: grid; grid-template-columns: repeat(auto-fill,minmax(170px,1fr)); gap: 14px; }
+  .cap {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 12px; overflow: hidden;
+  }
+  .cap .ph { width: 100%; height: 120px; background: #11141a; object-fit: cover; display: block; }
+  .cap .noimg { width: 100%; height: 120px; display: flex; align-items: center;
+    justify-content: center; color: var(--muted); font-size: 12px; }
+  .cap .meta { padding: 10px 12px; }
+  .cap .place { font-weight: 600; font-size: 14px; }
+  .cap .when, .cap .geo { color: var(--muted); font-size: 11px; margin-top: 2px; }
+  .cap .kinds { margin-top: 6px; }
+  .cap .kinds span { font-size: 10px; border: 1px solid var(--line); border-radius: 6px;
+    padding: 1px 6px; margin-right: 4px; color: var(--muted); }
+  .section-h { display: flex; align-items: baseline; justify-content: space-between; margin: 0 0 12px; }
+  .section-h h2 { font-size: 16px; margin: 0; }
+  .section-h .count { color: var(--muted); font-size: 12px; }
+  .empty { color: var(--muted); font-size: 13px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>RETURN<span class="dot">.</span> capsule tester</h1>
+  <p class="sub">A throwaway dev UI to exercise the capsule write-path: create a capsule, watch it land in SQLite, see it in the gallery.</p>
+
+  <div class="card">
+    <label for="place">Place name</label>
+    <input id="place" type="text" placeholder="e.g. Moffitt Library" />
+    <div class="row">
+      <div>
+        <label for="lat">Latitude (optional)</label>
+        <input id="lat" type="number" step="any" placeholder="37.872" />
+      </div>
+      <div>
+        <label for="lng">Longitude (optional)</label>
+        <input id="lng" type="number" step="any" placeholder="-122.260" />
+      </div>
+    </div>
+
+    <label>Media (photo / audio / video / text)</label>
+    <div class="drop" id="drop">
+      <input id="file" type="file" multiple accept="image/*,audio/*,video/*,text/plain" />
+      <span id="dropmsg">Click to choose files, or drag &amp; drop here</span>
+    </div>
+    <div class="previews" id="previews"></div>
+
+    <button class="seal" id="seal" disabled>Seal capsule</button>
+    <div class="status" id="status"></div>
+  </div>
+
+  <div class="section-h">
+    <h2>Sealed capsules</h2>
+    <span class="count" id="count"></span>
+  </div>
+  <div class="gallery" id="gallery"></div>
+  <p class="empty" id="empty" style="display:none">No capsules yet — seal one above.</p>
+</div>
+
+<script>
+const API = "";  // same origin
+const $ = (id) => document.getElementById(id);
+let files = [];
+
+function refreshPreviews() {
+  const box = $("previews"); box.innerHTML = "";
+  files.forEach(f => {
+    if (f.type.startsWith("image/")) {
+      const img = document.createElement("img");
+      img.className = "thumb"; img.src = URL.createObjectURL(f); box.appendChild(img);
+    } else {
+      const c = document.createElement("span");
+      c.className = "chip"; c.textContent = `${f.name} (${f.type || "?"})`; box.appendChild(c);
+    }
+  });
+  $("seal").disabled = !$("place").value.trim();
+}
+
+$("file").addEventListener("change", e => { files = [...e.target.files]; refreshPreviews(); });
+$("place").addEventListener("input", () => { $("seal").disabled = !$("place").value.trim(); });
+
+const drop = $("drop");
+drop.addEventListener("click", () => $("file").click());
+["dragover","dragenter"].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.add("over"); }));
+["dragleave","drop"].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove("over"); }));
+drop.addEventListener("drop", e => { files = [...e.dataTransfer.files]; refreshPreviews(); });
+
+$("seal").addEventListener("click", async () => {
+  const status = $("status");
+  status.className = "status"; status.textContent = "Sealing…";
+  $("seal").disabled = true;
+  const form = new FormData();
+  form.append("place_name", $("place").value.trim());
+  if ($("lat").value) form.append("lat", $("lat").value);
+  if ($("lng").value) form.append("lng", $("lng").value);
+  files.forEach(f => form.append("media", f));
+  try {
+    const res = await fetch(`${API}/api/capsules`, { method: "POST", body: form });
+    if (!res.ok) {
+      const detail = (await res.json().catch(() => ({}))).detail || res.statusText;
+      throw new Error(`${res.status} — ${detail}`);
+    }
+    status.className = "status ok"; status.textContent = "Sealed ✓";
+    $("place").value = ""; $("lat").value = ""; $("lng").value = "";
+    files = []; $("file").value = ""; refreshPreviews(); $("seal").disabled = true;
+    loadCapsules();
+  } catch (err) {
+    status.className = "status err"; status.textContent = `Failed: ${err.message}`;
+    $("seal").disabled = false;
+  }
+});
+
+function fmt(iso) { try { return new Date(iso).toLocaleString(); } catch { return iso; } }
+
+async function loadCapsules() {
+  const g = $("gallery");
+  try {
+    const { capsules } = await fetch(`${API}/api/capsules`).then(r => r.json());
+    $("count").textContent = `${capsules.length} stored`;
+    $("empty").style.display = capsules.length ? "none" : "block";
+    g.innerHTML = "";
+    capsules.forEach(c => {
+      const photo = c.media.find(m => m.kind === "photo");
+      const card = document.createElement("div");
+      card.className = "cap";
+      const kinds = c.media.map(m => `<span>${m.kind}</span>`).join("");
+      const geo = (c.lat != null && c.lng != null) ? `${c.lat}, ${c.lng}` : "no coordinates";
+      card.innerHTML =
+        (photo
+          ? `<img class="ph" src="${API}/media/${photo.file_path}" alt="">`
+          : `<div class="noimg">${c.media.length ? c.media[0].kind : "no media"}</div>`) +
+        `<div class="meta">
+           <div class="place">${c.place_name}</div>
+           <div class="when">${fmt(c.created_at)}</div>
+           <div class="geo">${geo}</div>
+           <div class="kinds">${kinds}</div>
+         </div>`;
+      g.appendChild(card);
+    });
+  } catch (err) {
+    g.innerHTML = `<p class="empty">Could not reach the API: ${err.message}</p>`;
+  }
+}
+
+loadCapsules();
+</script>
+</body>
+</html>
