@@ -846,14 +846,35 @@
 
   /* ---- principle GRAPH (static, from principles.json) ---- */
   .pgraph {
-    position: relative; width: 100%; aspect-ratio: 1 / 1.18;
+    position: relative; width: 100%; aspect-ratio: 1 / 1.34;
     margin: 6px 0 10px; border-radius: 18px; overflow: hidden;
     background:
       radial-gradient(70% 55% at 50% 38%, rgba(200,144,42,.10), transparent 72%),
       linear-gradient(160deg, #fffdf6 0%, #f1e6c8 100%);
     border: 1.5px solid #c9b27a;
     box-shadow: inset 0 1px 0 rgba(255,255,255,.6), 0 4px 12px rgba(40,22,10,.12);
-    touch-action: none;
+    touch-action: none; cursor: grab; user-select: none;
+  }
+  .pgraph.grabbing { cursor: grabbing; }
+  /* the pannable/zoomable world — transform is set by JS (translate + scale).
+     Both edges and nodes live inside so they move/scale together. */
+  .pgraph-world { position: absolute; inset: 0; transform-origin: 0 0; will-change: transform; }
+  /* floating zoom controls (don't pan with the world) */
+  .pgraph-zoom {
+    position: absolute; right: 8px; bottom: 8px; z-index: 5;
+    display: flex; flex-direction: column; gap: 5px;
+  }
+  .pgraph-zoom button {
+    width: 30px; height: 30px; border-radius: 8px; cursor: pointer;
+    background: rgba(255,253,246,.94); border: 1.4px solid #c9b27a; color: #6a5030;
+    font-family: 'Caveat', cursive; font-weight: 700; font-size: 18px; line-height: 1;
+    box-shadow: 0 2px 6px rgba(40,22,10,.18); display: grid; place-items: center;
+  }
+  .pgraph-zoom button:active { transform: scale(.94); }
+  .pgraph-hint-pan {
+    position: absolute; left: 8px; bottom: 8px; z-index: 5; pointer-events: none;
+    font-family: 'Caveat', cursive; font-size: 13px; color: #9c7d5a;
+    background: rgba(255,253,246,.8); padding: 2px 8px; border-radius: 8px;
   }
   .pgraph-edges { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
   .pgraph-edges line { vector-effect: non-scaling-stroke; transition: opacity .25s ease; }
@@ -2087,8 +2108,15 @@
 
       scroll.innerHTML =
         '<div class="pgraph" id="pgraph">' +
-          '<svg class="pgraph-edges" id="pgraphEdges" viewBox="0 0 100 100" preserveAspectRatio="none"></svg>' +
-          '<div class="pgraph-nodes" id="pgraphNodes"></div>' +
+          '<div class="pgraph-world" id="pgraphWorld">' +
+            '<svg class="pgraph-edges" id="pgraphEdges" viewBox="0 0 100 100" preserveAspectRatio="none"></svg>' +
+            '<div class="pgraph-nodes" id="pgraphNodes"></div>' +
+          '</div>' +
+          '<div class="pgraph-zoom">' +
+            '<button id="pzIn" aria-label="zoom in">+</button>' +
+            '<button id="pzOut" aria-label="zoom out">−</button>' +
+            '<button id="pzFit" aria-label="fit">⤢</button>' +
+          '</div>' +
         '</div>' +
         '<div class="pgraph-legend">' +
           '<span><i class="supports"></i>supports</span>' +
@@ -2105,8 +2133,95 @@
       // two-color community: BFS from the highest-degree node splits the graph
       assignClusters(pnodes, edges, byId);
       layoutPGraph(pnodes, edges, byId);
-      pgState = { pnodes, edges, byId, memById, focus: null, mnodes: [], detailMode: null };
+      pgState = { pnodes, edges, byId, memById, focus: null, mnodes: [], detailMode: null,
+                  view: { x: 0, y: 0, k: 1 } };
       drawPGraph();
+      setupPGraphPanZoom();
+    }
+
+    // ---- pan / zoom for the principle graph ----
+    function applyPGraphView(){
+      const w = document.getElementById('pgraphWorld'); if (!w || !pgState) return;
+      const v = pgState.view;
+      w.style.transform = 'translate(' + v.x + 'px,' + v.y + 'px) scale(' + v.k + ')';
+    }
+    function clampPGraphView(){
+      const v = pgState.view;
+      v.k = Math.max(0.45, Math.min(3.5, v.k));
+    }
+    function pgraphZoomAt(cx, cy, factor){
+      const v = pgState.view;
+      const nk = Math.max(0.45, Math.min(3.5, v.k * factor));
+      // keep the point under the cursor fixed while scaling
+      v.x = cx - (cx - v.x) * (nk / v.k);
+      v.y = cy - (cy - v.y) * (nk / v.k);
+      v.k = nk; applyPGraphView();
+    }
+    function pgraphFit(){
+      pgState.view = { x: 0, y: 0, k: 1 }; applyPGraphView();
+    }
+    function setupPGraphPanZoom(){
+      const box = document.getElementById('pgraph'); if (!box) return;
+      applyPGraphView();
+      const rect = () => box.getBoundingClientRect();
+
+      // drag to pan. `panned` marks that the CURRENT gesture moved, so the click
+      // it generates is suppressed; it's cleared on the next press so a plain tap
+      // (press → release, no move) always reaches the node handlers.
+      let dragging = false, lastX = 0, lastY = 0, moved = 0, panned = false;
+      const down = (x, y) => { dragging = true; moved = 0; panned = false; lastX = x; lastY = y; box.classList.add('grabbing'); };
+      const move = (x, y) => {
+        if (!dragging) return;
+        const dx = x - lastX, dy = y - lastY; lastX = x; lastY = y; moved += Math.abs(dx) + Math.abs(dy);
+        if (moved > 6) panned = true;
+        pgState.view.x += dx; pgState.view.y += dy; applyPGraphView();
+      };
+      const up = () => { dragging = false; box.classList.remove('grabbing'); };
+
+      box.addEventListener('mousedown', (e) => { down(e.clientX, e.clientY); });
+      window.addEventListener('mousemove', (e) => move(e.clientX, e.clientY));
+      window.addEventListener('mouseup', up);
+
+      // wheel / trackpad zoom
+      box.addEventListener('wheel', (e) => {
+        e.preventDefault();
+        const r = rect();
+        pgraphZoomAt(e.clientX - r.left, e.clientY - r.top, e.deltaY < 0 ? 1.12 : 1 / 1.12);
+      }, { passive: false });
+
+      // touch: one finger pans, two fingers pinch-zoom
+      let pinchDist = 0, pinchMid = null;
+      box.addEventListener('touchstart', (e) => {
+        if (e.touches.length === 1) down(e.touches[0].clientX, e.touches[0].clientY);
+        else if (e.touches.length === 2) {
+          dragging = false;
+          pinchDist = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+          const r = rect();
+          pinchMid = { x: (e.touches[0].clientX + e.touches[1].clientX) / 2 - r.left,
+                       y: (e.touches[0].clientY + e.touches[1].clientY) / 2 - r.top };
+        }
+      }, { passive: true });
+      box.addEventListener('touchmove', (e) => {
+        if (e.touches.length === 1) move(e.touches[0].clientX, e.touches[0].clientY);
+        else if (e.touches.length === 2 && pinchMid) {
+          e.preventDefault();
+          const d = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+          if (pinchDist) pgraphZoomAt(pinchMid.x, pinchMid.y, d / pinchDist);
+          pinchDist = d;
+        }
+      }, { passive: false });
+      box.addEventListener('touchend', up);
+
+      // buttons (zoom toward the box center)
+      const ctr = () => { const r = rect(); return [r.width / 2, r.height / 2]; };
+      const onClick = (id, fn) => { const b = document.getElementById(id); if (b) b.addEventListener('click', (e) => { e.stopPropagation(); fn(); }); };
+      onClick('pzIn',  () => { const [x, y] = ctr(); pgraphZoomAt(x, y, 1.25); });
+      onClick('pzOut', () => { const [x, y] = ctr(); pgraphZoomAt(x, y, 1 / 1.25); });
+      onClick('pzFit', pgraphFit);
+
+      // a click that didn't drag should still focus nodes (handled by node handlers);
+      // suppress the click ONLY when this gesture actually panned, then clear it.
+      box.addEventListener('click', (e) => { if (panned) { e.stopPropagation(); e.preventDefault(); panned = false; } }, true);
     }
 
     // color the graph into 2 communities by a simple label-propagation pass
