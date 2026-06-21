@@ -58,14 +58,60 @@ class MemoryRef:
     derived_from: list[str] # the Unit.unit_id(s) it came from (non-empty)
 ```
 
-### Rung ③ output — `Principle` (defined here for reference; NOT built yet)
+### Rung ③ output — `Principle` node (defined here for reference; NOT built yet)
+Principles are **graph nodes**, not a flat list. Each node cites its supporting
+memories (the ledger); edges between nodes are rung ④.
 ```python
 @dataclass(frozen=True, slots=True)
 class Principle:
+    principle_id: str         # stable id, so edges can reference it
     text: str                 # the one-line mental model
-    confidence: float         # 0..1, nudged ±alpha by evidence
+    confidence: float         # 0..1, from the ledger (see rung③ research)
     derived_from: list[str]   # >=2 supporting memory_ids (the ledger)
 ```
+
+### Rung ④ output — `Edge` (principle ⇄ principle, grounded; NOT built yet)
+The principle layer is a **graph**: typed edges connect principles, and **each
+edge carries its own evidence**, traced to memory-network nodes → raw_data like
+everything else. An edge's evidence is **NOT** restricted to the intersection (or
+union, or complement) of the two principles' ledgers — it is drawn from a
+**soft-scope neighborhood** of the bank, so an edge can cite a memory neither
+principle cites (e.g. a photo that co-occurs in time with both, linking them).
+```python
+Relation = Literal["supports", "refines", "generalizes", "contradicts"]
+
+@dataclass(frozen=True, slots=True)
+class Edge:
+    src: str                  # Principle.principle_id
+    dst: str                  # Principle.principle_id
+    relation: Relation        # typed
+    derived_from: list[str]   # >=1 memory_ids justifying the relation (the edge ledger)
+```
+
+**Edge candidate-evidence neighborhood** (computed from proximity in the
+**Hindsight memory layer**, NOT from the ledgers, and NOT from raw_data): a
+**memory** `m` (a Hindsight memory node) is in-scope for `edge(A, B)` iff
+- `m`'s timestamp is within a time window of A's-or-B's supporting memories
+  (temporal), **OR**
+- `m` is embedding-similar to A or B via Hindsight `recall` (similarity).
+
+Layer discipline (pipelinic): rung ④ operates **entirely over the memory layer**
+— memory timestamps and memory embeddings. It never queries raw Events directly.
+Hindsight owns raw_data → memories; we own memories → principles/edges. Raw_data
+stays reachable only **through** a memory's `derived_from` chain (memory → unit →
+raw Event), so the trace still bottoms out at raw_data without rung ④ ever
+reading it.
+
+The two principles' own evidence trivially lands in this neighborhood (near
+itself), so shared evidence is allowed but not required; far-away unrelated
+memories are excluded — which keeps the set **bounded and script-verifiable**.
+
+**Edge verification rule (rung-spanning):** reject any cited `memory_id` not in
+the edge's neighborhood (non-LLM script check). This is the bound that survives
+reaching past the ledgers. Honest labeling: an edge that passes is **grounded**
+(cites real in-scope memories), **not** "verified-entailing" — existence/scope ≠
+entailment. An NLI entailment verifier is the post-v0 upgrade. Same `derived_from`
+fail-fast applies: empty list rejected at write time.
 
 ---
 

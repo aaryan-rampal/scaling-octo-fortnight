@@ -334,3 +334,66 @@ contested — pgvector is the safer vector bet.
 - W3C PROV-DM — https://www.w3.org/TR/prov-dm/ ; OpenLineage — https://openlineage.io/blog/column-lineage/
 - Redis: vector indexes https://redis.io/blog/vector-indexes-in-redis/ ; Agent Memory Server https://redis.github.io/agent-memory-server/ ; RedisGraph EOL https://redis.io/blog/redisgraph-eol/ ; RedisVL SemanticCache https://docs.redisvl.com/en/latest/user_guide/03_llmcache.html
 - α-Law of belief revision — arXiv 2603.19262
+
+---
+
+## Appendix A — Rung ④: the principle graph (typed, grounded edges)
+
+Added after the §0–§6 body settled. The principle layer is **a graph, not a flat
+list**: principles are nodes, and **typed edges connect them**. This appendix
+records the design; the build contract is `docs/v0-pipeline-contract.md`.
+
+**Why a graph.** A principle's value is that it traces to ground truth (CLAUDE.md
+§2). Two principles are often related — one *refines*, *supports*, *generalizes*,
+or *contradicts* another — and that relationship is itself an insight worth
+surfacing. A flat list drops it. Edge relations: `supports / refines /
+generalizes / contradicts`.
+
+**Edges are grounded, like nodes.** Each edge carries its own evidence ledger
+(`>=1 memory_id`s justifying the relation), traced memory → raw_data the same way
+node evidence is. An edge is not asserted bare.
+
+**Edge evidence is NOT limited to the two principles' ledgers — and the data
+shows why.** Over the 7-day slice of `data/recall.db`, 24 cross-source unit pairs
+co-occur within one hour (e.g. on 06-17 ~03:00, an iMessage run about late-night
+app mockups + a "no-cigarettes walk" message + a photo taken at 03:00). A
+principle "channels restlessness into late-night creative work" and a principle
+"is quitting smoking" are linked by *that shared 1am moment* — evidence (the
+03:00 photo) that **neither principle's own ledger contains**. Restricting edge
+evidence to the intersection of the two ledgers would miss exactly this. So the
+edge may cite memories outside both ledgers.
+
+**But grounded, not net-new.** "Outside both ledgers" ≠ ungrounded. The cited
+memory still exists in the bank and still rose from raw_data — it is new *to the
+two principles*, not new *to the system*. The §2 invariant holds: nothing enters
+except by rising from raw_data.
+
+**Soft scope, over the memory layer.** The candidate evidence for `edge(A,B)` is
+a **neighborhood** — memories temporally near, or embedding-similar to, A's/B's
+supporting memories — computed in the **Hindsight memory layer**, never over raw
+data. (Pipelinic: Hindsight owns raw→memory; rung ④ owns memory→edges and reads
+only memories. Raw_data is reached only through a memory's `derived_from` chain.)
+The neighborhood is computed from *proximity*, not from ledger membership, so it
+naturally contains some of A's/B's evidence, extends past it, and excludes
+far-away memories — keeping the candidate set **bounded and script-verifiable**.
+
+**Verification = scope membership, honestly labeled.** Reject any cited
+`memory_id` not in the neighborhood (non-LLM script check). This is the bound
+that survives reaching past the ledgers; it is the edge analogue of rung ③'s
+"cited id ∈ cluster" check (§3, and `rung3-minting-strategy.md` §2 — up to 57% of
+LLM citations are post-rationalized, arXiv 2412.18004). Scope membership catches
+*fabricated* citations, not *post-rationalized* ones: a passing edge is
+**grounded** (cites real in-scope memories), **not** "verified-entailing." An NLI
+entailment verifier is the honest fix and is **post-v0** — same status as the
+node-level entailment gap in §3.
+
+**Open v0 choice (not yet decided):** typed LLM-minted edges from the start
+(needs the citation-verification dance above) vs. deterministic untyped
+"co-occur/relate" edges first (zero LLM, from the 24 temporal overlaps directly),
+with typed edges as the upgrade. Recorded as open; the contract carries the typed
+`Edge` shape either way.
+
+*Sources:* Generative Agents reflection-tree cited-evidence (2304.03442);
+citation-faithfulness (Wallat et al. 2412.18004); W3C PROV `wasDerivedFrom`
+(transitive lineage); plus the cross-source co-occurrence measured directly on
+`data/recall.db` (24 within-1h pairs in the 7-day slice).
