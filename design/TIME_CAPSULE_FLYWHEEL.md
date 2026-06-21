@@ -136,7 +136,24 @@ conversations, windowing by time, tagging entities — "give memory the data in 
 form it can use." Its one hard rule: the segmented unit must keep refs back to the
 raw rows it was built from, or the provenance chain snaps at exactly the step that
 reshapes the most. See the black boxes in [§6](#6-the-four-black-boxes).
-# TODO: this is the thing i watn to figure out what can we do here
+
+**Concretely, what we can do here (v1, deliberately dumb):**
+
+- **Sessionize by inactivity gap.** Per `(chat_id, participant_set)`, start a new
+  conversation unit when the gap since the last message exceeds a threshold
+  (~30–60 min, tunable). No ML — a sort and a gap scan. This is the highest-leverage
+  cheap win and the easiest place to get refs right.
+- **Carry `source_refs` on every unit.** Each conversation unit stores the exact
+  `chat.db#ROWID` list it was built from. This single field is what keeps provenance
+  alive across the reshape; everything downstream inherits it.
+- **Tag entities while threading.** Resolve handles → contacts, pull obvious
+  places / dates / events, and emit those as edges for the graph network (feeds
+  BB2). Start with deterministic resolution (handle maps, regex dates) before
+  anything learned.
+
+Anything fancier — topic-based or learned segmentation, cross-thread merging — is
+deferred to [§14](#14-open-questions--boundaries). Gap-based threading first,
+because it's the version where the provenance refs are trivially correct.
 
 ---
 
@@ -154,21 +171,28 @@ It is a **composite** of two parts with *different provenance behavior*:
   textbook **primary source** — first-person testimony, the strongest grounding
   that exists for a belief about oneself. There is no gap beneath it to apologize
   for.
-- **attachment refs** — pointers into raw_data that *already exists* and has its own
-  provenance.
-  # TODO: this doesn't already have to exist, if they add anything new, we can add it to our raw data (but then that means that users can only add the things we already give them passive ingestion for, which is okay) + raw text of course
+- **attachment refs** — pointers to raw_data. The artifact does **not** have to be
+  ingested already. Two cases, and both bottom out as raw_data:
+    - *already ingested* (a past iMessage, a calendar event) → the capsule just holds
+      a ref.
+    - *newly attached* (the user drags in a photo / Spotify song / message we haven't
+      seen) → we ingest it into raw_data on attach, then ref it. **Constraint:** the
+      user can only attach artifact types we already have a passive-ingestion path
+      for. That's an acceptable limit — it guarantees every attachment is something
+      the system already knows how to understand and trace, so the provenance
+      invariant never depends on a bespoke one-off importer. (Journal text, of course,
+      is always addable.)
 
 So a principle built from a capsule traces cleanly to the user's own words
 (terminal) plus the linked artifacts (each tracing to its origin). Fully grounded.
 
 **Keep the capsule as a container; do not melt it into raw_data.** It *births* one
-raw_data row (its text) and *references* N others (attachments), and additionally
-carries intent / moment / priority / `parent_contradiction`. The text is the
-*fact*; the capsule is the *curation around* the fact. Collapsing them loses the
-grouping that lets the swarm treat "these 5 photos + my reflection on them" as a
-single unit of meaning.
-
-# TODO: again prior todo may change this
+or more raw_data rows — always its journal text, plus any newly-attached artifacts
+we ingest on the spot — and *references* the rest (artifacts already in raw_data).
+On top of that it carries intent / moment / priority / `parent_contradiction`. The
+rows are the *facts*; the capsule is the *curation around* them. Collapsing the two
+loses the grouping that lets the swarm treat "these 5 photos + my reflection on
+them" as a single unit of meaning.
 
 ---
 
@@ -181,8 +205,21 @@ channels**, and neither creates structure:
 2. **enqueue** — a `Contradiction` / candidate onto `ui_queue` (a question for the
    user).
 
-   # TODO: need some sort of pruning figured out which actually uses this confidence delta right?
-   # TODO: also can use confidence delta to color edges/nodes in UI to show how confident we are
+**What reads the dial (it isn't write-only).** The confidence signal has two
+consumers, and naming them is what makes the dial worth maintaining:
+
+- **Pruning.** A consolidation-side process (a sibling of BB3 — **never the swarm**)
+  reads confidence and **archives** provisional principles / low-salience memories
+  whose confidence has decayed below a threshold, so the bank doesn't bloat with
+  stale or one-off beliefs. Archive, don't hard-delete: the append-only history
+  ([§9](#9-principles-provisional--stable-versioned-behavior-tested)) and the
+  provenance chain must survive a prune, and a pruned belief that reappears in data
+  should be revivable rather than re-litigated. Keeping pruning off the swarm
+  preserves the invariant that the swarm makes no structural writes — a dial write
+  can *trigger* a prune, but a separate pipeline process *performs* it.
+- **UI rendering.** Confidence drives how a principle/edge is drawn — color or
+  opacity for "how sure," a distinct treatment for `contested` — so the user sees
+  the system's certainty at a glance instead of reading a number.
 
 That's it. New principles are minted **only** by consolidation, **only** from
 raw_data. The reason is the provenance fact from [§2](#2-the-synthesis-ladder-raw-sources--principles):
@@ -421,7 +458,7 @@ dedup problem getting solved as a side effect.
 | Term | Meaning |
 |---|---|
 | **raw_data** | Source records: iMessage / email / calendar / media events, **and** capsule journal text. Ground truth; the input to ingest. |
-| **time capsule** | A durable journal entry: authored **text** (new raw_data) + **attachment refs** (pointers to existing raw_data) + intent / priority / `parent_contradiction`. A first-class evidence node. |
+| **time capsule** | A durable journal entry: authored **text** (new raw_data) + **attachment refs** (to raw_data, existing or ingested-on-attach) + intent / priority / `parent_contradiction`. A first-class evidence node. |
 | **principle** | A consolidated belief = Hindsight **mental model**. Provisional or stable; versioned; the thing capsules are tested against. |
 | **confidence_delta** | A metadata write nudging a principle's confidence scalar (0–1). Reversible, idempotent, needs no provenance — it adjusts certainty about an already-grounded belief, not the belief. |
 | **agentic swarm** | Retriever + Critics + Arbiter. Reads memory/principles, runs refinement passes, decides reinforce / contradict / candidate. **Writes only dials + questions.** |
@@ -443,7 +480,7 @@ Reuses POC `Event`, `Episode`, and Hindsight networks. Updated / new objects:
 | `author` | `str` | `"user"` or `"system"` (machine-seeded re-check) |
 | `journal_text` | `str` | authored prose; ingested as a raw_data source row |
 | `intent` | `str \| None` | the question / claim driving the capsule |
-| `attachment_refs` | `list[str]` | refs to existing raw_data (`chat.db#ROWID`, episode ids, media ids) |
+| `attachment_refs` | `list[str]` | refs to raw_data (`chat.db#ROWID`, episode ids, media ids); newly-attached artifacts of a supported type are ingested into raw_data on attach, then ref'd |
 | `priority` | `str` | `"high"` (user elaboration) or `"normal"` |
 | `parent_contradiction` | `str \| None` | id of the contradiction this answers (closes a loop) |
 
@@ -536,10 +573,16 @@ flowchart LR
 - **Solo-mint thresholds + decay rates.** How fast does an un-reinforced
   provisional principle decay? What counts as "behavioral corroboration" for
   promotion to stable?
+- **Pruning policy.** What confidence threshold triggers a prune, and over what
+  window? Archive vs. revive semantics — how does a pruned belief come back if data
+  later supports it, without re-asking the user? Does pruning apply to stable
+  principles at all, or only provisional ones + low-salience memories?
 - **Dedup + backpressure** (now partly addressed by dismissal-as-evidence): merging
   near-identical contradictions; what happens when the user never answers
   `ui_queue`.
-- **Segmentation provenance.** BB1 reshapes the most data; its refs back to raw rows
-  are the most fragile link in the whole chain.
+- **Segmentation: beyond gap-based threading.** v1 is inactivity-gap sessionization
+  ([§2](#2-the-synthesis-ladder-raw-sources--principles)). Open: topic-aware or
+  learned segmentation, cross-thread merging — and keeping `source_refs` correct
+  once units stop being contiguous row ranges (the most fragile link in the chain).
 - **Machine-seeded re-checks:** on a schedule, or triggered by new raw_data crossing
   a principle's evidence set?
