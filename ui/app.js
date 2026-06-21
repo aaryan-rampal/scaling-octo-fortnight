@@ -78,6 +78,7 @@ function show(name) {
   document.querySelectorAll(".tab").forEach((t) =>
     t.classList.toggle("active", TAB_FOR_VIEW[name] === t.dataset.tab));
   document.querySelector(".screen").scrollTo({ top: 0, behavior: reduceMotion ? "auto" : "smooth" });
+  if (name === "map" && map) setTimeout(() => map.resize(), 60); // MapLibre needs a resize when re-shown
 }
 const switchTab = (tab) => show(tab === "capsules" ? "places" : tab);
 
@@ -93,58 +94,95 @@ function toast(msg) {
   toastTimer = setTimeout(() => t.classList.remove("show"), 2600);
 }
 
-// --- 1. MAP ---
-function renderMap() {
-  const pins = document.getElementById("map-pins");
-  pins.innerHTML = "";
-  let found = 0;
+// --- 1. LIVE SATELLITE MAP (MapLibre + Esri World Imagery) ---
+const MAP_CENTER = [-122.2588, 37.8698]; // Berkeley Southside (real photo cluster)
+const MAP_ZOOM = 15.4;
+let map = null, markerObjs = [], spinning = false, spinReq = null;
 
+function ensureMap() {
+  if (map || typeof maplibregl === "undefined") return;
+  map = new maplibregl.Map({
+    container: "map",
+    attributionControl: false,
+    center: MAP_CENTER, zoom: 13.4, pitch: 0, bearing: -18,
+    style: {
+      version: 8,
+      sources: {
+        sat: {
+          type: "raster", tileSize: 256,
+          tiles: ["https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"],
+          attribution: "Imagery © Esri",
+        },
+      },
+      layers: [{ id: "sat", type: "raster", source: "sat" }],
+    },
+  });
+  map.addControl(new maplibregl.AttributionControl({ compact: true }));
+  map.on("load", () => {
+    drawMarkers();
+    map.resize();
+    if (reduceMotion) { map.jumpTo({ center: MAP_CENTER, zoom: MAP_ZOOM, pitch: 50 }); return; }
+    map.flyTo({ center: MAP_CENTER, zoom: MAP_ZOOM, pitch: 55, bearing: -14, duration: 3200, essential: true });
+    map.once("moveend", startSpin);
+  });
+  map.on("dragstart", stopSpin);
+}
+
+function startSpin() {
+  if (reduceMotion || spinning) return;
+  spinning = true;
+  let last = performance.now();
+  const step = (t) => {
+    if (!spinning || !map) return;
+    map.setBearing(map.getBearing() + (t - last) * 0.004); // slow orbit
+    last = t;
+    spinReq = requestAnimationFrame(step);
+  };
+  spinReq = requestAnimationFrame(step);
+}
+function stopSpin() { spinning = false; if (spinReq) cancelAnimationFrame(spinReq); }
+
+function drawMarkers() {
+  if (!map) return;
+  markerObjs.forEach((m) => m.remove());
+  markerObjs = [];
+  let found = 0;
   SEED.map.forEach((poi) => {
     const disc = isDiscovered(poi);
     if (disc) found++;
     const cap = poi.capsuleId ? getPlace(poi.capsuleId) : null;
 
-    const btn = document.createElement("button");
-    btn.className = "pin";
-    btn.style.left = poi.x + "%";
-    btn.style.top = poi.y + "%";
-
-    let inner, label;
+    const el = document.createElement("button");
+    el.className = "mk";
+    let inner;
     if (!disc) {
-      btn.classList.add("fog");
-      btn.setAttribute("aria-label", "Undiscovered location — visit to reveal");
-      inner = "?"; label = "? ? ?";
+      el.classList.add("fog");
+      el.setAttribute("aria-label", `Locked — travel to ${poi.name} to discover it`);
+      inner = `<span class="mk-dot">${ICON.lock}</span><span class="mk-label">${poi.name}</span>`;
     } else if (cap) {
-      btn.classList.add("cap");
+      el.classList.add("cap");
       const locked = isLocked(cap);
-      if (locked) btn.classList.add("sealed");
-      btn.setAttribute("aria-label", `${locked ? "Sealed" : "Open"} capsule at ${poi.name}`);
-      inner = cap.icon + (locked ? `<span class="lockbadge">${ICON.lock}</span>` : "");
-      label = poi.name;
+      if (locked) el.classList.add("sealed");
+      el.setAttribute("aria-label", `${locked ? "Sealed" : "Open"} capsule — ${poi.name}`);
+      inner = `<span class="mk-dot" style="background:${cap.cover}">${locked ? `<span class="mk-lock">${ICON.lock}</span>` : ""}</span><span class="mk-label">${poi.name}</span>`;
     } else {
-      btn.classList.add("empty");
-      btn.setAttribute("aria-label", `Seal a capsule at ${poi.name}`);
-      inner = ICON.plus; label = poi.name;
+      el.classList.add("empty");
+      el.setAttribute("aria-label", `Seal a capsule at ${poi.name}`);
+      inner = `<span class="mk-dot">${ICON.plus}</span><span class="mk-label">${poi.name}</span>`;
     }
-    btn.innerHTML = `<span class="pin-marker">${inner}</span><span class="pin-label">${label}</span>`;
-    if (poi._justRevealed) { btn.classList.add("just-revealed"); delete poi._justRevealed; }
-    if (highlight.has(poi.id)) btn.classList.add("highlight");
-
-    btn.addEventListener("click", () => onPoiClick(poi));
-    btn.addEventListener("keydown", (e) => {
-      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onPoiClick(poi); }
-    });
-    pins.appendChild(btn);
+    if (highlight.has(poi.id)) el.classList.add("highlight");
+    el.innerHTML = inner;
+    el.addEventListener("click", (e) => { e.stopPropagation(); onPoiClick(poi); });
+    markerObjs.push(new maplibregl.Marker({ element: el, anchor: "center" }).setLngLat([poi.lng, poi.lat]).addTo(map));
   });
+  const mp = document.getElementById("map-progress");
+  if (mp) mp.textContent = `${found}/${SEED.map.length} discovered`;
+}
 
-  const player = document.createElement("div");
-  player.className = "player";
-  player.style.left = "38%";
-  player.style.top = "89%";
-  player.innerHTML = `<div class="player-dot"></div><div class="player-label">you</div>`;
-  pins.appendChild(player);
-
-  document.getElementById("map-progress").textContent = `${found}/${SEED.map.length} discovered`;
+// renderMap() keeps the old name so the rest of the app calls it unchanged
+function renderMap() {
+  ensureMap();
+  if (map && map.isStyleLoaded && map.isStyleLoaded()) drawMarkers();
 }
 
 function onPoiClick(poi) {
@@ -154,12 +192,16 @@ function onPoiClick(poi) {
   else startCreate(poi);
 }
 
+// travel to a locked spot, then discover it
 function visit(poi) {
-  discovered.add(poi.id);
-  poi._justRevealed = true;
-  SoundFX.discover();
-  renderMap();
-  toast(poi.capsuleId ? `Back at ${poi.name}` : `Discovered ${poi.name} — seal a memory here`);
+  stopSpin();
+  if (map) map.flyTo({ center: [poi.lng, poi.lat], zoom: 17.2, pitch: 62, duration: 1900, essential: true });
+  setTimeout(() => {
+    discovered.add(poi.id);
+    SoundFX.discover();
+    drawMarkers();
+    toast(poi.capsuleId ? `Back at ${poi.name}` : `Discovered ${poi.name} — seal a memory here`);
+  }, 1500);
 }
 
 // --- 2. CREATE a capsule ---
@@ -296,12 +338,15 @@ function tracePrinciple(cap) {
   highlight.clear();
   ids.forEach((id) => highlight.add(id));
   switchTab("map");
-  renderMap();
+  stopSpin();
+  drawMarkers();
   SoundFX.shimmer();
+  const target = SEED.map.find((p) => ids.includes(p.id));
+  if (map && target) map.flyTo({ center: [target.lng, target.lat], zoom: 16.4, pitch: 55, duration: 1600, essential: true });
   const names = SEED.map.filter((p) => ids.includes(p.id)).map((p) => p.name).join(", ");
   toast(`This principle was formed at: ${names || cap.name}`);
   clearTimeout(highlightTimer);
-  highlightTimer = setTimeout(() => { highlight.clear(); renderMap(); }, 4000);
+  highlightTimer = setTimeout(() => { highlight.clear(); drawMarkers(); }, 4500);
 }
 
 // --- reconstruct-before-reveal (seeded memories) ---

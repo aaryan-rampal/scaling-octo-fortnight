@@ -17,6 +17,11 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+
+  <!-- live satellite map -->
+  <link href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet" />
+  <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
@@ -46,12 +51,8 @@
         <p class="section-label">Your world</p>
         <span id="map-progress" class="map-progress"></span>
       </div>
-      <div id="map" class="map">
-        <div class="map-grid" aria-hidden="true"></div>
-        <div id="map-pins" class="map-pins"><!-- injected --></div>
-        <div class="map-vignette" aria-hidden="true"></div>
-      </div>
-      <p id="map-info" class="map-info">Tap a glowing capsule to open it. Visit a fogged spot to discover it and seal a memory.</p>
+      <div id="map" class="map"></div>
+      <p id="map-info" class="map-info">Tap a glowing capsule to open it. Tap a dim pin to travel there and seal a memory.</p>
     </section>
 
     <!-- VIEW: principle graph (Obsidian-style) -->

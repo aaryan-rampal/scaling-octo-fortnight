@@ -1,140 +1,179 @@
-/* RETURN — seeded demo data.
+/* recapsule — seeded demo data, grounded in REAL photo GPS + timestamps.
  *
- * "Fake the ingestion, perfect the insight" (architecture doc). Everything here
- * stands in for real pipeline output so the frontend has a live, end-to-end loop.
- * To wire a real backend: replace SEED with a fetch() returning the same shape.
+ * Every capsule below sits at the actual coordinates its photo was taken at
+ * (read from EXIF), on the real Cal Hacks timeline (Sat Jun 20, 2026, Berkeley
+ * Southside). Place names are reverse-geocoded (Nominatim). The iMessage /
+ * Spotify cues are the seeded "fake the ingestion, perfect the insight" layer.
  *
- *   places  → rich AI-reconstructed memories (seeded capsules)
- *   map     → the explorable world: points of interest with x/y % coords.
- *             discovered=false → fogged (visit to unlock). capsuleId → links a capsule.
- *   moods   → valence/arousal palette (circumplex model, arch. stage 03)
+ *   places  → capsules (rich, AI-reconstructed memories)
+ *   map     → points of interest with real {lat,lng}; discovered=false → locked
+ *   moods   → valence/arousal palette (circumplex)
+ *   principles / principleEdges → the principle graph (stage 06)
  */
 const ICONS = {
-  tree: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22v-7"/><path d="M9 9a3 3 0 1 1 6 0"/><path d="M7 13a4 4 0 1 1 10 0"/><path d="M5.5 17h13"/></svg>',
-  landmark: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="22" x2="21" y2="22"/><line x1="6" y1="18" x2="6" y2="11"/><line x1="10" y1="18" x2="10" y2="11"/><line x1="14" y1="18" x2="14" y2="11"/><line x1="18" y1="18" x2="18" y2="11"/><polygon points="12 2 20 7 4 7"/></svg>',
-  mountain: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="m8 3 4 8 5-5 5 14H2L8 3z"/></svg>',
+  bed: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M2 4v16"/><path d="M2 8h18a2 2 0 0 1 2 2v10"/><path d="M2 17h20"/><path d="M6 8v9"/></svg>',
   coffee: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M17 8h1a4 4 0 1 1 0 8h-1"/><path d="M3 8h14v9a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4Z"/><line x1="6" y1="2" x2="6" y2="4"/><line x1="10" y1="2" x2="10" y2="4"/><line x1="14" y1="2" x2="14" y2="4"/></svg>',
+  stage: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M2 20h20"/><path d="M4 20V8l8-5 8 5v12"/><path d="M9 20v-6h6v6"/></svg>',
+  build: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 0 0 5.4-5.4l-2.6 2.6-2-2 2.6-2.6Z"/></svg>',
+  tower: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M9 22V8l3-5 3 5v14"/><path d="M9 12h6"/><path d="M7 22h10"/></svg>',
+  tree: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22v-7"/><path d="M9 9a3 3 0 1 1 6 0"/><path d="M7 13a4 4 0 1 1 10 0"/><path d="M5.5 17h13"/></svg>',
 };
 
 const SEED = {
   places: [
     {
-      id: "moffitt",
-      icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 7v14"/><path d="M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z"/></svg>',
-      name: "Moffitt Library",
-      place: "UC Berkeley",
-      visits: "returned 11 times",
+      id: "durant",
+      icon: ICONS.bed,
+      name: "The room on Durant",
+      place: "Durant Ave",
+      visits: "8:15 AM · where you woke up",
       sealed: true,
-      mood: { label: "depleted but driven", hue: 18 },
-      cover: "center/cover url('photos/img_2316.jpg')",
-      anchor: {
-        place: "Moffitt Library, 4th floor",
-        time: "Thu Apr 17, 2026 · 2:14 AM",
-        photo: "center/cover url('photos/img_2298.jpg')",
-      },
+      mood: { label: "quiet, bracing", hue: 32 },
+      cover: "center/cover url('photos/img_2298.jpg')",
+      anchor: { place: "Durant Ave · Southside", time: "Sat Jun 20, 2026 · 8:15 AM", photo: "center/cover url('photos/img_2298.jpg')" },
       cues: [
-        { type: "photo · EXIF", text: "Laptop, dim room. GPS pins the 4th-floor stacks.", time: "02:14 AM" },
-        { type: "imessage · Maya", text: "“i don't think i can do this”", time: "02:09 AM" },
-        { type: "spotify", text: "on repeat: Phoebe Bridgers — “Funeral” (low energy, sad-valence)", time: "02:11 AM" },
-        { type: "note", text: "“one more week.”", time: "02:30 AM" },
-        { type: "calendar", text: "CS 61B midterm — today", time: "Apr 17" },
+        { type: "photo · EXIF", text: "Curtains half-open, bed unmade. GPS: 37.8678, -122.2562.", time: "08:15 AM" },
+        { type: "spotify", text: "low volume: Clairo — “Bags” (calm, sad-valence)", time: "08:12 AM" },
+        { type: "imessage · team", text: "“we actually doing this 😅”", time: "08:05 AM" },
       ],
       storyline:
-        "The night before your midterm, you told Maya you couldn't{0}, then wrote *one more week*{1}. You stayed{2}.",
+        "The morning of, in a half-dark room on Durant{0}, you answered the team before you'd decided you were ready{1}.",
       citations: [
-        { n: 1, label: "iMessage · Maya · 2:09 AM" },
-        { n: 2, label: "note · 2:30 AM" },
-        { n: 3, label: "photo · 2:14 AM" },
+        { n: 1, label: "photo · 8:15 AM · Durant Ave" },
+        { n: 2, label: "iMessage · team · 8:05 AM" },
       ],
-      principle: "I out-wait my own panic by about a week.",
-      sealDate: "sealed Apr 17, 2026 · 2:14 AM",
-      opener: "are you still scared of it, or just used to it?",
+      principle: "I show up before I feel ready.",
+      sealDate: "sealed Jun 20, 2026 · 8:15 AM",
+      opener: "be honest — did you think we could pull it off?",
       replies: [
-        { match: ["scared", "afraid", "fear"], text: "Of course I'm scared. I just figured out the panic always lifts if I give it one more week. That's the only trick I have." },
-        { match: ["maya"], text: "I almost let her talk me out of staying. Telling her “i can't” was me trying to hear myself say it out loud." },
-        { match: ["quit", "give up", "bail", "leave"], text: "I wanted to. I wrote “one more week” instead of “I'm done.” Past me always negotiates for a week." },
-        { match: ["sleep", "tired", "2am", "late"], text: "2am, no sleep, midterm in hours. The room was so quiet I could hear myself deciding." },
-        { match: ["worth", "regret", "glad"], text: "Ask me when grades are out. Right now “worth it” isn't the question — staying is." },
+        { match: ["ready", "scared", "nervous"], text: "Not even close to ready. I said yes anyway and figured the readiness would catch up." },
+        { match: ["sleep", "tired"], text: "Barely slept. The room was too quiet and my head was too loud." },
+        { match: ["team", "win", "pull"], text: "I didn't know if we'd pull it off. I knew I'd rather try with them than not." },
       ],
-      fallback: "I only know what I knew that night. Ask me about the midterm, Maya, or why I didn't quit.",
-      reflection: "You out-waited the panic again. What's one thing you'd want to carry into the next hard week?",
+      fallback: "It's 8am and I haven't had coffee. Ask me about the team, the nerves, or the no-sleep.",
+      reflection: "You showed up unsure and started anyway. What's the next thing you're not-ready-for?",
     },
     {
-      id: "marina",
-      icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M2 6c.6.5 1.2 1 2.5 1C7 7 7 5 9.5 5c2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1"/><path d="M2 12c.6.5 1.2 1 2.5 1 2.5 0 2.5-2 5-2 2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1"/><path d="M2 18c.6.5 1.2 1 2.5 1 2.5 0 2.5-2 5-2 2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1"/></svg>',
-      name: "Berkeley Marina",
-      place: "south path",
-      visits: "returned 6 times",
+      id: "telegraph",
+      icon: ICONS.coffee,
+      name: "Quargo Coffee",
+      place: "Telegraph Ave",
+      visits: "8:53 AM · before the doors",
       sealed: false,
-      mood: { label: "wistful, searching", hue: 205 },
+      mood: { label: "caffeine optimism", hue: 45 },
       cover: "center/cover url('photos/img_2303.jpg')",
-      anchor: {
-        place: "Berkeley Marina, south path",
-        time: "Sun Feb 9, 2026 · 6:48 PM",
-        photo: "center/cover url('photos/img_2303.jpg')",
-      },
+      anchor: { place: "Telegraph Ave · Southside", time: "Sat Jun 20, 2026 · 8:53 AM", photo: "center/cover url('photos/img_2303.jpg')" },
       cues: [
-        { type: "photo · EXIF", text: "Sunset over the bay, alone.", time: "06:48 PM" },
-        { type: "spotify", text: "playing: Bon Iver — “Holocene” (mid-arousal, melancholic)", time: "06:49 PM" },
-        { type: "voice note", text: "“maybe i took the internship for the wrong reason.” (low, slow)", time: "06:51 PM" },
-        { type: "imessage · Dad", text: "“proud of you kiddo”", time: "05:30 PM" },
+        { type: "photo · EXIF", text: "Empty Telegraph, fog not burned off yet. 37.8679, -122.2590.", time: "08:53 AM" },
+        { type: "spotify", text: "playing: Still Woozy — “Goodie Bag” (bright, mid-arousal)", time: "08:55 AM" },
+        { type: "imessage · Nisa", text: "“matcha first, obviously”", time: "08:48 AM" },
       ],
       storyline:
-        "You came to the water alone after Dad said he was proud{0}, and said out loud the thing you couldn't text back{1}: maybe it was the wrong reason.",
-      citations: [
-        { n: 1, label: "iMessage · Dad · 5:30 PM" },
-        { n: 2, label: "voice note · 6:51 PM" },
-      ],
-      principle: "I go to the water to say the things I can't say to people.",
-      sealDate: "sealed Feb 9, 2026 · 6:48 PM",
-      opener: "did you ever tell him what you really thought?",
+        "You walked a quiet Telegraph for coffee{0} — the last calm before twenty-four hours of noise.",
+      citations: [{ n: 1, label: "photo · 8:53 AM · Telegraph Ave" }],
+      principle: "Caffeine is my courage.",
+      sealDate: "sealed Jun 20, 2026 · 8:53 AM",
+      opener: "what were you most looking forward to?",
       replies: [
-        { match: ["dad", "father", "him"], text: "No. “Proud of you” landed wrong and I couldn't explain why without sounding ungrateful." },
-        { match: ["internship", "job", "work", "reason"], text: "I think I took it to make someone else's face do that. The water made that obvious." },
-        { match: ["wrong", "regret", "mistake"], text: "Not wrong exactly. Wrong reason. There's a difference I was just starting to feel." },
+        { match: ["matcha", "coffee", "drink"], text: "Matcha, then coffee, then probably more coffee. Fuel for the whole thing." },
+        { match: ["nervous", "scared", "ready"], text: "Less nervous with a warm cup in my hand. That's the trick." },
       ],
-      fallback: "That evening I was mostly quiet. Ask me about Dad, the internship, or the wrong reason.",
-      reflection: "You named the wrong reason out loud. What would a right reason look like, going forward?",
+      fallback: "Quiet street, warm cup. Ask me about the morning or the matcha run.",
+      reflection: "The calm before counted too. What small ritual do you want to keep for next time?",
+    },
+    {
+      id: "ceremony",
+      icon: ICONS.stage,
+      name: "Opening ceremony",
+      place: "South Drive",
+      visits: "10:10 AM · lights down",
+      sealed: false,
+      mood: { label: "small in a big room", hue: 265 },
+      cover: "center/cover url('photos/img_2316.jpg')",
+      anchor: { place: "South Drive · UC Berkeley", time: "Sat Jun 20, 2026 · 10:10 AM", photo: "center/cover url('photos/img_2311.jpg')" },
+      cues: [
+        { type: "photo · EXIF", text: "Dark auditorium, “AI 2026” on the screen. 37.8710, -122.2592.", time: "10:10 AM" },
+        { type: "slide", text: "“$11.7M raised” — YC, AMD, Hugging Face on the wall", time: "10:18 AM" },
+        { type: "imessage · Derek", text: "“where are you sitting”", time: "10:06 AM" },
+      ],
+      storyline:
+        "In the dark before any code{0}, you watched the sponsors' numbers climb{1} and let yourself believe the weekend mattered.",
+      citations: [
+        { n: 1, label: "photo · 10:10 AM · auditorium" },
+        { n: 2, label: "slide · 10:18 AM" },
+      ],
+      principle: "I dream bigger than I let on.",
+      sealDate: "sealed Jun 20, 2026 · 10:10 AM",
+      opener: "did the big numbers scare you or excite you?",
+      replies: [
+        { match: ["scare", "small", "nervous"], text: "Both. The room was huge and I felt tiny, and somehow that made me want it more." },
+        { match: ["dream", "win", "believe"], text: "For a second in the dark I let myself believe we'd make something real." },
+      ],
+      fallback: "Lights are down, screen's glowing. Ask me what I was feeling in that seat.",
+      reflection: "You let yourself want it. What would 'it mattered' look like a month from now?",
+    },
+    {
+      id: "venue",
+      icon: ICONS.build,
+      name: "The build",
+      place: "Bancroft Way",
+      visits: "1:53 PM · heads down",
+      sealed: true,
+      mood: { label: "wired, alive", hue: 12 },
+      cover: "center/cover url('photos/img_2334.jpg')",
+      anchor: { place: "Bancroft Way · the venue lawn", time: "Sat Jun 20, 2026 · 1:53 PM", photo: "center/cover url('photos/img_2334.jpg')" },
+      cues: [
+        { type: "photo · EXIF", text: "Tent full of laptops; a llama on the lawn outside. 37.8692, -122.2595.", time: "01:53 PM" },
+        { type: "spotify", text: "on repeat: Charli xcx — “365” (high energy)", time: "02:10 PM" },
+        { type: "imessage · team", text: "“there are ROBOTS outside”", time: "03:31 PM" },
+      ],
+      storyline:
+        "Somewhere between the llama and the robots{0}, the four of you stopped planning and started building{1}.",
+      citations: [
+        { n: 1, label: "photo · 1:53 PM · Bancroft lawn" },
+        { n: 2, label: "iMessage · team · 3:31 PM" },
+      ],
+      principle: "I find my people by making things with them.",
+      sealDate: "sealed Jun 20, 2026 · 1:53 PM",
+      opener: "when did it start to feel real?",
+      replies: [
+        { match: ["real", "start", "build"], text: "When we stopped arguing about the plan and someone just opened a laptop. Then it was real." },
+        { match: ["team", "people", "four"], text: "Four people, one table. I find people by building next to them." },
+        { match: ["robot", "llama", "tired"], text: "There was a llama. There were robots. There was no sleep. Best kind of day." },
+      ],
+      fallback: "Heads-down at the venue. Ask me about the team, the build, or the robots.",
+      reflection: "You found your people by making something. Who do you want to build with next?",
     },
   ],
 
-  // the explorable world — % coordinates within the map
+  // the explorable world — REAL lat/lng from photo EXIF + two locked campus spots
   map: [
-    { id: "marina",     name: "Berkeley Marina", x: 19, y: 78, discovered: true,  capsuleId: "marina" },
-    { id: "moffitt",    name: "Moffitt Library", x: 38, y: 50, discovered: true,  capsuleId: "moffitt" },
-    { id: "glade",      name: "Memorial Glade",  x: 66, y: 38, discovered: true,  icon: ICONS.tree },
-    { id: "campanile",  name: "The Campanile",   x: 60, y: 64, discovered: true,  icon: ICONS.landmark },
-    { id: "indianrock", name: "Indian Rock",     x: 82, y: 18, discovered: false, icon: ICONS.mountain },
-    { id: "gourmet",    name: "Gourmet Ghetto",  x: 24, y: 24, discovered: false, icon: ICONS.coffee },
+    { id: "durant",    name: "The room on Durant", lat: 37.867839, lng: -122.256194, discovered: true, capsuleId: "durant" },
+    { id: "telegraph", name: "Quargo Coffee",      lat: 37.867930, lng: -122.259000, discovered: true, capsuleId: "telegraph" },
+    { id: "ceremony",  name: "Opening ceremony",   lat: 37.871050, lng: -122.259220, discovered: true, capsuleId: "ceremony" },
+    { id: "venue",     name: "The build",          lat: 37.869200, lng: -122.259500, discovered: true, capsuleId: "venue" },
+    { id: "campanile", name: "Sather Tower",       lat: 37.872090, lng: -122.257860, discovered: false, icon: ICONS.tower },
+    { id: "glade",     name: "Memorial Glade",     lat: 37.873550, lng: -122.258880, discovered: false, icon: ICONS.tree },
   ],
 
-  // mood palette for sealing a new capsule (valence/arousal)
   moods: [
-    { label: "calm",    hue: 158 },
-    { label: "hopeful", hue: 45 },
-    { label: "proud",   hue: 32 },
-    { label: "wistful", hue: 205 },
-    { label: "heavy",   hue: 255 },
-    { label: "anxious", hue: 8 },
+    { label: "calm", hue: 158 }, { label: "hopeful", hue: 45 }, { label: "proud", hue: 32 },
+    { label: "wistful", hue: 205 }, { label: "heavy", hue: 255 }, { label: "wired", hue: 12 },
   ],
-
-  // cover gradients to choose from when sealing a capsule
   covers: [
-    "linear-gradient(150deg,#3a2c1f 0%,#6b4a2c 55%,#c8743c 120%)",
-    "linear-gradient(150deg,#1f2a33 0%,#37505e 55%,#c8743c 135%)",
-    "linear-gradient(150deg,#2a2140 0%,#4a3a5e 55%,#cf7f86 130%)",
-    "linear-gradient(150deg,#1f3329 0%,#3a5e4a 55%,#e8c188 135%)",
+    "center/cover url('photos/img_2334.jpg')",
+    "center/cover url('photos/img_2316.jpg')",
+    "center/cover url('photos/img_2303.jpg')",
+    "center/cover url('photos/img_2333.jpg')",
   ],
 
-  // principle graph (architecture stage 06): principle nodes, the capsules that
-  // formed them, and typed alignment/contradiction edges between principles.
   principles: [
-    { id: "p1", label: "Out-wait the panic", text: "I out-wait my own panic by about a week.", capsules: ["moffitt"] },
-    { id: "p2", label: "Say it only alone", text: "I say the hard things only when I'm alone.", capsules: ["marina"] },
-    { id: "p3", label: "Achieve, even at a cost", text: "I chase achievement even when it costs me peace.", capsules: ["moffitt", "marina"] },
+    { id: "p1", label: "Show up before you're ready", text: "I show up before I feel ready.", capsules: ["durant", "ceremony"] },
+    { id: "p2", label: "Make things to find people", text: "I find my people by making things with them.", capsules: ["venue", "telegraph"] },
+    { id: "p3", label: "Dream bigger than I admit", text: "I dream bigger than I let on.", capsules: ["ceremony", "durant"] },
   ],
   principleEdges: [
-    { a: "p1", b: "p3", type: "align" },      // out-waiting panic serves achievement
-    { a: "p2", b: "p3", type: "contradict" }, // needing solitude vs. always pushing
+    { a: "p1", b: "p3", type: "align" },
+    { a: "p2", b: "p3", type: "contradict" },
   ],
 };

@@ -781,3 +781,70 @@ body {
 @keyframes floaty { from { transform: translate(-50%, -50%); } to { transform: translate(-50%, calc(-50% - 6px)); } }
 
 @media (prefers-reduced-motion: reduce) { .gnode { animation: none; } }
+
+/* =========================================================================
+   LIVE SATELLITE MAP (MapLibre) — custom markers
+   ========================================================================= */
+#map { position: relative; }
+#map .maplibregl-canvas { border-radius: inherit; }
+.maplibregl-ctrl-attrib { font-size: 8px !important; background: rgba(10,8,6,.5) !important; border-radius: 6px 0 0 0 !important; }
+.maplibregl-ctrl-attrib a { color: rgba(255,255,255,.6) !important; }
+
+.mk {
+  position: relative; background: none; border: none; cursor: pointer; padding: 0;
+  display: grid; place-items: center;
+}
+.mk-dot {
+  position: relative; display: grid; place-items: center;
+  border-radius: 50%; transition: transform .18s var(--easing), box-shadow .25s;
+  background-size: cover; background-position: center;
+}
+.mk:hover .mk-dot { transform: scale(1.08); }
+.mk:active .mk-dot { transform: scale(.96); }
+.mk-dot svg { width: 16px; height: 16px; }
+.mk-label {
+  position: absolute; top: calc(100% + 4px); left: 50%; transform: translateX(-50%);
+  white-space: nowrap; font-size: 10px; font-weight: 500;
+  color: #fff; text-shadow: 0 1px 4px #000, 0 0 8px rgba(0,0,0,.8); letter-spacing: .2px;
+}
+
+/* capsule marker (real memory) */
+.mk.cap .mk-dot {
+  width: 40px; height: 40px;
+  box-shadow: 0 0 0 2px rgba(232,193,136,.85), 0 0 18px rgba(232,145,80,.85), 0 4px 12px rgba(0,0,0,.6);
+}
+.mk.cap .mk-dot::after {
+  content: ""; position: absolute; inset: -6px; border-radius: 50%;
+  border: 1.5px solid rgba(232,193,136,.6); animation: ping 2.6s var(--easing) infinite;
+}
+.mk.cap.sealed .mk-dot { filter: saturate(.9) brightness(.92); }
+.mk-lock {
+  position: absolute; top: -4px; right: -4px; width: 18px; height: 18px; border-radius: 50%;
+  background: #1a140e; border: 1px solid var(--hairline); display: grid; place-items: center; color: var(--gold);
+}
+.mk-lock svg { width: 10px; height: 10px; }
+
+/* locked / fogged marker */
+.mk.fog .mk-dot {
+  width: 30px; height: 30px; color: rgba(255,255,255,.7);
+  background: rgba(20,16,12,.55); border: 1.5px solid rgba(255,255,255,.35);
+  backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px);
+  box-shadow: 0 2px 10px rgba(0,0,0,.6);
+}
+.mk.fog .mk-label { color: rgba(255,255,255,.6); }
+
+/* discovered, empty (seal here) */
+.mk.empty .mk-dot {
+  width: 34px; height: 34px; color: var(--gold);
+  background: rgba(28,22,16,.55); border: 1.5px dashed rgba(232,193,136,.7);
+  backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px);
+}
+
+.mk.highlight .mk-dot {
+  box-shadow: 0 0 0 3px rgba(232,193,136,.7), 0 0 30px 10px rgba(232,193,136,.8) !important;
+  animation: hipulse 1s var(--easing) infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mk.cap .mk-dot::after, .mk.highlight .mk-dot { animation: none; }
+}
