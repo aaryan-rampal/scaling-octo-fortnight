@@ -29,6 +29,37 @@ const ICON = {
 const escapeHTML = (s) => s.replace(/[&<>"']/g, (c) =>
   ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
+// --- sound (synthesized, no asset files; runs on user gesture) ---
+const SoundFX = (() => {
+  let ctx;
+  const ac = () => {
+    if (!ctx) { const C = window.AudioContext || window.webkitAudioContext; if (C) ctx = new C(); }
+    if (ctx && ctx.state === "suspended") ctx.resume();
+    return ctx;
+  };
+  const tone = (freq, t0, dur, type = "sine", gain = 0.18) => {
+    const c = ac(); if (!c) return;
+    const o = c.createOscillator(), g = c.createGain();
+    o.type = type; o.frequency.value = freq; o.connect(g); g.connect(c.destination);
+    const t = c.currentTime + t0;
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(gain, t + 0.02);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.start(t); o.stop(t + dur + 0.03);
+  };
+  return {
+    discover() { try { tone(392, 0, .12, "triangle", .16); tone(587, .09, .2, "triangle", .14); } catch {} },
+    dig() { try { tone(120, 0, .14, "sine", .28); tone(90, .13, .16, "sine", .22); tone(150, .26, .1, "sine", .15); } catch {} },
+    unlock() { try { tone(523, 0, .1, "sine", .16); tone(659, .08, .1, "sine", .16); tone(784, .16, .22, "sine", .18); } catch {} },
+    open() { try { tone(659, 0, .2, "sine", .2); tone(988, .1, .3, "sine", .17); tone(1319, .22, .45, "sine", .12); } catch {} },
+    shimmer() { try { tone(880, 0, .28, "sine", .12); tone(1175, .07, .32, "sine", .1); tone(1568, .15, .3, "sine", .07); } catch {} },
+  };
+})();
+
+// pins highlighted by a principle "trace"
+const highlight = new Set();
+let highlightTimer;
+
 // --- view routing ---
 const views = {
   map: document.getElementById("view-map"),
@@ -97,6 +128,7 @@ function renderMap() {
     }
     btn.innerHTML = `<span class="pin-marker">${inner}</span><span class="pin-label">${label}</span>`;
     if (poi._justRevealed) { btn.classList.add("just-revealed"); delete poi._justRevealed; }
+    if (highlight.has(poi.id)) btn.classList.add("highlight");
 
     btn.addEventListener("click", () => onPoiClick(poi));
     btn.addEventListener("keydown", (e) => {
@@ -125,6 +157,7 @@ function onPoiClick(poi) {
 function visit(poi) {
   discovered.add(poi.id);
   poi._justRevealed = true;
+  SoundFX.discover();
   renderMap();
   toast(poi.capsuleId ? `Back at ${poi.name}` : `Discovered ${poi.name} — seal a memory here`);
 }
@@ -221,17 +254,54 @@ function renderPlaces() {
   });
 }
 
-// open a capsule — unlock if sealed, then reconstruct (seeded) or reveal (created)
+// open a capsule — big unearth/open animation (~80% screen) + sound, then the
+// same reveal page you'd see right after finishing/sealing it.
 function openCapsule(cap) {
-  if (isLocked(cap)) {
+  const wasLocked = isLocked(cap);
+  if (wasLocked) {
     unlocked.add(cap.id);
     renderMap();
     renderPlaces();
-    toast("Welcome back. Capsule unlocked.");
   }
   active = cap;
-  if (cap.cues && cap.cues.length) openPlace(cap.id);
-  else reveal();
+  const proceed = () => { if (cap.cues && cap.cues.length) openPlace(cap.id); else reveal(); };
+  openingSequence(wasLocked, proceed);
+}
+
+// the big capsule graphic + dig/open sound, then the page
+function openingSequence(wasLocked, after) {
+  const ov = document.getElementById("opening");
+  document.getElementById("opening-text").textContent = wasLocked ? "unearthing…" : "opening…";
+
+  if (reduceMotion) { SoundFX.open(); after(); return; }
+
+  ov.classList.add("show");
+  // restart the CSS animations
+  ov.querySelectorAll(".opening-cap-icon, .opening-glow, .dust").forEach((el) => {
+    el.style.animation = "none"; void el.offsetWidth; el.style.animation = "";
+  });
+  if (wasLocked) { SoundFX.dig(); setTimeout(() => SoundFX.unlock(), 360); setTimeout(() => SoundFX.open(), 760); }
+  else { SoundFX.dig(); setTimeout(() => SoundFX.open(), 380); }
+
+  setTimeout(() => { ov.classList.remove("show"); after(); }, 1250);
+}
+
+// principle → light up the capsule(s) it was formed from, on the map
+function tracePrinciple(cap) {
+  const ids = SEED.map
+    .filter((poi) => poi.capsuleId && getPlace(poi.capsuleId) &&
+      getPlace(poi.capsuleId).principle === cap.principle)
+    .map((poi) => poi.id);
+  if (!ids.length && cap.mapId) ids.push(cap.mapId);
+  highlight.clear();
+  ids.forEach((id) => highlight.add(id));
+  switchTab("map");
+  renderMap();
+  SoundFX.shimmer();
+  const names = SEED.map.filter((p) => ids.includes(p.id)).map((p) => p.name).join(", ");
+  toast(`This principle was formed at: ${names || cap.name}`);
+  clearTimeout(highlightTimer);
+  highlightTimer = setTimeout(() => { highlight.clear(); renderMap(); }, 4000);
 }
 
 // --- reconstruct-before-reveal (seeded memories) ---
@@ -297,9 +367,16 @@ function reveal() {
 
   const prinEl = document.getElementById("principle");
   if (active.principle) {
+    const cap = active;
     prinEl.style.display = "";
-    prinEl.innerHTML = `<span class="plabel">Principle</span><span class="ptext">“${active.principle}”</span>`;
-  } else prinEl.style.display = "none";
+    prinEl.classList.add("clickable");
+    prinEl.innerHTML = `<span class="plabel">Principle</span><span class="ptext">“${active.principle}”</span><span class="ptrace">tap to light up where this came from →</span>`;
+    prinEl.onclick = () => tracePrinciple(cap);
+  } else {
+    prinEl.style.display = "none";
+    prinEl.classList.remove("clickable");
+    prinEl.onclick = null;
+  }
 
   // forward-looking reflection — never "go back to how it was" (wellbeing guardrail)
   document.getElementById("reflection").innerHTML =

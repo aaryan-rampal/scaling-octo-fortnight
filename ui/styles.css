@@ -649,3 +649,72 @@ body {
   outline: 2px solid var(--accent-soft); outline-offset: 3px;
 }
 
+
+/* =========================================================================
+   OPEN-A-CAPSULE: big unearth/open animation (~80% screen) → reveal page,
+   principle → map highlight. Game-feel per Cinema Mobile (easing, glow).
+   ========================================================================= */
+.opening {
+  position: absolute; inset: 0; z-index: 80;
+  display: none; flex-direction: column; align-items: center; justify-content: center;
+  gap: 22px;
+  background: radial-gradient(circle at 50% 42%, rgba(46,34,22,.92), rgba(10,8,6,.97));
+  backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+}
+.opening.show { display: flex; animation: fade .25s var(--easing); }
+
+.opening-stage {
+  position: relative;
+  width: min(80%, 320px); aspect-ratio: 1;
+  display: grid; place-items: center;
+}
+.opening-glow {
+  position: absolute; width: 92%; height: 92%; border-radius: 50%;
+  background: radial-gradient(circle, rgba(232,193,136,.5) 0%, rgba(232,145,80,.18) 45%, transparent 68%);
+  animation: glowpulse 1.25s var(--easing);
+}
+@keyframes glowpulse { 0% { transform: scale(.25); opacity: 0; } 55% { opacity: 1; } 100% { transform: scale(1.55); opacity: 0; } }
+.opening-cap-icon { color: var(--gold); position: relative; z-index: 2; animation: unearth 1.15s var(--easing); }
+.opening-cap-icon svg {
+  width: min(58vw, 210px); height: auto;
+  filter: drop-shadow(0 14px 34px rgba(232,145,80,.65));
+}
+@keyframes unearth {
+  0%   { transform: translateY(60px) scale(.5) rotate(-10deg); opacity: 0; }
+  45%  { transform: translateY(-10px) scale(1.1) rotate(4deg); opacity: 1; }
+  70%  { transform: translateY(2px) scale(.98) rotate(-2deg); }
+  100% { transform: translateY(0) scale(1) rotate(0); }
+}
+.dust {
+  position: absolute; bottom: 24%; width: 8px; height: 8px; border-radius: 50%;
+  background: rgba(206,176,126,.85); animation: dust 1.05s var(--easing) forwards;
+}
+.dust.d1 { left: 38%; } .dust.d2 { left: 52%; animation-delay: .05s; }
+.dust.d3 { left: 46%; animation-delay: .1s; } .dust.d4 { left: 60%; animation-delay: .07s; }
+@keyframes dust {
+  0% { transform: translateY(0) scale(1); opacity: .9; }
+  100% { transform: translateY(-90px) translateX(16px) scale(0); opacity: 0; }
+}
+.opening-text {
+  font-family: var(--mono); font-size: 11px; letter-spacing: 2.5px;
+  text-transform: uppercase; color: var(--gold);
+  animation: textpulse 1.2s var(--easing) infinite;
+}
+@keyframes textpulse { 0%,100% { opacity: .55; } 50% { opacity: 1; } }
+
+/* principle → "tap to trace" + map highlight */
+.principle.clickable { cursor: pointer; }
+.principle.clickable:hover .ptext { color: var(--accent-soft); }
+.principle .ptrace {
+  display: block; margin-top: 6px;
+  font-family: var(--mono); font-size: 9px; letter-spacing: .5px; color: var(--ink-faint);
+}
+.pin.highlight .pin-marker {
+  box-shadow: 0 0 0 4px rgba(232,193,136,.55), 0 0 34px 12px rgba(232,193,136,.75) !important;
+  animation: hipulse 1s var(--easing) infinite;
+}
+@keyframes hipulse { 0%,100% { transform: scale(1); } 50% { transform: scale(1.13); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .opening-cap-icon, .opening-glow, .dust, .opening-text, .pin.highlight .pin-marker { animation: none !important; }
+}
