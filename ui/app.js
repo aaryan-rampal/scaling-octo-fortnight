@@ -444,8 +444,18 @@ function openPlace(id) {
     <div class="ctext">${c.text}</div>
     <div class="ctime">${c.time}</div>`;
 
+  // replace the seeded Spotify cue with the REAL track playing then (YT history)
+  const st = soundtrackFor(active);
+  const cues = (active.cues || []).map((c) => {
+    if (st && /spotify/i.test(c.type)) {
+      const [h, m] = st.now.t.split(":"); const hr = +h % 12 || 12; const ap = +h < 12 ? "AM" : "PM";
+      return { type: "youtube music", text: `“${st.now.track}” — ${st.now.artist}`, time: `${hr}:${m} ${ap}` };
+    }
+    return c;
+  });
+
   if (reduceMotion) {
-    active.cues.forEach((c) => {
+    cues.forEach((c) => {
       const el = document.createElement("div");
       el.className = "cue"; el.style.opacity = "1";
       el.innerHTML = cueHTML(c);
@@ -454,13 +464,13 @@ function openPlace(id) {
     revealBtn.classList.remove("hidden");
     return;
   }
-  active.cues.forEach((c, i) => {
+  cues.forEach((c, i) => {
     setTimeout(() => {
       const el = document.createElement("div");
       el.className = "cue";
       el.innerHTML = cueHTML(c);
       feed.appendChild(el);
-      if (i === active.cues.length - 1) setTimeout(() => revealBtn.classList.remove("hidden"), 400);
+      if (i === cues.length - 1) setTimeout(() => revealBtn.classList.remove("hidden"), 400);
     }, 650 * (i + 1));
   });
 }
