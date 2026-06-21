@@ -12,6 +12,13 @@ dist/
 data/
 *.jsonl
 .hindsight*
+runs/
+
+# ...except the shared enrichment caches: artist->vibe and image->vision are
+# non-personal (the same for everyone) and expensive to recompute, so we track
+# them. A teammate's checkout reuses these instead of re-paying OpenRouter.
+!data/artist_vibes.json
+!data/photo_vision_cache.json
 
 # caches
 __pycache__/

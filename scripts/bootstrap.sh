@@ -19,7 +19,14 @@
 
 set -euo pipefail
 
-DAYS="${DAYS:-7}"
+# Ingest reach (days). 90 gives the temporal sampler real history to span; the
+# quota keeps retain cost ~30-days-worth regardless. Override with DAYS=.
+DAYS="${DAYS:-90}"
+# Spotify enrichment is the one slow-on-cache-miss source; cap its window so a
+# fresh teammate isn't paying for a 90-day artist tail. Override with SPOTIFY_DAYS=.
+SPOTIFY_DAYS="${SPOTIFY_DAYS:-30}"
+# Quota K: units kept per weekly bucket by the temporal-spread sampler.
+QUOTA="${QUOTA:-9}"
 DOPPLER="doppler run --project berkeley-hackathon --config dev --"
 PY=".venv/bin/python"
 DRY_RUN=""
@@ -62,22 +69,24 @@ fi
   && echo "  Claude: export present" \
   || echo "  Claude: no export in data/claude_export (optional)"
 
-# --- 3. build the unified events DB (enrich only the slice you'll retain) -----
-log "Building data/recall.db (enriching the last $DAYS days — LIVE)"
+# --- 3. build the unified events DB (per-source ingest windows) --------------
+log "Building data/recall.db (ingesting last ${DAYS}d, spotify ${SPOTIFY_DAYS}d — LIVE)"
 $DOPPLER env PYTHONPATH=src "$PY" scripts/build_all_sources_db.py \
-  --fresh --enrich-days "$DAYS" 2>&1 | tee /tmp/bootstrap_build.log
+  --fresh --days "$DAYS" --spotify-days "$SPOTIFY_DAYS" 2>&1 | tee /tmp/bootstrap_build.log
 grep -q "Done. Unified store" /tmp/bootstrap_build.log \
   || die "Build did not finish cleanly — see /tmp/bootstrap_build.log"
 
 if [[ -n "$DRY_RUN" ]]; then
-  log "Dry-run: counting how many units the $DAYS-day slice would retain (no paid calls)"
-  PYTHONPATH=src "$PY" - "$DAYS" <<'PY'
+  log "Dry-run: counting how many units the quota sampler would retain (no paid calls)"
+  PYTHONPATH=src "$PY" - "$QUOTA" <<'PY'
 import sys
 from collections import Counter
 from datetime import timedelta
-from pipeline.segment import segment_recent
+from pipeline.segment import segment_windowed_quota
 
-units = segment_recent(window=timedelta(days=int(sys.argv[1])))
+units = segment_windowed_quota(
+    span=timedelta(days=90), interval=timedelta(days=7), per_interval=int(sys.argv[1])
+)
 print(f"  would retain {len(units)} units (= LLM calls); by source: "
       f"{dict(Counter(u.source for u in units))}")
 PY
@@ -85,9 +94,12 @@ PY
   exit 0
 fi
 
-# --- 4. retain the last N days into Hindsight (LIVE, ~70 units for 7 days) ----
-log "Retaining the last $DAYS days into Hindsight bank slice-7d (LIVE — this takes a few minutes)"
-$DOPPLER env PYTHONPATH=src "$PY" scripts/retain_slice.py --days "$DAYS" \
+# --- 4. retain via the temporal-spread sampler (LIVE) ------------------------
+# The quota sampler reaches 90 days back but keeps only ~K units per week, so
+# retain cost stays ~30-days-worth while principles draw on real history.
+log "Retaining into Hindsight bank slice-7d (quota sampler, K=$QUOTA — LIVE, a few minutes)"
+$DOPPLER env PYTHONPATH=src "$PY" scripts/retain_slice.py \
+  --quota "$QUOTA" --span-days 90 --interval-days 7 --min-imessage-msgs 20 \
   2>&1 | tee /tmp/bootstrap_retain.log
 grep -q "into bank" /tmp/bootstrap_retain.log \
   || die "Retain did not finish — see /tmp/bootstrap_retain.log"
@@ -98,18 +110,39 @@ $DOPPLER env PYTHONPATH=src "$PY" scripts/mint_principles.py \
   2>&1 | tee /tmp/bootstrap_mint.log
 grep -q "done:" /tmp/bootstrap_mint.log || die "Mint did not finish — see /tmp/bootstrap_mint.log"
 
-# --- 6. show them (the fact-check) -------------------------------------------
-log "Your principles (fact-check these against yourself):"
+# --- 6. link: merge near-dupes + typed edges -> recall.db principle layer -----
+log "Linking principles (merge near-dupes + grounded edges) — writes recall.db"
+$DOPPLER env PYTHONPATH=src "$PY" scripts/link_principles.py \
+  2>&1 | tee /tmp/bootstrap_link.log
+grep -q "edges" /tmp/bootstrap_link.log || die "Link did not finish — see /tmp/bootstrap_link.log"
+
+# --- 7. dump: materialise the memory layer + raw provenance -> recall.db ------
+# --days 0 re-segments the whole DB (a superset of the sampled units), so every
+# retained memory resolves its raw events; dangling units simply go unmatched.
+log "Materialising the memory->raw provenance into recall.db"
+$DOPPLER env PYTHONPATH=src "$PY" scripts/dump_bank.py --days 0 \
+  2>&1 | tee /tmp/bootstrap_dump.log
+grep -q "memory records into" /tmp/bootstrap_dump.log \
+  || die "Dump did not finish — see /tmp/bootstrap_dump.log"
+
+# --- 8. show + verify the traceable recall.db (the fact-check) ----------------
+log "Your principles, now traceable to raw data in recall.db:"
 PYTHONPATH=src "$PY" - <<'PY'
-import json
-from pathlib import Path
-p = Path("data/principles.json")
-ps = json.loads(p.read_text()) if p.exists() else []
-print(f"\n  {len(ps)} principles → {p}\n")
-for x in sorted(ps, key=lambda x: -x["confidence"]):
-    print(f"  [{x['confidence']:.2f}] {x['text']}")
-print("\n  Each cites >=2 of your memories (derived_from). Trace any one with:")
-print("    PYTHONPATH=src .venv/bin/python scripts/show_bank.py --trace")
+import sqlite3
+c = sqlite3.connect("data/recall.db")
+n = lambda t: c.execute(f"select count(*) from {t}").fetchone()[0]
+print(f"\n  {n('principles')} principles · {n('edges')} edges · "
+      f"{n('memories')} memories · {n('events')} raw events\n")
+for text, conf in c.execute(
+    "select text, confidence from principles order by confidence desc"
+):
+    print(f"  [{conf:.2f}] {text}")
+reach = c.execute(
+    "select count(distinct pm.principle_id) from principle_memories pm "
+    "join memory_events me on me.memory_id = pm.memory_id"
+).fetchone()[0]
+print(f"\n  {reach}/{n('principles')} principles trace to >=1 raw event. "
+      "Walk any one: principle -> principle_memories -> memory_events -> events.")
 PY
 
-log "Done. Do these describe you? That's the fact-check."
+log "Done. Principles minted, linked, and traceable to your raw data in recall.db."
