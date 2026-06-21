@@ -45,6 +45,13 @@ _HOST = "127.0.0.1"
 _STARTUP_TIMEOUT_S = 120.0
 _SHUTDOWN_TIMEOUT_S = 30.0
 
+#: Per-request HTTP timeout for the client (seconds). The client default is
+#: 300s, but a batched ``retain_batch`` of ~25 units extracts hundreds of facts
+#: server-side and routinely exceeds 300s — the client would abort with an empty
+#: ``TimeoutError`` while the server kept working, losing the whole chunk. 1800s
+#: (30 min) comfortably covers a full chunk without masking a genuine hang.
+_REQUEST_TIMEOUT_S = 1800.0
+
 
 def _pick_free_port() -> int:
     """Bind to an ephemeral port and return it for uvicorn to reuse."""
@@ -155,7 +162,7 @@ def embedded_hindsight(
     client: Hindsight | None = None
     try:
         _wait_until_ready(base_url, _STARTUP_TIMEOUT_S)
-        client = Hindsight(base_url=base_url)
+        client = Hindsight(base_url=base_url, timeout=_REQUEST_TIMEOUT_S)
         yield client
     finally:
         if client is not None:
