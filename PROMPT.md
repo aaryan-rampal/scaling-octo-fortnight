@@ -102,6 +102,19 @@ non-obvious principles, each citing ≥2 source memories. It works end to end to
   dropped causal links) — model/prompt iteration.
 - Re-retain a balanced (non-claude-skewed) bank.
 
+## Want your OWN principles? (the fact-check)
+
+Run the one-shot bootstrap — empty checkout → your own principles, built from
+YOUR data (iMessage + Photos read locally; drop Spotify/Claude exports in
+`data/` if you have them). It retains only the **last 7 days** so it's cheap/fast:
+```bash
+bash scripts/bootstrap.sh --dry-run   # set up + build + show how many units (free)
+bash scripts/bootstrap.sh             # full: build → retain 7d → mint → show your principles
+```
+Needs `uv`, `doppler` (logged in, berkeley-hackathon/dev access), and Full Disk
+Access for your terminal (to read iMessage). Then read the principles it prints
+and ask yourself: do these actually describe me? That's the fact-check.
+
 ## How to verify it works (have them run this — it's free)
 ```bash
 PYTHONPATH=src .venv/bin/python -m pytest -q          # the suite
