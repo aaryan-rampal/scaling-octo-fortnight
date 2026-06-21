@@ -2,12 +2,12 @@
 
 Source: the macOS Messages database at ``~/Library/Messages/chat.db``. Each row
 of the ``message`` table (joined to its ``chat``) is one message. The adapter
-(``adaptors/imessage.py``) reads and decodes those rows — most message bodies
+(``recall/adapters/imessage.py``) reads and decodes those rows — most message bodies
 live in an ``attributedBody`` typedstream BLOB rather than the ``text`` column —
 and validates them into :class:`IMessageRecord`.
 
 This mirrors :mod:`models.spotify`: a faithful, typed source record that knows
-how to project itself onto the canonical :class:`~recall.schema.Event` via
+how to project itself onto the canonical :class:`~core.schema.Event` via
 :meth:`IMessageRecord.to_event`, so iMessage flows through the same
 ``store.add_events`` -> ``build_episodes`` -> Hindsight ``retain`` pipeline as
 every other source.
@@ -20,7 +20,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict
 
-from recall.schema import Event
+from core.schema import Event
 
 #: Apple's Core Data epoch (2001-01-01 UTC) as seconds past the Unix epoch.
 #: Defined here (not imported from the adapter) so the model's id derivation is
@@ -73,11 +73,11 @@ class IMessageRecord(BaseModel):
     def event_id(self) -> str:
         """Deterministic id keyed on the fields that uniquely place a message.
 
-        Matches the legacy ``recall.ingest`` derivation byte-for-byte —
+        Uses the historical derivation byte-for-byte —
         ``sha256("{thread_id}|{apple_ns}|{is_from_me}|{content}")[:16]`` — so ids
-        are stable across the refactor: re-ingesting is idempotent and any
+        are stable across refactors: re-ingesting is idempotent and any
         already-stored events keep matching. The Apple-epoch nanosecond value is
-        reconstructed from ``t_utc`` to reproduce the exact legacy key.
+        reconstructed from ``t_utc`` to reproduce the exact key.
         """
         apple_ns = int((self.t_utc.timestamp() - _APPLE_EPOCH_OFFSET) * 1e9)
         is_from_me = 1 if self.is_from_me else 0
@@ -85,7 +85,7 @@ class IMessageRecord(BaseModel):
         return hashlib.sha256(key.encode("utf-8")).hexdigest()[:16]
 
     def to_event(self) -> Event:
-        """Project this message onto the canonical :class:`~recall.schema.Event`.
+        """Project this message onto the canonical :class:`~core.schema.Event`.
 
         The seam that puts iMessage on the shared provenance path: the resulting
         event carries ``raw_ref`` back to ``chat.db`` and flows through

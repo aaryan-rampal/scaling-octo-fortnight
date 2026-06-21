@@ -31,8 +31,8 @@ from poc_demo.server.capsules import (
     UnsupportedMediaError,
     build_capsule,
 )
-from recall.hindsight_runtime import embedded_hindsight
-from recall.store import CapsuleStore
+from runtime.hindsight import embedded_hindsight
+from storage.store import CapsuleStore
 
 DEFAULT_BANK = os.environ.get("RECALL_BANK", "imessage-v0")
 

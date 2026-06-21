@@ -11,7 +11,7 @@ from unittest.mock import patch
 
 import pytest
 
-from recall import cli
+import cli
 
 
 def test_ingest_dispatches_to_ingest_handler() -> None:

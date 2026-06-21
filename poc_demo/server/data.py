@@ -1,6 +1,6 @@
 """Structured memory-network data for the web UI.
 
-Reuses the exact query patterns from ``recall.show`` but returns JSON-serializable
+Reuses the exact query patterns from ``pipeline.show`` but returns JSON-serializable
 dicts instead of formatted terminal strings. These are *synchronous* functions that
 drive the Hindsight client exactly as the working CLI does; the FastAPI handler runs
 them in a worker thread (``asyncio.to_thread``) so each call gets a clean sync
@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from recall.show import (
+from pipeline.show import (
     _FACT_QUERY,
     _FACT_TOKENS,
     _FACT_TYPES,

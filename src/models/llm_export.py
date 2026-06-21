@@ -4,7 +4,7 @@ These models parse the raw export Claude produces when a user requests their
 data. The export is large, deeply nested, and carries many keys that change
 release to release (attachments, files, citations, structured tool content,
 approval metadata, ...). We deliberately split *faithful parsing* (this module)
-from *canonical mapping* (``adaptors.llm_chats``) so the parse layer stays a
+from *canonical mapping* (``adapters.llm_chats``) so the parse layer stays a
 thin, honest reflection of the file on disk.
 
 Design stance on strictness, and *why*:

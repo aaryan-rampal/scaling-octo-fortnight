@@ -26,10 +26,10 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from recall.schema import Event
+from core.schema import Event
 
 #: thread_id all Spotify plays share, so the gap-windowing in
-#: ``recall.episodes`` collapses consecutive plays into listening-session
+#: ``pipeline.episodes`` collapses consecutive plays into listening-session
 #: episodes (one timeline). Change here if we later bucket per-artist / per-day.
 SPOTIFY_THREAD_ID = "spotify:listening"
 
@@ -157,7 +157,7 @@ class SpotifyStreamRecord(BaseModel):
         return f"Played {self.display_title or 'unknown content'}"
 
     def to_event(self) -> Event:
-        """Project this play onto the canonical :class:`~recall.schema.Event`.
+        """Project this play onto the canonical :class:`~core.schema.Event`.
 
         This is the seam that puts Spotify on the same provenance path as
         iMessage: the resulting event flows through ``store.add_events`` (the

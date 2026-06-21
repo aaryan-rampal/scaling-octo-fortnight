@@ -1,11 +1,11 @@
 """Capsule write-path: turn an HTTP upload into persisted capsule + media.
 
 Keeps the FastAPI handler thin. This module owns id generation, saving uploaded
-binaries to the media root, and assembling a :class:`~recall.capsule.Capsule`
-that :class:`~recall.store.CapsuleStore` persists.
+binaries to the media root, and assembling a :class:`~core.capsule.Capsule`
+that :class:`~storage.store.CapsuleStore` persists.
 
 It deliberately stops at persistence. Converting a capsule into canonical
-:class:`~recall.schema.Event` rows and feeding Hindsight ``retain`` (and the
+:class:`~core.schema.Event` rows and feeding Hindsight ``retain`` (and the
 swarm) is the next stage and is left as a seam — see :func:`build_capsule`'s
 return and the TODO in the API layer.
 """
@@ -17,7 +17,7 @@ import mimetypes
 from datetime import UTC, datetime
 from pathlib import Path
 
-from recall.capsule import MEDIA_KINDS, Capsule, Media
+from core.capsule import MEDIA_KINDS, Capsule, Media
 
 #: Where uploaded binaries are stored, under the gitignored ``data/`` root.
 DEFAULT_MEDIA_ROOT = Path("data/media")
@@ -107,7 +107,7 @@ def build_capsule(
 
     Returns:
         A fully-populated :class:`Capsule` (not yet persisted to SQLite — the
-        caller hands it to :class:`~recall.store.CapsuleStore`).
+        caller hands it to :class:`~storage.store.CapsuleStore`).
 
     Raises:
         UnsupportedMediaError: If any upload has an unsupported type.

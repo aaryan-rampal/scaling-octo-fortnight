@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import sys
 
-from recall.hindsight_runtime import embedded_hindsight
+from runtime.hindsight import embedded_hindsight
 
 BANK = "smoke-test"
 CONTENT = "Aaryan is testing the recall pipeline"

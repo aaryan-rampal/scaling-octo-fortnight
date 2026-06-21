@@ -17,7 +17,7 @@ fastapi = pytest.importorskip("fastapi")
 from fastapi.testclient import TestClient  # noqa: E402
 
 from poc_demo.server import app as app_module  # noqa: E402
-from recall.store import CapsuleStore  # noqa: E402
+from storage.store import CapsuleStore  # noqa: E402
 
 
 @pytest.fixture

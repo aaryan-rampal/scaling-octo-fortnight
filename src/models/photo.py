@@ -2,11 +2,11 @@
 
 A ``PhotoRecord`` is the source-parse row for one photo or video drawn from the
 local ``Photos.sqlite``. Photos are not conversational, so :meth:`to_event`
-projects a record onto a canonical :class:`~recall.schema.Event` that leaves the
+projects a record onto a canonical :class:`~core.schema.Event` that leaves the
 conversational fields (``author_role`` / ``content`` / ``thread_id`` /
 ``reply_to``) empty and carries the photo-only metadata in ``additional_data``.
 This puts photos on the **same provenance path as every other source**: the
-emitted events go through ``adaptors._persist.persist_events`` into the unified
+emitted events go through ``storage.persist.persist_events`` into the unified
 ``events`` table, no source-specific storage needed.
 
 Pydantic is used (over the frozen dataclasses elsewhere) because the source rows
@@ -22,7 +22,7 @@ from typing import Literal
 
 from pydantic import BaseModel
 
-from recall.schema import Event
+from core.schema import Event
 
 #: ``source`` discriminator stamped on every photo-derived canonical event.
 PHOTO_SOURCE = "photos"
@@ -74,7 +74,7 @@ class PhotoRecord(BaseModel):
     raw_ref: str
 
     def to_event(self) -> Event:
-        """Project this photo onto the canonical :class:`~recall.schema.Event`.
+        """Project this photo onto the canonical :class:`~core.schema.Event`.
 
         The seam that puts photos on the shared provenance path. Photos are not
         conversational, so ``author_role`` / ``content`` / ``thread_id`` /

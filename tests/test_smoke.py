@@ -1,4 +1,4 @@
-def test_import_recall():
-    import recall
+def test_import_cli():
+    import cli
 
-    assert recall.__version__
+    assert cli.main
