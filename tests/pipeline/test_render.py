@@ -14,7 +14,13 @@ from typing import Any
 import pytest
 
 from core.schema import Event
-from pipeline.render import MemoryRef, render_unit, retain_unit
+from pipeline.render import (
+    MemoryRef,
+    build_batch_item,
+    render_unit,
+    retain_batch_units,
+    retain_unit,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -290,3 +296,114 @@ def test_retain_unit_blank_text_raises() -> None:
 def test_memory_ref_rejects_empty_derived_from() -> None:
     with pytest.raises(ValueError, match="non-empty list"):
         MemoryRef(document_id="u", derived_from=[])
+
+
+# --- build_batch_item: provenance + tags -----------------------------------------
+
+
+def test_build_batch_item_document_id_equals_unit_id() -> None:
+    unit = _unit("imessage", ["a", "b"])
+    item = build_batch_item(unit, "self: hey", author_role="self")
+    # Per-item document_id MUST equal unit_id — this is the provenance invariant.
+    assert item["document_id"] == "u-imessage"
+
+
+def test_build_batch_item_self_routes_to_experience() -> None:
+    item = build_batch_item(_unit("imessage", ["a"]), "self: hi", author_role="self")
+    assert "network:experience" in item["tags"]
+    assert "author:self" in item["tags"]
+
+
+def test_build_batch_item_other_routes_to_world() -> None:
+    item = build_batch_item(_unit("imessage", ["a"]), "other: hi", author_role="other")
+    assert "network:world" in item["tags"]
+    assert "author:other" in item["tags"]
+
+
+def test_build_batch_item_none_role_defaults_to_world() -> None:
+    item = build_batch_item(_unit("photos", ["p1"]), "On ..., a photo", author_role=None)
+    assert "network:world" in item["tags"]
+    assert "author:unknown" in item["tags"]
+
+
+def test_build_batch_item_includes_source_tag() -> None:
+    item = build_batch_item(_unit("spotify", ["s1"]), "On ..., listened", author_role="self")
+    assert "spotify" in item["tags"]
+
+
+def test_build_batch_item_includes_timestamp() -> None:
+    unit = _unit("imessage", ["a"])
+    item = build_batch_item(unit, "self: hi", author_role="self")
+    assert item["timestamp"] == unit.t_start.isoformat()
+
+
+def test_build_batch_item_blank_text_raises() -> None:
+    with pytest.raises(ValueError, match="non-empty rendered text"):
+        build_batch_item(_unit("imessage", ["a"]), "   ", author_role="self")
+
+
+def test_build_batch_item_content_matches_text() -> None:
+    item = build_batch_item(_unit("imessage", ["a"]), "self: hello", author_role="self")
+    assert item["content"] == "self: hello"
+
+
+# --- retain_batch_units: batch client call ----------------------------------------
+
+
+@dataclass
+class _FakeBatchClient:
+    """Records retain_batch calls instead of hitting a server."""
+
+    calls: list[dict[str, Any]] = field(default_factory=list)
+
+    def retain_batch(
+        self,
+        bank_id: str,
+        items: list[dict[str, Any]],
+        document_id: str | None = None,
+        document_tags: list[str] | None = None,
+        retain_async: bool = False,
+    ) -> None:
+        _ = document_id, document_tags, retain_async  # unused in stub
+        self.calls.append({"bank_id": bank_id, "items": list(items)})
+
+
+def test_retain_batch_units_passes_all_items() -> None:
+    client = _FakeBatchClient()
+    unit_a = _unit("imessage", ["a"])
+    unit_b = _unit("spotify", ["s1"])
+    items = [
+        build_batch_item(unit_a, "self: hey", author_role="self"),
+        build_batch_item(unit_b, "On ..., listened", author_role="self"),
+    ]
+    retain_batch_units(client, items, bank_id="test-bank")
+    assert len(client.calls) == 1
+    assert client.calls[0]["bank_id"] == "test-bank"
+    assert len(client.calls[0]["items"]) == 2
+
+
+def test_retain_batch_units_per_item_document_ids_are_distinct() -> None:
+    """Each item in the batch has its own document_id — no collapsing."""
+    client = _FakeBatchClient()
+    unit_a = _unit("imessage", ["a"])
+    # Manually construct a second unit with a different unit_id.
+    unit_b = _Unit(
+        unit_id="u-photos",
+        source="photos",
+        derived_from=["p1"],
+        t_start=_ts(14),
+        t_end=_ts(15),
+    )
+    items = [
+        build_batch_item(unit_a, "self: hey", author_role="self"),
+        build_batch_item(unit_b, "On ..., a photo", author_role=None),
+    ]
+    retain_batch_units(client, items)
+    sent = client.calls[0]["items"]
+    doc_ids = {i["document_id"] for i in sent}
+    assert doc_ids == {"u-imessage", "u-photos"}, "each unit must carry its own document_id"
+
+
+def test_retain_batch_units_empty_raises() -> None:
+    with pytest.raises(ValueError, match="at least one item"):
+        retain_batch_units(_FakeBatchClient(), [])

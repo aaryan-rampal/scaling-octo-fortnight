@@ -91,6 +91,26 @@ class RetainClient(Protocol):
         ...
 
 
+class BatchRetainClient(Protocol):
+    """Minimal client surface the batch retain wrapper needs.
+
+    The real :class:`hindsight_client.Hindsight` and test fakes satisfy this.
+    The signature mirrors ``Hindsight.retain_batch`` exactly so structural
+    subtyping passes without a cast.
+    """
+
+    def retain_batch(
+        self,
+        bank_id: str,
+        items: list[dict[str, Any]],
+        document_id: str | None = None,
+        document_tags: list[str] | None = None,
+        retain_async: bool = False,
+    ) -> Any:
+        """Store multiple memories in batch; see ``Hindsight.retain_batch``."""
+        ...
+
+
 def _fmt_time(t: datetime) -> str:
     """Render a timestamp as an ISO-8601 string for a templated fact."""
     return t.isoformat()
@@ -255,3 +275,63 @@ def retain_unit(
         tags=[unit.source, f"author:{author_role or 'unknown'}", f"network:{network}"],
     )
     return MemoryRef(document_id=unit.unit_id, derived_from=[unit.unit_id])
+
+
+def build_batch_item(
+    unit: Any,
+    text: str,
+    *,
+    author_role: str | None,
+) -> dict[str, Any]:
+    """Build one ``retain_batch`` item dict for a rendered unit.
+
+    Each item carries its own ``document_id = unit.unit_id`` so provenance is
+    preserved per unit (not collapsed onto a batch-level id). Tags and network
+    routing match what :func:`retain_unit` produces for a single call.
+
+    Args:
+        unit: The rung-① unit; ``unit_id`` and ``t_start`` are read.
+        text: Non-empty rendered text from :func:`render_unit`.
+        author_role: ``"self"``, ``"other"``, or ``None`` — drives network routing.
+
+    Returns:
+        A dict suitable for inclusion in the ``items`` list of ``retain_batch``.
+
+    Raises:
+        ValueError: If ``text`` is blank.
+    """
+    if not text.strip():
+        raise ValueError("build_batch_item requires non-empty rendered text")
+    network = _ROLE_NETWORK.get(author_role or "", "world")
+    return {
+        "content": text,
+        "timestamp": unit.t_start.isoformat(),
+        "document_id": unit.unit_id,
+        "tags": [unit.source, f"author:{author_role or 'unknown'}", f"network:{network}"],
+    }
+
+
+def retain_batch_units(
+    client: BatchRetainClient,
+    items: list[dict[str, Any]],
+    *,
+    bank_id: str = DEFAULT_BANK,
+) -> None:
+    """Retain a pre-assembled list of batch items into Hindsight.
+
+    Each item must already carry its own ``document_id`` (built by
+    :func:`build_batch_item`). No batch-level ``document_id`` is passed so the
+    orchestrator routes each item under its own document — provenance is
+    per-unit, not per-batch.
+
+    Args:
+        client: A client exposing :meth:`retain_batch`.
+        items: Non-empty list of dicts from :func:`build_batch_item`.
+        bank_id: Target Hindsight bank.
+
+    Raises:
+        ValueError: If ``items`` is empty.
+    """
+    if not items:
+        raise ValueError("retain_batch_units requires at least one item")
+    client.retain_batch(bank_id=bank_id, items=items)

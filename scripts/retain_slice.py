@@ -1,10 +1,11 @@
 """One-off: retain the 7-day slice into a Hindsight bank (rung ① → ② live).
 
 Segments the trailing 7 days of ``data/recall.db`` into units, renders each to
-text, and retains it into an embedded Hindsight bank. This is the first LIVE run
-(spends OpenRouter: gemini extraction + qwen embeddings per unit), so it supports
-``--limit`` to do a cheap small batch first and surface issues before the full
-slice.
+text, and retains them into an embedded Hindsight bank in chunks of
+:data:`CHUNK_SIZE` units per ``retain_batch`` call.  Batching eliminates the
+sequential round-trip overhead of the old per-unit loop (~7 s idle per unit)
+while each chunk boundary gives visible progress and limits the blast radius of
+a single network failure.
 
 Progress is emitted to **stderr** via loguru (auto-flushed per record, so it
 appears live even when redirected). To capture both progress and errors in a
@@ -35,12 +36,23 @@ from datetime import timedelta
 from loguru import logger
 
 from core.logging import configure_logging
-from pipeline.render import render_unit, retain_unit
+from pipeline.render import build_batch_item, render_unit, retain_batch_units
 from pipeline.segment import segment_recent
 from runtime.hindsight import embedded_hindsight
 from storage.store import CapsuleStore
 
 BANK = "slice-7d"
+
+#: Units per ``retain_batch`` call. The server extracts facts from all N units
+#: concurrently (``asyncio.gather`` in ``extract_facts_from_contents``), then
+#: entity-resolves in one transaction — so bigger chunks = more parallelism.
+#: The counter-force is OpenRouter's per-minute rate limit: firing too many
+#: extractions at once risks 429s and retry back-off that erases the gain.
+#: 25 is a practical balance: ~25 concurrent extractions per chunk, chunks run
+#: sequentially so the rate limiter sees a burst then a gap, and a failed chunk
+#: loses at most 25 units. Tune up (50) if 429s are absent; tune down if they
+#: appear in the logs.
+CHUNK_SIZE = 25
 
 
 def _unit_author_role(unit, events_by_id: dict) -> str | None:
@@ -65,30 +77,33 @@ class _Progress:
     retained: int = 0
     skipped: int = 0
     failed: int = 0
-    _timed_units: int = field(default=0, repr=False)
+    _timed_chunks: int = field(default=0, repr=False)
     _total_sec: float = field(default=0.0, repr=False)
 
     def record_timed(self, elapsed: float) -> None:
-        """Add one timed retain to the running average."""
-        self._timed_units += 1
+        """Add one timed chunk to the running average."""
+        self._timed_chunks += 1
         self._total_sec += elapsed
 
-    def avg_sec(self) -> float | None:
-        """Average seconds per timed retain, or None if none have completed."""
-        return self._total_sec / self._timed_units if self._timed_units else None
+    def avg_sec_per_unit(self) -> float | None:
+        """Average seconds per retained unit, or None if none have completed."""
+        if self._timed_chunks == 0 or self.retained == 0:
+            return None
+        return self._total_sec / self.retained
 
-    def eta_sec(self, index: int) -> float | None:
-        """Estimated seconds remaining after unit at 1-based ``index``."""
-        avg = self.avg_sec()
+    def eta_sec(self, processed: int) -> float | None:
+        """Estimated seconds remaining after ``processed`` units."""
+        avg = self.avg_sec_per_unit()
         if avg is None:
             return None
-        return (self.total - index) * avg
+        remaining = self.total - processed - self.skipped
+        return max(remaining, 0) * avg
 
-    def aggregate_line(self, index: int) -> str:
+    def aggregate_line(self, processed: int) -> str:
         """Return a one-line aggregate + ETA string for the current position."""
-        avg = self.avg_sec()
-        avg_str = f"{avg:.1f}s/unit" if avg is not None else "?s/unit"
-        eta = self.eta_sec(index)
+        avg = self.avg_sec_per_unit()
+        avg_str = f"{avg:.2f}s/unit" if avg is not None else "?s/unit"
+        eta = self.eta_sec(processed)
         eta_str = f"{eta:.0f}s" if eta is not None else "?"
         return (
             f"  -> retained={self.retained} skipped={self.skipped} failed={self.failed}"
@@ -103,6 +118,12 @@ def main() -> None:
     ap = argparse.ArgumentParser(description="Retain the 7-day slice into Hindsight.")
     ap.add_argument("--limit", type=int, default=0, help="Max units to retain (0 = all).")
     ap.add_argument("--days", type=int, default=7, help="Trailing window in days.")
+    ap.add_argument(
+        "--chunk-size",
+        type=int,
+        default=CHUNK_SIZE,
+        help=f"Units per retain_batch call (default {CHUNK_SIZE}).",
+    )
     args = ap.parse_args()
 
     units = segment_recent(window=timedelta(days=args.days))
@@ -113,51 +134,70 @@ def main() -> None:
         logger.info("limiting to first {} units", len(units))
 
     logger.warning(
-        "LIVE PAID RUN: {} OpenRouter calls (extraction + embeddings per unit)", len(units)
+        "LIVE PAID RUN: ~{} OpenRouter extraction calls (batched in chunks of {})",
+        len(units),
+        args.chunk_size,
     )
 
     events_by_id = {e.id: e for e in CapsuleStore().list_events()}
     prog = _Progress(total=len(units))
 
+    # --- render phase (no LLM, fast) ---
+    rendered: list[tuple] = []  # (unit, text, role)
+    for unit in units:
+        events = [events_by_id[j] for j in unit.derived_from if j in events_by_id]
+        text = render_unit(unit, events)
+        if not text.strip():
+            prog.skipped += 1
+            logger.debug("skip {} (empty render)", unit.source)
+            continue
+        role = _unit_author_role(unit, events_by_id)
+        rendered.append((unit, text, role))
+
+    logger.info(
+        "rendered {} units ({} skipped empty); batching in chunks of {}",
+        len(rendered),
+        prog.skipped,
+        args.chunk_size,
+    )
+
+    # --- batch retain phase (LLM, network) ---
     with embedded_hindsight() as client:
         with contextlib.suppress(Exception):
             client.create_bank(bank_id=BANK)
-        for i, unit in enumerate(units, 1):
-            events = [events_by_id[j] for j in unit.derived_from if j in events_by_id]
-            text = render_unit(unit, events)
-            if not text.strip():
-                prog.skipped += 1
-                logger.debug("[{}/{}] {} skipped (empty render)", i, len(units), unit.source)
-                continue
-            role = _unit_author_role(unit, events_by_id)
-            t0 = time.perf_counter()
+
+        chunk_count = (len(rendered) + args.chunk_size - 1) // args.chunk_size
+        for chunk_idx in range(chunk_count):
+            chunk = rendered[chunk_idx * args.chunk_size : (chunk_idx + 1) * args.chunk_size]
+            items = [build_batch_item(u, text, author_role=role) for u, text, role in chunk]
+            chunk_start = time.perf_counter()
             try:
-                retain_unit(client, unit, text, author_role=role, bank_id=BANK)
-                elapsed = time.perf_counter() - t0
-                prog.retained += 1
+                retain_batch_units(client, items, bank_id=BANK)
+                elapsed = time.perf_counter() - chunk_start
+                prog.retained += len(chunk)
                 prog.record_timed(elapsed)
                 logger.info(
-                    "[{}/{}] {} role={} ok ({:.1f}s)",
-                    i,
-                    len(units),
-                    unit.source,
-                    role or "-",
+                    "[chunk {}/{}] {} units ok ({:.1f}s)",
+                    chunk_idx + 1,
+                    chunk_count,
+                    len(chunk),
                     elapsed,
                 )
-            except Exception as exc:  # report and keep going
-                elapsed = time.perf_counter() - t0
-                prog.failed += 1
+            except Exception as exc:
+                elapsed = time.perf_counter() - chunk_start
+                prog.failed += len(chunk)
                 prog.record_timed(elapsed)
                 logger.error(
-                    "[{}/{}] {} FAILED ({:.1f}s): {}: {}",
-                    i,
-                    len(units),
-                    unit.source,
+                    "[chunk {}/{}] FAILED {} units ({:.1f}s): {}: {}",
+                    chunk_idx + 1,
+                    chunk_count,
+                    len(chunk),
                     elapsed,
                     type(exc).__name__,
                     exc,
                 )
-            logger.info("{}", prog.aggregate_line(i))
+            processed_so_far = (chunk_idx + 1) * args.chunk_size
+            logger.info("{}", prog.aggregate_line(min(processed_so_far, len(rendered))))
 
     logger.info(
         "\nretained={} skipped(empty)={} failed={} into bank {!r}",
