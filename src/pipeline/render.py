@@ -22,11 +22,24 @@ runs under Doppler.
 
 from __future__ import annotations
 
+import os
+import threading
+import time
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Protocol
 
+from loguru import logger
+
 from core.schema import Event
+
+#: pg0 connection used only for the best-effort retain heartbeat (read-only).
+_PG0_DSN = os.environ.get(
+    "HINDSIGHT_PG_DSN", "postgresql://hindsight:hindsight@127.0.0.1:5432/hindsight"
+)
+
+#: Seconds between heartbeat polls while a ``retain_batch`` call is in flight.
+_HEARTBEAT_INTERVAL_SEC = 5.0
 
 #: Sources whose events carry a conversational transcript (role + content).
 CONVERSATIONAL_SOURCES = frozenset({"imessage", "claude"})
@@ -311,11 +324,39 @@ def build_batch_item(
     }
 
 
+@dataclass
+class RetainProgress:
+    """Global retain position, for the heartbeat denominator.
+
+    The heartbeat in :func:`_retain_batch_with_heartbeat` only sees one chunk's
+    items, so the caller passes this to give the cross-chunk totals: how many
+    units (windows) and source events are *already done* before this chunk, and
+    the grand totals. The heartbeat then reports ``units a..b/total`` and
+    ``events x/total`` so progress is legible against the whole job.
+
+    Attributes:
+        units_done: Units fully retained before this chunk started.
+        units_total: Total units across the whole run.
+        events_done: Source events covered by units done before this chunk.
+        events_total: Total source events across the whole run.
+        chunk_units: Number of units in the chunk now in flight.
+        chunk_events: Number of source events in the chunk now in flight.
+    """
+
+    units_done: int = 0
+    units_total: int = 0
+    events_done: int = 0
+    events_total: int = 0
+    chunk_units: int = 0
+    chunk_events: int = 0
+
+
 def retain_batch_units(
     client: BatchRetainClient,
     items: list[dict[str, Any]],
     *,
     bank_id: str = DEFAULT_BANK,
+    progress: RetainProgress | None = None,
 ) -> None:
     """Retain a pre-assembled list of batch items into Hindsight.
 
@@ -328,10 +369,120 @@ def retain_batch_units(
         client: A client exposing :meth:`retain_batch`.
         items: Non-empty list of dicts from :func:`build_batch_item`.
         bank_id: Target Hindsight bank.
+        progress: Optional cross-chunk position for the heartbeat denominator.
 
     Raises:
         ValueError: If ``items`` is empty.
     """
     if not items:
         raise ValueError("retain_batch_units requires at least one item")
-    client.retain_batch(bank_id=bank_id, items=items)
+    _retain_batch_with_heartbeat(client, items, bank_id=bank_id, progress=progress)
+
+
+def _pg0_memory_count() -> int | None:
+    """Best-effort live count of rows in pg0 ``memory_units``.
+
+    Used only as an observability heartbeat while a blocking ``retain_batch``
+    call is in flight. Returns ``None`` (never raises) if pg0 is unreachable or
+    ``psycopg2`` is unavailable, so the heartbeat can never break a retain.
+
+    Returns:
+        Current ``memory_units`` row count, or ``None`` on any failure.
+    """
+    try:
+        import psycopg2  # local import: only needed for the heartbeat
+    except ImportError:
+        return None
+    try:
+        conn = psycopg2.connect(_PG0_DSN, connect_timeout=2)
+        try:
+            with conn.cursor() as cur:
+                cur.execute("SELECT COUNT(*) FROM memory_units")
+                row = cur.fetchone()
+                return int(row[0]) if row else None
+        finally:
+            conn.close()
+    except Exception:
+        return None
+
+
+def _progress_prefix(progress: RetainProgress | None) -> str:
+    """Build the ``units a-b/N | events x/M`` denominator for a heartbeat line.
+
+    Args:
+        progress: Cross-chunk position, or ``None`` to omit the denominator.
+
+    Returns:
+        A formatted prefix string, or ``""`` when no progress was supplied.
+    """
+    if progress is None:
+        return ""
+    unit_lo = progress.units_done + 1
+    unit_hi = progress.units_done + progress.chunk_units
+    events_now = progress.events_done + progress.chunk_events
+    return (
+        f"units {unit_lo}-{unit_hi}/{progress.units_total} | "
+        f"events {events_now}/{progress.events_total} | "
+    )
+
+
+def _retain_batch_with_heartbeat(
+    client: BatchRetainClient,
+    items: list[dict[str, Any]],
+    *,
+    bank_id: str,
+    progress: RetainProgress | None = None,
+) -> None:
+    """Run ``client.retain_batch`` on the calling thread; poll pg0 from a daemon.
+
+    ``retain_batch`` is one opaque blocking HTTP call: the embedded server
+    extracts facts from all ``items`` concurrently and only returns when every
+    unit is done — so the client side is dark for the whole chunk. The retain
+    call MUST stay on the calling thread: it drives an asyncio event loop and
+    httpx timeout contexts are loop-bound, so running it off-thread raises
+    ``RuntimeError: Timeout context manager should be used inside a task``.
+    Instead, a background daemon thread polls pg0's ``memory_units`` count every
+    :data:`_HEARTBEAT_INTERVAL_SEC` seconds and logs it (with the
+    ``units a-b/N | events x/M`` denominator when ``progress`` is given), giving
+    ground-truth intra-chunk progress without touching the Hindsight library.
+
+    Args:
+        client: A client exposing :meth:`retain_batch`.
+        items: Non-empty batch items from :func:`build_batch_item`.
+        bank_id: Target Hindsight bank.
+        progress: Optional cross-chunk position for the heartbeat denominator.
+
+    Raises:
+        Exception: Re-raises whatever ``retain_batch`` raised, unchanged.
+    """
+    baseline = _pg0_memory_count()
+    start = time.perf_counter()
+    prefix = _progress_prefix(progress)
+    stop = threading.Event()
+
+    def _poll() -> None:
+        while not stop.wait(_HEARTBEAT_INTERVAL_SEC):
+            count = _pg0_memory_count()
+            elapsed = time.perf_counter() - start
+            if count is None:
+                logger.info("    .. {}in flight {:.0f}s (pg0 count unavailable)", prefix, elapsed)
+            elif baseline is None:
+                logger.info(
+                    "    .. {}in flight {:.0f}s | pg0 memory_units={}", prefix, elapsed, count
+                )
+            else:
+                logger.info(
+                    "    .. {}in flight {:.0f}s | pg0 memory_units={} (+{} this run)",
+                    prefix,
+                    elapsed,
+                    count,
+                    count - baseline,
+                )
+
+    poller = threading.Thread(target=_poll, name="retain-heartbeat", daemon=True)
+    poller.start()
+    try:
+        client.retain_batch(bank_id=bank_id, items=items)
+    finally:
+        stop.set()
+        poller.join(timeout=_HEARTBEAT_INTERVAL_SEC)

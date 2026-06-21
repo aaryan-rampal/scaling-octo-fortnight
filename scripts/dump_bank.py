@@ -68,14 +68,21 @@ def _paginate_memories(client, bank_id: str) -> list[dict]:
 def _build_unit_map(window_days: int) -> dict[str, Unit]:
     """Re-segment the store with the retain window and index by unit_id.
 
+    The re-segmentation MUST match what ``retain_slice.py`` used, or the
+    reconstructed ``unit_id``s won't match the bank's ``document_id``s and
+    provenance breaks. ``retain_slice.py`` defaults to ``--days 0`` → whole DB
+    (``window=None``); ``0`` here means the same. Any positive value re-applies a
+    trailing sub-slice (only correct if the retain used that same narrower window).
+
     Args:
-        window_days: The trailing-slice window used at retain time.
+        window_days: Trailing slice window in days; ``0`` = whole DB (no cutoff).
 
     Returns:
         Mapping of unit_id → Unit.
     """
-    units = segment_recent(window=timedelta(days=window_days))
-    logger.info("re-segmented {} units (window={}d)", len(units), window_days)
+    window = timedelta(days=window_days) if window_days > 0 else None
+    units = segment_recent(window=window)
+    logger.info("re-segmented {} units (window={})", len(units), window or "whole-db")
     by_source = Counter(u.source for u in units)
     logger.info("units by source: {}", dict(by_source))
     return {u.unit_id: u for u in units}

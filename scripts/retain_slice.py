@@ -38,7 +38,12 @@ from datetime import timedelta
 from loguru import logger
 
 from core.logging import configure_logging
-from pipeline.render import build_batch_item, render_unit, retain_batch_units
+from pipeline.render import (
+    RetainProgress,
+    build_batch_item,
+    render_unit,
+    retain_batch_units,
+)
 from pipeline.segment import segment_recent
 from runtime.hindsight import embedded_hindsight
 from storage.store import CapsuleStore
@@ -176,14 +181,28 @@ def main() -> None:
             client.create_bank(bank_id=BANK)
 
         chunk_count = (len(rendered) + args.chunk_size - 1) // args.chunk_size
+        total_events = sum(len(u.derived_from) for u, _, _ in rendered)
+        units_done = 0
+        events_done = 0
         for chunk_idx in range(chunk_count):
             chunk = rendered[chunk_idx * args.chunk_size : (chunk_idx + 1) * args.chunk_size]
             items = [build_batch_item(u, text, author_role=role) for u, text, role in chunk]
+            chunk_events = sum(len(u.derived_from) for u, _, _ in chunk)
+            chunk_progress = RetainProgress(
+                units_done=units_done,
+                units_total=len(rendered),
+                events_done=events_done,
+                events_total=total_events,
+                chunk_units=len(chunk),
+                chunk_events=chunk_events,
+            )
             chunk_start = time.perf_counter()
             try:
-                retain_batch_units(client, items, bank_id=BANK)
+                retain_batch_units(client, items, bank_id=BANK, progress=chunk_progress)
                 elapsed = time.perf_counter() - chunk_start
                 prog.retained += len(chunk)
+                units_done += len(chunk)
+                events_done += chunk_events
                 prog.record_timed(elapsed)
                 logger.info(
                     "[chunk {}/{}] {} units ok ({:.1f}s)",
