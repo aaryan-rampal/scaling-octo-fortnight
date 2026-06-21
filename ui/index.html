@@ -22,7 +22,7 @@
   <link href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet" />
   <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
 
-  <link rel="stylesheet" href="styles.css?v=16" />
+  <link rel="stylesheet" href="styles.css?v=17" />
 </head>
 <body>
   <!-- hand-painted / "drawn" map filter (static wobble — no continuous motion) -->
@@ -98,6 +98,10 @@
                placeholder="Where are you?" aria-label="Place name" />
       </div>
       <form id="create-form">
+        <label class="field-label">Where on the map? (tap to place)</label>
+        <div id="create-map" class="create-map"></div>
+        <p id="create-loc-hint" class="loc-hint">Tap the map to drop this capsule’s pin.</p>
+
         <label class="field-label" for="create-note">Leave a note for future you</label>
         <textarea id="create-note" rows="3" placeholder="what's true today that you might forget…"></textarea>
 
@@ -203,8 +207,8 @@
     </div>
   </div>
 
-  <script src="seed.js?v=16"></script>
-  <script src="api.js?v=16"></script>
-  <script src="app.js?v=16"></script>
+  <script src="seed.js?v=17"></script>
+  <script src="api.js?v=17"></script>
+  <script src="app.js?v=17"></script>
 </body>
 </html>

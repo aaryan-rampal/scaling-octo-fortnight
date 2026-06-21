@@ -243,9 +243,14 @@ function resetCreateForm() {
   document.getElementById("filedrop-label").textContent = "＋ add a photo or video — recall reads its EXIF location & time";
   document.getElementById("create-loc-icon").innerHTML = ICON.pin;
   document.getElementById("create-note").value = "";
+  // clear any pin from a previous create session
+  if (createMarker) { createMarker.remove(); createMarker = null; }
+  const hint = document.getElementById("create-loc-hint");
+  if (hint) hint.textContent = "Tap the map to drop this capsule’s pin.";
 }
 
-// From a discovered map pin: place name is fixed to the pin.
+// From a discovered map pin: place name + location come from the pin (still
+// adjustable by tapping the create map).
 function startCreate(poi) {
   createPoi = poi;
   resetCreateForm();
@@ -253,12 +258,61 @@ function startCreate(poi) {
   place.value = poi.name;
   place.readOnly = true;
   show("create");
+  ensureCreateMap();
+  if (poi.lat != null && poi.lng != null) {
+    setCreateLocation(poi.lat, poi.lng, true);
+    if (createMap) createMap.jumpTo({ center: [poi.lng, poi.lat], zoom: 15 });
+  }
 }
 
-// Standalone: no pin. The user names the place; lat/lng come from device
-// geolocation if granted (the API treats them as optional). This is the general
-// "I want to make a capsule right now" entry — a capsule is a place + journal +
-// media (flywheel §3), and a pin is not required to author one.
+// --- create-view location picker (tap the map to drop the capsule's pin) ---
+let createMap = null, createMarker = null;
+
+function setCreateLocation(lat, lng, silent) {
+  if (!createPoi) return;
+  createPoi.lat = lat;
+  createPoi.lng = lng;
+  if (createMap) {
+    if (!createMarker) {
+      const el = document.createElement("div");
+      el.className = "create-pin";
+      createMarker = new maplibregl.Marker({ element: el, anchor: "bottom" })
+        .setLngLat([lng, lat]).addTo(createMap);
+    } else {
+      createMarker.setLngLat([lng, lat]);
+    }
+  }
+  const hint = document.getElementById("create-loc-hint");
+  if (hint && !silent) hint.textContent = `Pinned at ${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+}
+
+function ensureCreateMap() {
+  if (typeof maplibregl === "undefined") return;
+  if (!createMap) {
+    createMap = new maplibregl.Map({
+      container: "create-map",
+      attributionControl: false,
+      center: MAP_CENTER, zoom: 13, pitch: 0, bearing: 0,
+      style: {
+        version: 8,
+        sources: { sat: {
+          type: "raster", tileSize: 256,
+          tiles: ["https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"],
+          attribution: "Imagery © Esri",
+        } },
+        layers: [{ id: "sat", type: "raster", source: "sat" }],
+      },
+    });
+    // tap anywhere to (re)place the capsule's pin
+    createMap.on("click", (e) => setCreateLocation(e.lngLat.lat, e.lngLat.lng));
+  }
+  // it's freshly shown, so size it correctly (same race as the main map)
+  [60, 250, 600].forEach((ms) => setTimeout(() => createMap && createMap.resize(), ms));
+}
+
+// Standalone: no pin yet. The user names the place and TAPS the map to set the
+// location (a capsule is a place + journal + media, flywheel §3). Geolocation is
+// only a prefill — tap-to-place is what reliably works on http/mobile.
 function startCreateStandalone() {
   createPoi = { id: `cap-${Date.now()}`, name: "", lat: null, lng: null, standalone: true };
   resetCreateForm();
@@ -267,10 +321,18 @@ function startCreateStandalone() {
   place.readOnly = false;
   show("create");
   place.focus();
-  // Best-effort current location; silently skipped if denied/unavailable.
+  // Tap-to-place is the reliable location path (works on http/mobile, unlike
+  // geolocation which needs HTTPS). Geolocation is only a best-effort prefill
+  // that re-centers the picker if it resolves before the user taps.
+  ensureCreateMap();
   if (navigator.geolocation) {
     navigator.geolocation.getCurrentPosition(
-      (pos) => { createPoi.lat = pos.coords.latitude; createPoi.lng = pos.coords.longitude; },
+      (pos) => {
+        if (createPoi && createPoi.lat == null) {  // don't override a user tap
+          setCreateLocation(pos.coords.latitude, pos.coords.longitude, true);
+          if (createMap) createMap.jumpTo({ center: [pos.coords.longitude, pos.coords.latitude], zoom: 15 });
+        }
+      },
       () => {},
       { enableHighAccuracy: false, timeout: 4000, maximumAge: 60000 }
     );
@@ -326,12 +388,43 @@ document.getElementById("create-form").addEventListener("submit", async (e) => {
     anchor: { place: createPoi.name, time: "just now", photo: cover },
     userCreated: true,
   };
+  const hasCoords = createPoi.lat != null && createPoi.lng != null;
+
+  // Backend path: the backend is the source of truth. Send it, then re-hydrate so
+  // the capsule appears exactly once with its persisted id + coords (no duplicate
+  // optimistic copy, which was causing capsules to show twice / mis-located).
+  if (Recall.on()) {
+    toast("Sealing to recall…");
+    const files = [...selFiles];
+    if (note && note !== "No words — just being here.") {
+      files.push(new File([note], "note.txt", { type: "text/plain" }));
+    }
+    try {
+      const saved = await Recall.createCapsule({
+        place_name: createPoi.name,
+        lat: createPoi.lat, lng: createPoi.lng, files,
+      });
+      await hydrateFromBackend();          // single source of truth → no dupes
+      const savedPoi = SEED.map.find((m) => m.capsuleId === (saved && saved.id));
+      renderMap(); renderPlaces();
+      if (savedPoi && map) {
+        switchTab("map");
+        map.easeTo({ center: [savedPoi.lng, savedPoi.lat], zoom: 16, duration: 700 });
+      } else {
+        switchTab("capsules");             // no coords → lives in the list
+      }
+      toast(`Sealed at ${createPoi.name} — ingested by recall.`);
+    } catch {
+      toast("Couldn’t reach recall — capsule not saved.");
+    }
+    return;
+  }
+
+  // No backend (seed/offline mode): keep the optimistic local capsule so the UI
+  // still works standalone.
   SEED.places.push(cap);
   createPoi.capsuleId = id;
-  // A standalone capsule has no pre-seeded map pin — add one so it appears on the
-  // map (only if we captured coordinates; otherwise it lives in the Capsules tab).
-  if (createPoi.standalone && createPoi.lat != null && createPoi.lng != null
-      && !SEED.map.some((m) => m.id === createPoi.id)) {
+  if (hasCoords && !SEED.map.some((m) => m.id === createPoi.id)) {
     SEED.map.push({
       id: createPoi.id, name: createPoi.name, lat: createPoi.lat, lng: createPoi.lng,
       discovered: true, capsuleId: id,
@@ -339,28 +432,10 @@ document.getElementById("create-form").addEventListener("submit", async (e) => {
     cap.mapId = createPoi.id;
   }
   discovered.add(createPoi.id);
-  createPoi._justRevealed = true;
   renderMap();
   renderPlaces();
-  switchTab(createPoi.standalone && createPoi.lat == null ? "capsules" : "map");
-
-  // send to the recall backend if one is configured (the capsule-ingest path).
-  // the journal note rides along as a `text` media file = new raw_data (flywheel §3).
-  if (Recall.on()) {
-    toast(`Sealing to recall…`);
-    const files = [...selFiles];
-    if (note && note !== "No words — just being here.") {
-      files.push(new File([note], "note.txt", { type: "text/plain" }));
-    }
-    try {
-      await Recall.createCapsule({ place_name: createPoi.name, lat: createPoi.lat, lng: createPoi.lng, files });
-      toast(`Sealed at ${cap.name} — ingested by recall.`);
-    } catch {
-      toast(`Sealed locally (recall unreachable).`);
-    }
-  } else {
-    toast(`Sealed at ${cap.name}. Come back to open it.`);
-  }
+  switchTab(hasCoords ? "map" : "capsules");
+  toast(`Sealed at ${cap.name}.`);
 });
 
 // --- 3. CAPSULES tab ---
