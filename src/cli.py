@@ -12,10 +12,12 @@ import argparse
 import contextlib
 import os
 from datetime import date
+from pathlib import Path
 
 from adapters.imessage import DEFAULT_DB_PATH, ingest
 from core.schema import read_events_jsonl, write_events_jsonl
 from pipeline.episodes import _summary_lines, _write_episodes_jsonl, build_episodes
+from pipeline.explain import LLMWhyExplainer, explain_principle
 from pipeline.load import (
     DEFAULT_BANK,
     DEFAULT_LIMIT,
@@ -25,9 +27,11 @@ from pipeline.load import (
 from pipeline.show import render_all
 from runtime.hindsight import embedded_hindsight
 from storage.store import CapsuleStore
+from storage.trace import open_db
 
 EVENTS_PATH = "data/events.jsonl"
 EPISODES_PATH = "data/episodes.jsonl"
+DEFAULT_TRACE_DB = "data/derek_handoff/derek_sample.db"
 
 
 def _run_ingest(top_n: int, since: date | None, db_path: str, *, persist: bool = True) -> int:
@@ -107,6 +111,74 @@ def _run_show(bank: str) -> None:
         print(render_all(client, bank))
 
 
+def _print_explanation(result: dict) -> None:
+    """Pretty-print an :func:`pipeline.explain.explain_principle` result."""
+    p = result["principle"]
+    print(f"\nPrinciple: {p['text']}")
+    print(f"  id={p['id']}  confidence={p['confidence']:.2f}")
+    n_events = sum(len(m["events"]) for m in result["memories"])
+    print(f"  traced to {len(result['memories'])} memories / {n_events} raw events\n")
+    print("Why this principle exists:")
+    print(f"  {result['why'] or '(the model returned nothing)'}\n")
+
+
+def _run_explain(db_path: str, principle_id: str | None, *, as_json: bool) -> None:
+    """Trace a principle and explain why it exists; or list ids when none given.
+
+    With no ``principle_id`` this lists the principles in the DB (cheap, no LLM
+    call) so you can copy one to hit. With an id it walks the provenance ladder
+    and calls the model — run under Doppler so ``OPENROUTER_API_KEY`` is present.
+
+    Args:
+        db_path: Path to the SQLite provenance DB.
+        principle_id: The principle to explain, or ``None`` to list ids.
+        as_json: Emit the raw result dict as JSON instead of prose.
+    """
+    if not Path(db_path).exists():
+        print(
+            f"DB not found: {db_path}\n"
+            "Get derek_sample.db from Aaryan (place it under data/derek_handoff/), "
+            "or pass --db <path> to point at another provenance DB."
+        )
+        return
+
+    conn = open_db(db_path)
+    try:
+        if not principle_id:
+            print(f"Principles in {db_path}:")
+            rows = conn.execute(
+                "SELECT id, confidence, substr(text, 1, 70) AS t "
+                "FROM principles ORDER BY confidence DESC"
+            )
+            for row in rows:
+                print(f"  {row['id']}  ({row['confidence']:.2f})  {row['t']}")
+            print("\nRe-run with one of these ids to explain it.")
+            return
+        try:
+            explainer = LLMWhyExplainer()
+        except RuntimeError as exc:
+            print(
+                f"{exc}\n"
+                "Run under Doppler so the key is injected, e.g.:\n"
+                "  doppler run --project berkeley-hackathon --config dev -- \\\n"
+                "    env PYTHONPATH=src .venv/bin/python -m cli explain <id>"
+            )
+            return
+        result = explain_principle(conn, principle_id, explainer)
+    finally:
+        conn.close()
+
+    if result is None:
+        print(f"No principle with id {principle_id!r} in {db_path}")
+        return
+    if as_json:
+        import json
+
+        print(json.dumps(result, indent=2, ensure_ascii=False))
+        return
+    _print_explanation(result)
+
+
 def _handle_ingest(args: argparse.Namespace) -> None:
     """Dispatch the ``ingest`` subcommand."""
     since = date.fromisoformat(args.since) if args.since else None
@@ -126,6 +198,11 @@ def _handle_load(args: argparse.Namespace) -> None:
 def _handle_show(args: argparse.Namespace) -> None:
     """Dispatch the ``show`` subcommand."""
     _run_show(args.bank)
+
+
+def _handle_explain(args: argparse.Namespace) -> None:
+    """Dispatch the ``explain`` subcommand."""
+    _run_explain(args.db, args.principle_id, as_json=args.as_json)
 
 
 def _handle_all(args: argparse.Namespace) -> None:
@@ -165,6 +242,18 @@ def _build_parser() -> argparse.ArgumentParser:
     p_show = sub.add_parser("show", help="Print the memory-network demo.")
     p_show.add_argument("--bank", default=DEFAULT_BANK)
     p_show.set_defaults(handler=_handle_show)
+
+    p_explain = sub.add_parser(
+        "explain", help="Trace a principle to its evidence and explain why it exists."
+    )
+    p_explain.add_argument(
+        "principle_id", nargs="?", default=None, help="Principle id (omit to list available ids)."
+    )
+    p_explain.add_argument("--db", default=DEFAULT_TRACE_DB, help="SQLite provenance DB path.")
+    p_explain.add_argument(
+        "--json", action="store_true", dest="as_json", help="Print the raw result dict as JSON."
+    )
+    p_explain.set_defaults(handler=_handle_explain)
 
     p_all = sub.add_parser("all", help="Run ingest -> episodes -> load -> show.")
     p_all.add_argument("--top-n", type=int, default=5, help="Top threads by volume.")
