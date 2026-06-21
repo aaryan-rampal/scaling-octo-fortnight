@@ -34,7 +34,7 @@ product**, and its core must work through ASI:One.
 | **Sentry** | Switch 2 + guaranteed interview | Low | Best Use of SDK; bonus for observability. One distributed trace click→pipeline. |
 | **Deepgram** | Switch 2 | Med | Voice "talk to past you" — STT/TTS/Voice-Agent. Voice must be *core*. |
 | **ElevenLabs** | TBC (booth) | Med | **Voice cloning** = past self in your own voice. Our strongest voice fit; no track posted yet. |
-| **Redis** | TBC (confirm at booth) | Low–Med | Our queues (Streams) + SemanticCache for the swarm. Correct-primitive story. |
+| **Redis** | TBC (confirm at booth) | Low | **SemanticCache only**, and only if we measure a repeat-query rate. Vector/memory/queues are redundant or premature at single-user volume — out of v1. |
 | **Simular/Sai** | $500/member | Med | Automate cross-app ingestion via SimuLang; Sai orchestrates RETURN over iMessage. |
 | **Poke** | None (thematic) | Low | Send capsule nudges into the user's real iMessage. Memorable demo beat. |
 
@@ -184,19 +184,26 @@ benchmarked against control — hits their "creative approaches" language.
 
 ## 4. REDIS — credits $50 (`CALHACKER2026`) — **prize TBC, confirm at booth**
 
-**Status:** **No named prize/criteria announced** in 30d of #spons-redis (only credits +
-workshop). **Confirm "Best Use of Redis" at the booth.** $50/participant credits, code
-`CALHACKER2026`; free tier at redis.io/try-free (free DB ~30MB — fine for queues + a cache
-index, NOT a large vector corpus; our pgvector memory stays in Postgres). Workshop **4–5pm,
-5th Floor Tilden** (confirmed). Reps: Simran Regmi, Justin.
+**Status:** **No named prize/criteria announced** in #spons-redis (only credits + workshop) —
+re-checked Slack 2026-06-20: Simran's kickoff post lists credits + workshop, nothing about a
+"Best Use of Redis" track. **Confirm at the booth.** $50/participant credits, code
+`CALHACKER2026`; free tier at redis.io/try-free. Workshop **4–5pm, 5th Floor Tilden**
+(confirmed today). Reps: Simran Regmi, Justin Cechmanek.
 
-**Integration (Redis = horizontal plumbing; Hindsight/pgvector = the vertical):**
-- **(a) Two work queues → Redis Streams + consumer groups.** `time_capsule_queue` /
-  `ui_queue` as streams; HIGH/NORMAL = two streams or a priority field. Consumer groups give
-  the Retriever/Critic/Arbiter swarm at-least-once delivery; `XAUTOCLAIM` reclaims crashed
-  workers (restartability for free). Introspect with `XPENDING`/`XINFO`/`XLEN`.
-- **(b) HIGHEST-ROI ADD → RedisVL `SemanticCache`** in front of the swarm's recall so a
-  near-duplicate capsule skips the multi-agent LLM round-trip:
+**Architecture verdict (from `docs/raw-to-principles-research.md` §4): Redis is OUT of v1.**
+The vertical (raw → memory → principles) runs on SQLite + Postgres/pgvector via Hindsight.
+Redis sits off that path. Per-capability reasoning:
+
+| Redis capability | v1 status | Why |
+|---|---|---|
+| Vector search | **redundant** | pgvector via Hindsight already covers it |
+| Agent Memory Server | **redundant + weaker** | Hindsight types *and* synthesizes; Redis doesn't synthesize |
+| Streams / consumer-group queues | **premature** | single-user volume is trivial; v1 queues are SQLite-backed |
+| Graph / entity relations | **dead** | RedisGraph EOL 2025-01-31; successor FalkorDB is a separate product |
+| **RedisVL `SemanticCache`** | **the only real add — if measured** | cache recall+reason on near-duplicate capsules |
+
+**The one defensible play — `SemanticCache`, contingent on measurement.** Put it in front of
+the swarm's recall so a near-duplicate capsule skips the multi-agent LLM round-trip:
 ```python
 from redisvl.extensions.cache.llm import SemanticCache
 cache = SemanticCache(name="contradiction_cache", distance_threshold=0.15, ttl=3600, redis_url=REDIS_URL)
@@ -204,13 +211,17 @@ hit = cache.check(prompt=capsule_text, num_results=1)
 verdict = hit[0]["response"] if hit else run_swarm(capsule_text)
 if not hit: cache.store(prompt=capsule_text, response=verdict, metadata={"principle_ids": ids})
 ```
-  Demo: "second near-identical capsule returns in ~1ms vs a multi-agent LLM call."
-- **Do NOT** use Redis for graph/principles — RedisGraph is **EOL**; principles stay in
-  Postgres+pgvector. Stating this boundary to judges signals architectural judgment.
+Add it **only after instrumenting the repeat-query rate** — savings are workload-dependent.
+Be honest about the numbers: Redis's "~68.8% fewer calls / 160×" are best-case per-request
+marketing, not system-level. The honest model is **system latency ∝ hit-rate** (~25–30%
+saved at a 30% hit rate). Don't quote the marketing figures on stage as if they were ours.
 
-**Win:** use Redis for what it's best at (Streams queue + SemanticCache), put a **number** on
-stage (cache latency vs cold path, $ saved per N dup capsules), run `XPENDING`/`XINFO` live
-to prove durability, and hit the 4–5pm workshop to confirm the prize + meet Simran/Justin.
+**Do NOT** use Redis for graph/principles — RedisGraph is **EOL**; principles stay in
+Postgres+pgvector. Stating this boundary to judges signals architectural judgment.
+
+**Win (if we touch it at all):** a measured `SemanticCache` story — instrument the repeat-query
+rate first, then put a real **number** on stage (measured hit-rate → latency saved on the
+swarm path). Hit the 4–5pm workshop to confirm whether a prize exists and meet Simran/Justin.
 
 ---
 
@@ -414,7 +425,7 @@ ElevenLabs-led (cloning hero beat) vs Deepgram-led — don't split effort.
 - [ ] **Arize:** sign up app.arize.com, add tracing import, build a groundedness evaluator, capture before/after. (booth-judged — highest-confidence $1k)
 - [ ] **Sentry:** free sentry.io account, 3 init blocks, `gen_ai.*` spans, `tracePropagationTargets`; rehearse click→trace→failure→Seer.
 - [ ] **Voice (pick one):** ElevenLabs — grab booth code, clone past-self from voice notes (IVC, 3 free slots); **or** Deepgram — $200 via dpgr.am/ucb-ai-signup, attend 2–3pm workshop.
-- [ ] **Redis:** attend 4–5pm Tilden workshop, **confirm prize criteria**, add SemanticCache to the swarm.
+- [ ] **Redis (out of v1):** attend 4–5pm Tilden workshop, **confirm whether a prize exists**. Only add `SemanticCache` if we first measure a repeat-query rate that justifies it — skip queues/vector/graph (redundant or premature).
 - [ ] **Simular (optional):** grab an invite code in person, `/simulang` a new extractor for the demo; do the #SaiCal follow/post/email chores.
 - [ ] **Poke (optional):** V2 key from Claudia/Hannah, one SEND-API POST for the iMessage nudge demo.
 
