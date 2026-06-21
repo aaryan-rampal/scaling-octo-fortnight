@@ -2,22 +2,24 @@
  *
  * "Fake the ingestion, perfect the insight" (architecture doc). Everything here
  * stands in for real pipeline output so the frontend has a live, end-to-end loop.
- *
  * To wire a real backend: replace SEED with a fetch() returning the same shape.
- * Nothing in app.js assumes this is static.
  *
- * Fields worth knowing:
- *   sealed      → location-locked capsule; needs "I'm back" to open (Nisa's differentiator)
- *   mood        → valence/arousal read (circumplex model, arch. stage 03) — {label, hue}
- *   cues        → co-temporal/co-located events fused into the moment (stage 02)
- *   storyline   → grounded narration; {n} markers map to citations (stage 08)
- *   reflection  → forward-looking closing prompt (Selin's wellbeing guardrail, Q15)
+ *   places  → rich AI-reconstructed memories (seeded capsules)
+ *   map     → the explorable world: points of interest with x/y % coords.
+ *             discovered=false → fogged (visit to unlock). capsuleId → links a capsule.
+ *   moods   → valence/arousal palette (circumplex model, arch. stage 03)
  */
+const ICONS = {
+  tree: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22v-7"/><path d="M9 9a3 3 0 1 1 6 0"/><path d="M7 13a4 4 0 1 1 10 0"/><path d="M5.5 17h13"/></svg>',
+  landmark: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="22" x2="21" y2="22"/><line x1="6" y1="18" x2="6" y2="11"/><line x1="10" y1="18" x2="10" y2="11"/><line x1="14" y1="18" x2="14" y2="11"/><line x1="18" y1="18" x2="18" y2="11"/><polygon points="12 2 20 7 4 7"/></svg>',
+  mountain: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="m8 3 4 8 5-5 5 14H2L8 3z"/></svg>',
+  coffee: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M17 8h1a4 4 0 1 1 0 8h-1"/><path d="M3 8h14v9a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4Z"/><line x1="6" y1="2" x2="6" y2="4"/><line x1="10" y1="2" x2="10" y2="4"/><line x1="14" y1="2" x2="14" y2="4"/></svg>',
+};
+
 const SEED = {
   places: [
     {
       id: "moffitt",
-      // Lucide "book-open" — SVG icon, not an emoji (font-independent, themeable)
       icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 7v14"/><path d="M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z"/></svg>',
       name: "Moffitt Library",
       place: "UC Berkeley",
@@ -58,7 +60,6 @@ const SEED = {
     },
     {
       id: "marina",
-      // Lucide "waves"
       icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M2 6c.6.5 1.2 1 2.5 1C7 7 7 5 9.5 5c2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1"/><path d="M2 12c.6.5 1.2 1 2.5 1 2.5 0 2.5-2 5-2 2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1"/><path d="M2 18c.6.5 1.2 1 2.5 1 2.5 0 2.5-2 5-2 2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1"/></svg>',
       name: "Berkeley Marina",
       place: "south path",
@@ -93,5 +94,33 @@ const SEED = {
       fallback: "That evening I was mostly quiet. Ask me about Dad, the internship, or the wrong reason.",
       reflection: "You named the wrong reason out loud. What would a right reason look like, going forward?",
     },
+  ],
+
+  // the explorable world — % coordinates within the map
+  map: [
+    { id: "marina",     name: "Berkeley Marina", x: 19, y: 78, discovered: true,  capsuleId: "marina" },
+    { id: "moffitt",    name: "Moffitt Library", x: 38, y: 50, discovered: true,  capsuleId: "moffitt" },
+    { id: "glade",      name: "Memorial Glade",  x: 66, y: 38, discovered: true,  icon: ICONS.tree },
+    { id: "campanile",  name: "The Campanile",   x: 60, y: 64, discovered: true,  icon: ICONS.landmark },
+    { id: "indianrock", name: "Indian Rock",     x: 82, y: 18, discovered: false, icon: ICONS.mountain },
+    { id: "gourmet",    name: "Gourmet Ghetto",  x: 24, y: 24, discovered: false, icon: ICONS.coffee },
+  ],
+
+  // mood palette for sealing a new capsule (valence/arousal)
+  moods: [
+    { label: "calm",    hue: 158 },
+    { label: "hopeful", hue: 45 },
+    { label: "proud",   hue: 32 },
+    { label: "wistful", hue: 205 },
+    { label: "heavy",   hue: 255 },
+    { label: "anxious", hue: 8 },
+  ],
+
+  // cover gradients to choose from when sealing a capsule
+  covers: [
+    "linear-gradient(150deg,#3a2c1f 0%,#6b4a2c 55%,#c8743c 120%)",
+    "linear-gradient(150deg,#1f2a33 0%,#37505e 55%,#c8743c 135%)",
+    "linear-gradient(150deg,#2a2140 0%,#4a3a5e 55%,#cf7f86 130%)",
+    "linear-gradient(150deg,#1f3329 0%,#3a5e4a 55%,#e8c188 135%)",
   ],
 };

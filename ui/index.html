@@ -40,17 +40,50 @@
       <p class="tagline">return to a moment, not just a place</p>
     </header>
 
+    <!-- VIEW: map -->
+    <section id="view-map" class="view active">
+      <div class="map-head">
+        <p class="section-label">Your world</p>
+        <span id="map-progress" class="map-progress"></span>
+      </div>
+      <div id="map" class="map">
+        <div class="map-grid" aria-hidden="true"></div>
+        <div id="map-pins" class="map-pins"><!-- injected --></div>
+        <div class="map-vignette" aria-hidden="true"></div>
+      </div>
+      <p id="map-info" class="map-info">Tap a glowing capsule to open it. Visit a fogged spot to discover it and seal a memory.</p>
+    </section>
+
     <!-- VIEW: capsules -->
-    <section id="view-places" class="view active">
+    <section id="view-places" class="view">
       <p class="section-label">Your capsules</p>
       <div id="place-list" class="place-list"><!-- injected --></div>
       <p class="hint">Sealed capsules unlock when you come back. The <em>I'm back</em>
         button stands in for real geofencing in this build.</p>
     </section>
 
+    <!-- VIEW: create a capsule -->
+    <section id="view-create" class="view">
+      <button class="back" data-back-map>← map</button>
+      <p class="section-label">Seal a capsule</p>
+      <div class="create-loc"><span id="create-loc-icon"></span><span id="create-place"></span></div>
+      <form id="create-form">
+        <label class="field-label">How are you feeling right now?</label>
+        <div id="mood-row" class="chip-row"><!-- injected --></div>
+
+        <label class="field-label" for="create-note">Leave a note for future you</label>
+        <textarea id="create-note" rows="3" placeholder="what's true today that you might forget…"></textarea>
+
+        <label class="field-label">Pick a cover</label>
+        <div id="cover-row" class="cover-row"><!-- injected --></div>
+
+        <button type="submit" class="primary">Seal until I return ↩</button>
+      </form>
+    </section>
+
     <!-- VIEW: reconstruct-before-reveal -->
     <section id="view-reconstruct" class="view">
-      <button class="back" data-back>← capsules</button>
+      <button class="back" data-back-map>← map</button>
       <div class="anchor-card">
         <div id="anchor-photo" class="anchor-photo"></div>
         <div class="anchor-meta">
@@ -68,7 +101,7 @@
 
     <!-- VIEW: the grounded storyline -->
     <section id="view-reveal" class="view">
-      <button class="back" data-back-reconstruct>← back</button>
+      <button class="back" data-back-map>← map</button>
       <div class="storyline-wrap">
         <p class="section-label">The night, reconstructed</p>
         <p id="storyline" class="storyline"></p>
@@ -84,12 +117,27 @@
         <div id="chat" class="chat"><!-- injected --></div>
         <form id="chat-form" class="chat-form">
           <input id="chat-input" type="text" autocomplete="off"
-                 placeholder="ask the version of you from that night…" />
+                 placeholder="ask the version of you from that moment…" />
           <button type="submit" aria-label="send">↑</button>
         </form>
       </div>
     </section>
+
+    <!-- bottom tab bar -->
+    <nav class="tabbar" id="tabbar">
+      <button class="tab" data-tab="map" aria-label="Map">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><polygon points="3 6 9 3 15 6 21 3 21 18 15 21 9 18 3 21 3 6"/><line x1="9" y1="3" x2="9" y2="18"/><line x1="15" y1="6" x2="15" y2="21"/></svg>
+        <span>Map</span>
+      </button>
+      <button class="tab" data-tab="capsules" aria-label="Capsules">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="m7.5 4.27 9 5.15"/><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg>
+        <span>Capsules</span>
+      </button>
+    </nav>
     </div>
+
+    <!-- toast -->
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
   </div>
 
   <script src="seed.js"></script>

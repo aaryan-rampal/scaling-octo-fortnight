@@ -1,43 +1,192 @@
 /* RETURN — frontend controller.
- * Drives the loop over SEED (seed.js): capsules → (return/unlock) → reconstruct
- * → reveal → talk to past you. All data access goes through getPlaces()/getPlace()
- * so swapping in a real backend is a one-function change.
+ * Loop: MAP (explore) → visit a fogged spot to discover it → seal a capsule
+ * (or open one) → reconstruct → reveal → talk to past you.
+ * All data access goes through getPlaces()/getPlace() so a real backend is a
+ * one-function swap. Visual language follows ui-ux-pro-max "Modern Dark
+ * (Cinema Mobile)": frosted nav, ambient glow, Expo.out easing, 0.97 press.
  */
 
-// --- data access (swap these two for fetch() when the backend is live) ---
 const getPlaces = () => SEED.places;
 const getPlace = (id) => SEED.places.find((p) => p.id === id);
-
-// honor the OS "reduce motion" setting (a11y — ui-ux-pro-max §7)
 const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-// capsules the user has "returned" to this session (location-lock stand-in)
+// runtime state
+const discovered = new Set(SEED.map.filter((m) => m.discovered).map((m) => m.id));
 const unlocked = new Set(getPlaces().filter((p) => !p.sealed).map((p) => p.id));
+const isDiscovered = (poi) => discovered.has(poi.id);
 const isLocked = (p) => p.sealed && !unlocked.has(p.id);
 
 // --- inline icons (SVG, never emoji) ---
 const ICON = {
   pin: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>',
-  lock: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="11" width="17" height="10" rx="2"/><path d="M7.5 11V7a4.5 4.5 0 0 1 9 0v4"/></svg>',
+  lock: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="11" width="17" height="10" rx="2"/><path d="M7.5 11V7a4.5 4.5 0 0 1 9 0v4"/></svg>',
   unlocked: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="11" width="17" height="10" rx="2"/><path d="M7.5 11V7a4.5 4.5 0 0 1 8.9-1"/></svg>',
   compass: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="m15.5 8.5-2 5-5 2 2-5 5-2Z"/></svg>',
+  plus: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>',
+  capsule: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg>',
 };
+
+const escapeHTML = (s) => s.replace(/[&<>"']/g, (c) =>
+  ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
 // --- view routing ---
 const views = {
+  map: document.getElementById("view-map"),
   places: document.getElementById("view-places"),
+  create: document.getElementById("view-create"),
   reconstruct: document.getElementById("view-reconstruct"),
   reveal: document.getElementById("view-reveal"),
 };
+const FLOW = ["create", "reconstruct", "reveal"]; // hide tab bar in these
 function show(name) {
   Object.values(views).forEach((v) => v.classList.remove("active"));
   views[name].classList.add("active");
+  document.getElementById("tabbar").classList.toggle("hidden", FLOW.includes(name));
+  document.querySelectorAll(".tab").forEach((t) =>
+    t.classList.toggle("active",
+      (name === "map" && t.dataset.tab === "map") ||
+      (name === "places" && t.dataset.tab === "capsules")));
   document.querySelector(".screen").scrollTo({ top: 0, behavior: reduceMotion ? "auto" : "smooth" });
 }
+const switchTab = (tab) => show(tab === "map" ? "map" : "places");
 
 let active = null;
 
-// --- 1. capsules ---
+// --- toast ---
+let toastTimer;
+function toast(msg) {
+  const t = document.getElementById("toast");
+  t.textContent = msg;
+  t.classList.add("show");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove("show"), 2600);
+}
+
+// --- 1. MAP ---
+function renderMap() {
+  const pins = document.getElementById("map-pins");
+  pins.innerHTML = "";
+  let found = 0;
+
+  SEED.map.forEach((poi) => {
+    const disc = isDiscovered(poi);
+    if (disc) found++;
+    const cap = poi.capsuleId ? getPlace(poi.capsuleId) : null;
+
+    const btn = document.createElement("button");
+    btn.className = "pin";
+    btn.style.left = poi.x + "%";
+    btn.style.top = poi.y + "%";
+
+    let inner, label;
+    if (!disc) {
+      btn.classList.add("fog");
+      btn.setAttribute("aria-label", "Undiscovered location — visit to reveal");
+      inner = "?"; label = "? ? ?";
+    } else if (cap) {
+      btn.classList.add("cap");
+      const locked = isLocked(cap);
+      if (locked) btn.classList.add("sealed");
+      btn.setAttribute("aria-label", `${locked ? "Sealed" : "Open"} capsule at ${poi.name}`);
+      inner = cap.icon + (locked ? `<span class="lockbadge">${ICON.lock}</span>` : "");
+      label = poi.name;
+    } else {
+      btn.classList.add("empty");
+      btn.setAttribute("aria-label", `Seal a capsule at ${poi.name}`);
+      inner = ICON.plus; label = poi.name;
+    }
+    btn.innerHTML = `<span class="pin-marker">${inner}</span><span class="pin-label">${label}</span>`;
+    if (poi._justRevealed) { btn.classList.add("just-revealed"); delete poi._justRevealed; }
+
+    btn.addEventListener("click", () => onPoiClick(poi));
+    btn.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onPoiClick(poi); }
+    });
+    pins.appendChild(btn);
+  });
+
+  const player = document.createElement("div");
+  player.className = "player";
+  player.style.left = "38%";
+  player.style.top = "89%";
+  player.innerHTML = `<div class="player-dot"></div><div class="player-label">you</div>`;
+  pins.appendChild(player);
+
+  document.getElementById("map-progress").textContent = `${found}/${SEED.map.length} discovered`;
+}
+
+function onPoiClick(poi) {
+  if (!isDiscovered(poi)) { visit(poi); return; }
+  const cap = poi.capsuleId ? getPlace(poi.capsuleId) : null;
+  if (cap) openCapsule(cap);
+  else startCreate(poi);
+}
+
+function visit(poi) {
+  discovered.add(poi.id);
+  poi._justRevealed = true;
+  renderMap();
+  toast(poi.capsuleId ? `Back at ${poi.name}` : `Discovered ${poi.name} — seal a memory here`);
+}
+
+// --- 2. CREATE a capsule ---
+let createPoi = null, selMood = null, selCover = null;
+function startCreate(poi) {
+  createPoi = poi;
+  selMood = SEED.moods[0];
+  selCover = SEED.covers[0];
+  document.getElementById("create-loc-icon").innerHTML = ICON.pin;
+  document.getElementById("create-place").textContent = poi.name;
+  document.getElementById("mood-row").innerHTML = SEED.moods
+    .map((m, i) => `<button type="button" class="mchip${i ? "" : " sel"}" style="--h:${m.hue}" data-i="${i}">${m.label}</button>`)
+    .join("");
+  document.getElementById("cover-row").innerHTML = SEED.covers
+    .map((c, i) => `<button type="button" class="cover-sw${i ? "" : " sel"}" style="background:${c}" data-i="${i}" aria-label="Cover ${i + 1}"></button>`)
+    .join("");
+  document.getElementById("create-note").value = "";
+  show("create");
+}
+
+document.getElementById("mood-row").addEventListener("click", (e) => {
+  const b = e.target.closest(".mchip"); if (!b) return;
+  selMood = SEED.moods[+b.dataset.i];
+  [...e.currentTarget.children].forEach((c) => c.classList.remove("sel"));
+  b.classList.add("sel");
+});
+document.getElementById("cover-row").addEventListener("click", (e) => {
+  const b = e.target.closest(".cover-sw"); if (!b) return;
+  selCover = SEED.covers[+b.dataset.i];
+  [...e.currentTarget.children].forEach((c) => c.classList.remove("sel"));
+  b.classList.add("sel");
+});
+
+document.getElementById("create-form").addEventListener("submit", (e) => {
+  e.preventDefault();
+  const note = document.getElementById("create-note").value.trim() || "No words — just being here.";
+  const id = "c" + Date.now();
+  const cap = {
+    id, icon: ICON.capsule, name: createPoi.name, place: createPoi.name,
+    visits: "just sealed", sealed: true, mood: selMood, cover: selCover,
+    storyline: escapeHTML(note),
+    citations: [], principle: "",
+    reflection: "When you open this, what will you want to remember about who you are today?",
+    sealDate: "sealed just now",
+    opener: "what were you hoping for when you sealed this?",
+    replies: [], fallback: "I sealed this moment for you — that's all I know yet.",
+    anchor: { place: createPoi.name, time: "just now", photo: selCover },
+    userCreated: true,
+  };
+  SEED.places.push(cap);
+  createPoi.capsuleId = id;
+  discovered.add(createPoi.id);
+  createPoi._justRevealed = true;
+  renderMap();
+  renderPlaces();
+  switchTab("map");
+  toast(`Sealed at ${cap.name}. Come back to open it.`);
+});
+
+// --- 3. CAPSULES tab ---
 function renderPlaces() {
   const list = document.getElementById("place-list");
   list.innerHTML = "";
@@ -63,7 +212,7 @@ function renderPlaces() {
         <div class="pmeta"><span class="mood-dot" style="--h:${p.mood.hue}"></span>${p.mood.label} · ${p.visits}</div>
       </div>
       ${locked ? `<button class="imback">I'm back ↩</button>` : ``}`;
-    const go = () => activate(p);
+    const go = () => openCapsule(p);
     el.addEventListener("click", go);
     el.addEventListener("keydown", (e) => {
       if (e.key === "Enter" || e.key === " ") { e.preventDefault(); go(); }
@@ -72,15 +221,20 @@ function renderPlaces() {
   });
 }
 
-// returning unlocks a sealed capsule, then opens it
-function activate(p) {
-  if (isLocked(p)) { unlocked.add(p.id); renderPlaces(); }
-  openPlace(p.id);
+// open a capsule — unlock if sealed, then reconstruct (seeded) or reveal (created)
+function openCapsule(cap) {
+  if (isLocked(cap)) {
+    unlocked.add(cap.id);
+    renderMap();
+    renderPlaces();
+    toast("Welcome back. Capsule unlocked.");
+  }
+  active = cap;
+  if (cap.cues && cap.cues.length) openPlace(cap.id);
+  else reveal();
 }
 
-const moodPill = (m) => `<span class="mood-pill" style="--h:${m.hue}">${m.label}</span>`;
-
-// --- 2. reconstruct-before-reveal ---
+// --- reconstruct-before-reveal (seeded memories) ---
 function openPlace(id) {
   active = getPlace(id);
   const a = active.anchor;
@@ -104,46 +258,48 @@ function openPlace(id) {
   if (reduceMotion) {
     active.cues.forEach((c) => {
       const el = document.createElement("div");
-      el.className = "cue";
-      el.style.opacity = "1";
+      el.className = "cue"; el.style.opacity = "1";
       el.innerHTML = cueHTML(c);
       feed.appendChild(el);
     });
     revealBtn.classList.remove("hidden");
     return;
   }
-
   active.cues.forEach((c, i) => {
     setTimeout(() => {
       const el = document.createElement("div");
       el.className = "cue";
       el.innerHTML = cueHTML(c);
       feed.appendChild(el);
-      if (i === active.cues.length - 1) {
-        setTimeout(() => revealBtn.classList.remove("hidden"), 400);
-      }
+      if (i === active.cues.length - 1) setTimeout(() => revealBtn.classList.remove("hidden"), 400);
     }, 650 * (i + 1));
   });
 }
 
 document.getElementById("reveal-btn").addEventListener("click", reveal);
 
-// --- 3. grounded storyline + reflection + talk-to-past-you ---
+// --- grounded storyline + reflection + talk-to-past-you ---
 function reveal() {
-  const storyEl = document.getElementById("storyline");
-  let html = active.storyline.replace(/\*([^*]+)\*/g, "<em>$1</em>");
-  html = html.replace(/\{(\d+)\}/g, (_, i) => {
-    const cite = active.citations[Number(i)];
-    return `<sup class="cited" title="${cite ? cite.label : ""}">[${cite ? cite.n : "?"}]</sup>`;
-  });
-  storyEl.innerHTML = html;
+  document.querySelector("#view-reveal .section-label").textContent =
+    active.userCreated ? "Your note, sealed" : "The night, reconstructed";
 
-  document.getElementById("citations").innerHTML = active.citations
-    .map((c) => `<span class="chip"><b>[${c.n}]</b> ${c.label}</span>`)
-    .join("");
+  const html = active.storyline.replace(/\*([^*]+)\*/g, "<em>$1</em>")
+    .replace(/\{(\d+)\}/g, (_, i) => {
+      const cite = (active.citations || [])[Number(i)];
+      return `<sup class="cited" title="${cite ? cite.label : ""}">[${cite ? cite.n : "?"}]</sup>`;
+    });
+  document.getElementById("storyline").innerHTML = html;
 
-  document.getElementById("principle").innerHTML =
-    `<span class="plabel">Principle</span><span class="ptext">“${active.principle}”</span>`;
+  const cites = active.citations || [];
+  const citeEl = document.getElementById("citations");
+  citeEl.style.display = cites.length ? "" : "none";
+  citeEl.innerHTML = cites.map((c) => `<span class="chip"><b>[${c.n}]</b> ${c.label}</span>`).join("");
+
+  const prinEl = document.getElementById("principle");
+  if (active.principle) {
+    prinEl.style.display = "";
+    prinEl.innerHTML = `<span class="plabel">Principle</span><span class="ptext">“${active.principle}”</span>`;
+  } else prinEl.style.display = "none";
 
   // forward-looking reflection — never "go back to how it was" (wellbeing guardrail)
   document.getElementById("reflection").innerHTML =
@@ -151,10 +307,8 @@ function reveal() {
 
   document.getElementById("seal-date").textContent = active.sealDate;
 
-  const chat = document.getElementById("chat");
-  chat.innerHTML = "";
+  document.getElementById("chat").innerHTML = "";
   addBubble("past", active.opener);
-
   show("reveal");
 }
 
@@ -167,27 +321,26 @@ function addBubble(who, text) {
   chat.appendChild(el);
   el.scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block: "nearest" });
 }
-
 function pastReply(q) {
   const text = q.toLowerCase();
-  const hit = active.replies.find((r) => r.match.some((m) => text.includes(m)));
+  const hit = (active.replies || []).find((r) => r.match.some((m) => text.includes(m)));
   return hit ? hit.text : active.fallback;
 }
-
 document.getElementById("chat-form").addEventListener("submit", (e) => {
   e.preventDefault();
   const input = document.getElementById("chat-input");
   const q = input.value.trim();
   if (!q) return;
-  addBubble("you", q);
+  addBubble("you", escapeHTML(q));
   input.value = "";
   setTimeout(() => addBubble("past", pastReply(q)), 550);
 });
 
-// --- back navigation ---
-document.querySelector("[data-back]").addEventListener("click", () => show("places"));
-document.querySelector("[data-back-reconstruct]").addEventListener("click", () => show("reconstruct"));
+// --- tabs + back nav ---
+document.querySelectorAll(".tab").forEach((t) => t.addEventListener("click", () => switchTab(t.dataset.tab)));
+document.querySelectorAll("[data-back-map]").forEach((b) => b.addEventListener("click", () => show("map")));
 
 // --- boot ---
+renderMap();
 renderPlaces();
-show("places");
+show("map");
