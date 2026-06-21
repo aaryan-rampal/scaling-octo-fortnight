@@ -1,0 +1,454 @@
+[
+  {
+    "uuid": "77885cb3-2acb-40c2-b1ec-826900e8a251",
+    "name": "Synthetic normal conversation",
+    "summary": "",
+    "created_at": "2025-11-23T17:43:50Z",
+    "updated_at": "2025-11-23T17:44:00Z",
+    "account": {
+      "uuid": "acct-synthetic"
+    },
+    "chat_messages": [
+      {
+        "uuid": "normal-m0",
+        "sender": "human",
+        "text": "Synthetic normal turn 0",
+        "content": [
+          {
+            "type": "text",
+            "text": "Synthetic normal turn 0"
+          }
+        ],
+        "created_at": "2025-11-23T17:43:52Z",
+        "updated_at": "2025-11-23T17:43:53Z",
+        "attachments": [],
+        "files": [],
+        "parent_message_uuid": "00000000-0000-4000-8000-000000000000"
+      },
+      {
+        "uuid": "normal-m1",
+        "sender": "assistant",
+        "text": "Synthetic normal turn 1",
+        "content": [
+          {
+            "type": "text",
+            "text": "Synthetic normal turn 1"
+          }
+        ],
+        "created_at": "2025-11-23T17:43:52Z",
+        "updated_at": "2025-11-23T17:43:53Z",
+        "attachments": [],
+        "files": [],
+        "parent_message_uuid": "normal-m0"
+      },
+      {
+        "uuid": "normal-m2",
+        "sender": "human",
+        "text": "Synthetic normal turn 2",
+        "content": [
+          {
+            "type": "text",
+            "text": "Synthetic normal turn 2"
+          }
+        ],
+        "created_at": "2025-11-23T17:43:52Z",
+        "updated_at": "2025-11-23T17:43:53Z",
+        "attachments": [],
+        "files": [],
+        "parent_message_uuid": "normal-m1"
+      },
+      {
+        "uuid": "normal-m3",
+        "sender": "assistant",
+        "text": "Synthetic normal turn 3",
+        "content": [
+          {
+            "type": "text",
+            "text": "Synthetic normal turn 3"
+          }
+        ],
+        "created_at": "2025-11-23T17:43:52Z",
+        "updated_at": "2025-11-23T17:43:53Z",
+        "attachments": [],
+        "files": [],
+        "parent_message_uuid": "normal-m2"
+      },
+      {
+        "uuid": "normal-m4",
+        "sender": "human",
+        "text": "Synthetic normal turn 4",
+        "content": [
+          {
+            "type": "text",
+            "text": "Synthetic normal turn 4"
+          }
+        ],
+        "created_at": "2025-11-23T17:43:52Z",
+        "updated_at": "2025-11-23T17:43:53Z",
+        "attachments": [],
+        "files": [],
+        "parent_message_uuid": "normal-m3"
+      },
+      {
+        "uuid": "normal-m5",
+        "sender": "assistant",
+        "text": "Synthetic normal turn 5",
+        "content": [
+          {
+            "type": "text",
+            "text": "Synthetic normal turn 5"
+          }
+        ],
+        "created_at": "2025-11-23T17:43:52Z",
+        "updated_at": "2025-11-23T17:43:53Z",
+        "attachments": [],
+        "files": [],
+        "parent_message_uuid": "normal-m4"
+      }
+    ]
+  },
+  {
+    "uuid": "f8d8b5fb-93e3-4644-be55-c3454e5d4a94",
+    "name": "Synthetic tool conversation",
+    "summary": "",
+    "created_at": "2025-11-23T17:43:50Z",
+    "updated_at": "2025-11-23T17:44:00Z",
+    "account": {
+      "uuid": "acct-synthetic"
+    },
+    "chat_messages": [
+      {
+        "uuid": "tool-m0",
+        "sender": "human",
+        "text": "Please look something up.",
+        "content": [
+          {
+            "type": "text",
+            "text": "Please look something up."
+          }
+        ],
+        "created_at": "2025-11-23T17:43:52Z",
+        "updated_at": "2025-11-23T17:43:53Z",
+        "attachments": [],
+        "files": [],
+        "parent_message_uuid": "00000000-0000-4000-8000-000000000000"
+      },
+      {
+        "uuid": "tool-m1",
+        "sender": "assistant",
+        "text": "",
+        "content": [
+          {
+            "type": "text",
+            "text": "Let me search."
+          },
+          {
+            "type": "tool_use",
+            "name": "web_search",
+            "input": {
+              "q": "synthetic query"
+            }
+          },
+          {
+            "type": "tool_result",
+            "name": "web_search",
+            "content": [
+              {
+                "type": "text",
+                "text": "synthetic result"
+              }
+            ]
+          },
+          {
+            "type": "text",
+            "text": "Here is what I found."
+          }
+        ],
+        "created_at": "2025-11-23T17:43:52Z",
+        "updated_at": "2025-11-23T17:43:53Z",
+        "attachments": [],
+        "files": [],
+        "parent_message_uuid": "tool-m0"
+      }
+    ]
+  },
+  {
+    "uuid": "6690d9d4-e7a8-404f-ab1e-b0971dbdb5fa",
+    "name": "Synthetic empty conversation",
+    "summary": "",
+    "created_at": "2025-11-23T17:43:50Z",
+    "updated_at": "2025-11-23T17:44:00Z",
+    "account": {
+      "uuid": "acct-synthetic"
+    },
+    "chat_messages": []
+  },
+  {
+    "uuid": "f6522b2c-60c7-4c79-bc60-5d72be0790cb",
+    "name": "Synthetic deep reply chain",
+    "summary": "",
+    "created_at": "2025-11-23T17:43:50Z",
+    "updated_at": "2025-11-23T17:44:00Z",
+    "account": {
+      "uuid": "acct-synthetic"
+    },
+    "chat_messages": [
+      {
+        "uuid": "deep-m0",
+        "sender": "human",
+        "text": "Synthetic deep turn 0",
+        "content": [
+          {
+            "type": "text",
+            "text": "Synthetic deep turn 0"
+          }
+        ],
+        "created_at": "2025-11-23T17:43:52Z",
+        "updated_at": "2025-11-23T17:43:53Z",
+        "attachments": [],
+        "files": [],
+        "parent_message_uuid": "00000000-0000-4000-8000-000000000000"
+      },
+      {
+        "uuid": "deep-m1",
+        "sender": "assistant",
+        "text": "Synthetic deep turn 1",
+        "content": [
+          {
+            "type": "text",
+            "text": "Synthetic deep turn 1"
+          }
+        ],
+        "created_at": "2025-11-23T17:43:52Z",
+        "updated_at": "2025-11-23T17:43:53Z",
+        "attachments": [],
+        "files": [],
+        "parent_message_uuid": "deep-m0"
+      },
+      {
+        "uuid": "deep-m2",
+        "sender": "human",
+        "text": "Synthetic deep turn 2",
+        "content": [
+          {
+            "type": "text",
+            "text": "Synthetic deep turn 2"
+          }
+        ],
+        "created_at": "2025-11-23T17:43:52Z",
+        "updated_at": "2025-11-23T17:43:53Z",
+        "attachments": [],
+        "files": [],
+        "parent_message_uuid": "deep-m1"
+      },
+      {
+        "uuid": "deep-m3",
+        "sender": "assistant",
+        "text": "Synthetic deep turn 3",
+        "content": [
+          {
+            "type": "text",
+            "text": "Synthetic deep turn 3"
+          }
+        ],
+        "created_at": "2025-11-23T17:43:52Z",
+        "updated_at": "2025-11-23T17:43:53Z",
+        "attachments": [],
+        "files": [],
+        "parent_message_uuid": "deep-m2"
+      },
+      {
+        "uuid": "deep-m4",
+        "sender": "human",
+        "text": "Synthetic deep turn 4",
+        "content": [
+          {
+            "type": "text",
+            "text": "Synthetic deep turn 4"
+          }
+        ],
+        "created_at": "2025-11-23T17:43:52Z",
+        "updated_at": "2025-11-23T17:43:53Z",
+        "attachments": [],
+        "files": [],
+        "parent_message_uuid": "deep-m3"
+      },
+      {
+        "uuid": "deep-m5",
+        "sender": "assistant",
+        "text": "Synthetic deep turn 5",
+        "content": [
+          {
+            "type": "text",
+            "text": "Synthetic deep turn 5"
+          }
+        ],
+        "created_at": "2025-11-23T17:43:52Z",
+        "updated_at": "2025-11-23T17:43:53Z",
+        "attachments": [],
+        "files": [],
+        "parent_message_uuid": "deep-m4"
+      },
+      {
+        "uuid": "deep-m6",
+        "sender": "human",
+        "text": "Synthetic deep turn 6",
+        "content": [
+          {
+            "type": "text",
+            "text": "Synthetic deep turn 6"
+          }
+        ],
+        "created_at": "2025-11-23T17:43:52Z",
+        "updated_at": "2025-11-23T17:43:53Z",
+        "attachments": [],
+        "files": [],
+        "parent_message_uuid": "deep-m5"
+      },
+      {
+        "uuid": "deep-m7",
+        "sender": "assistant",
+        "text": "Synthetic deep turn 7",
+        "content": [
+          {
+            "type": "text",
+            "text": "Synthetic deep turn 7"
+          }
+        ],
+        "created_at": "2025-11-23T17:43:52Z",
+        "updated_at": "2025-11-23T17:43:53Z",
+        "attachments": [],
+        "files": [],
+        "parent_message_uuid": "deep-m6"
+      },
+      {
+        "uuid": "deep-m8",
+        "sender": "human",
+        "text": "Synthetic deep turn 8",
+        "content": [
+          {
+            "type": "text",
+            "text": "Synthetic deep turn 8"
+          }
+        ],
+        "created_at": "2025-11-23T17:43:52Z",
+        "updated_at": "2025-11-23T17:43:53Z",
+        "attachments": [],
+        "files": [],
+        "parent_message_uuid": "deep-m7"
+      },
+      {
+        "uuid": "deep-m9",
+        "sender": "assistant",
+        "text": "Synthetic deep turn 9",
+        "content": [
+          {
+            "type": "text",
+            "text": "Synthetic deep turn 9"
+          }
+        ],
+        "created_at": "2025-11-23T17:43:52Z",
+        "updated_at": "2025-11-23T17:43:53Z",
+        "attachments": [],
+        "files": [],
+        "parent_message_uuid": "deep-m8"
+      },
+      {
+        "uuid": "deep-m10",
+        "sender": "human",
+        "text": "Synthetic deep turn 10",
+        "content": [
+          {
+            "type": "text",
+            "text": "Synthetic deep turn 10"
+          }
+        ],
+        "created_at": "2025-11-23T17:43:52Z",
+        "updated_at": "2025-11-23T17:43:53Z",
+        "attachments": [],
+        "files": [],
+        "parent_message_uuid": "deep-m9"
+      },
+      {
+        "uuid": "deep-m11",
+        "sender": "assistant",
+        "text": "Synthetic deep turn 11",
+        "content": [
+          {
+            "type": "text",
+            "text": "Synthetic deep turn 11"
+          }
+        ],
+        "created_at": "2025-11-23T17:43:52Z",
+        "updated_at": "2025-11-23T17:43:53Z",
+        "attachments": [],
+        "files": [],
+        "parent_message_uuid": "deep-m10"
+      },
+      {
+        "uuid": "deep-m12",
+        "sender": "human",
+        "text": "Synthetic deep turn 12",
+        "content": [
+          {
+            "type": "text",
+            "text": "Synthetic deep turn 12"
+          }
+        ],
+        "created_at": "2025-11-23T17:43:52Z",
+        "updated_at": "2025-11-23T17:43:53Z",
+        "attachments": [],
+        "files": [],
+        "parent_message_uuid": "deep-m11"
+      },
+      {
+        "uuid": "deep-m13",
+        "sender": "assistant",
+        "text": "Synthetic deep turn 13",
+        "content": [
+          {
+            "type": "text",
+            "text": "Synthetic deep turn 13"
+          }
+        ],
+        "created_at": "2025-11-23T17:43:52Z",
+        "updated_at": "2025-11-23T17:43:53Z",
+        "attachments": [],
+        "files": [],
+        "parent_message_uuid": "deep-m12"
+      }
+    ]
+  },
+  {
+    "uuid": "492dc5a4-d7fd-4240-8499-f5e5e2b28013",
+    "name": "Synthetic voice conversation",
+    "summary": "",
+    "created_at": "2025-11-23T17:43:50Z",
+    "updated_at": "2025-11-23T17:44:00Z",
+    "account": {
+      "uuid": "acct-synthetic"
+    },
+    "chat_messages": [
+      {
+        "uuid": "voice-m0",
+        "sender": "human",
+        "text": "",
+        "content": [
+          {
+            "type": "voice_note",
+            "text": ""
+          },
+          {
+            "type": "text",
+            "text": "Synthetic transcript of a voice note."
+          }
+        ],
+        "created_at": "2025-11-23T17:43:52Z",
+        "updated_at": "2025-11-23T17:43:53Z",
+        "attachments": [],
+        "files": [],
+        "parent_message_uuid": "00000000-0000-4000-8000-000000000000"
+      }
+    ]
+  }
+]
