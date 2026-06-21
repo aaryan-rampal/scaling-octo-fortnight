@@ -1937,12 +1937,17 @@
     const BAY_AREA = [37.66, -122.27];
 
     async function loadCapsules(){
+      // Live backend first; on static hosting (GitHub Pages — no backend) fall
+      // back to the baked-in capsules.json + root media/ (same shape + paths).
       try {
         const resp = await fetch('/api/capsules');
-        if (!resp.ok) return [];
-        const json = await resp.json();
-        return json.capsules || [];
-      } catch { return []; }
+        if (resp.ok) { const j = await resp.json(); if ((j.capsules || []).length) return j.capsules; }
+      } catch {}
+      try {
+        const resp = await fetch('capsules.json', { cache: 'no-store' });
+        if (resp.ok) return (await resp.json()).capsules || [];
+      } catch {}
+      return [];
     }
 
     // Resolve the user's location. `precise` is true only on a real GPS fix;
@@ -2067,7 +2072,9 @@
         html += '<div class="frame"><div class="frame-label">📦 Contents</div><div class="frame-body"><div class="frame-msg" style="opacity:.7">no media attached to this capsule</div></div></div>';
       }
       media.forEach(item => {
-        const src = '/media/' + item.file_path;
+        // relative so it works both locally (server.js proxies /media) and on
+        // static hosting at a subpath (GitHub Pages → <repo>/media/…).
+        const src = 'media/' + item.file_path;
         if (item.kind === 'photo'){
           html += '<div class="frame"><div class="frame-label">📷 Photo</div><div class="frame-body media"><img src="' + src + '" alt="photo" loading="lazy"></div></div>';
         } else if (item.kind === 'video'){
