@@ -88,6 +88,120 @@ See `poc_demo/README.md` for the API endpoints.
 | `poc_demo/server/` | FastAPI backend for the web UI |
 | `poc_demo/web/` | Vite + React + TypeScript frontend |
 
+## Principle trace-back and explanation (backend)
+
+A read path that takes a principle id, walks its provenance, and returns an
+LLM explanation of why the principle was inferred. It reads the materialised
+graph in SQLite and never writes to it.
+
+```
+principle -> principle_memories -> memories -> memory_events -> events (raw)
+```
+
+```bash
+# list principle ids in the sample DB (no key needed)
+PYTHONPATH=src .venv/bin/python -m cli explain
+
+# trace one principle and explain it (uses OpenRouter, so run under Doppler)
+doppler run --project berkeley-hackathon --config dev -- \
+  env PYTHONPATH=src .venv/bin/python -m cli explain <principle_id>
+
+# rebuild the sample DB if the handoff arrived as JSON
+.venv/bin/python scripts/load_sample_json.py <path-to-derek_sample.json>
+```
+
+Files: `src/storage/trace.py` (the trace), `src/pipeline/explain.py` (the
+agent), the `explain` subcommand in `src/cli.py`, and the design doc in
+`docs/principle-traceback-agent.md`.
+
+### Production hardening checklist
+
+What a backend engineer would check to take this from a working POC to
+something safe to run on real data. Items already handled in this branch are
+marked done; the rest are deliberate follow-ups, not omissions to hide.
+
+**Correctness and data integrity**
+- Read-only access. `open_db` opens the DB with `mode=ro`, so the path cannot
+  mutate the graph and a wrong `--db` fails loudly instead of creating an empty
+  file. (done)
+- Defensive shaping. Duplicate join rows are deduped per memory, null
+  confidence is coerced, memories with no events still appear, and an unknown
+  id returns `None`. (done)
+- Schema as a contract. The SQL hardcodes table and column names from
+  `SCHEMA.md`. Add a startup check that the expected tables and columns exist
+  and fail fast with a clear message if the DB drifts. (follow-up)
+- Referential integrity. The trace assumes join ids resolve. Run an orphan
+  check (the pattern in Derek's `verify_sample.py`) in CI so a broken export is
+  caught before it reaches the read path. (follow-up)
+
+**Testing**
+- Offline unit tests with an in-memory fixture DB cover dedupe, null
+  confidence, read-only, not-found, and the agent assembly with a fake LLM. 12
+  tests, full suite green, ruff clean. (done)
+- Add an integration test that builds the sample DB with `load_sample_json.py`
+  and traces a real principle, so the loader and the schema are exercised end
+  to end. (follow-up)
+- Add a contract test that asserts the live schema matches what the SQL
+  expects, separate from the fixtures. (follow-up)
+
+**Error handling and resilience**
+- LLM failures degrade rather than crash: `LLMWhyExplainer.explain` logs and
+  returns an empty string, and the CLI prints a clear message. (done)
+- Add a request timeout on the OpenRouter client, plus retry with backoff for
+  transient errors, and distinguish transient from permanent failures.
+  (follow-up)
+- Validate the principle id format before querying. (follow-up)
+
+**Performance and scalability**
+- Single query, no N+1: the whole ladder is one `JOIN`, grouped in Python.
+  (done)
+- Indexes. On `recall.db` (153k events) the join needs indexes on
+  `principle_memories(principle_id)`, `memory_events(memory_id)`, and the
+  `memories`/`events` primary keys. Confirm they exist or add them; the sample
+  DB is small enough to hide a missing index. (follow-up)
+- Caching. The trace is cheap and deterministic; the `why` text is the
+  expensive, variable part. It can be cached keyed by `principle_id`, which is a
+  content hash (see `_principle_id` in `mint.py`), so the cache self-invalidates
+  when a principle is reminted. A `CachingWhyExplainer` wrapping the existing
+  `WhyExplainer` protocol fits without changing `explain_principle`. Note that
+  `open_db` is read-only, so the cache needs its own writable store.
+  (follow-up)
+
+**Observability**
+- The agent logs failures via loguru. (partial)
+- Add structured logs and metrics per call: principle id, memory and event
+  counts, latency, model, token usage, estimated cost, and cache hit or miss.
+  (follow-up)
+
+**Security and privacy**
+- No secrets in the repo. The key is read from the environment that Doppler
+  fills in, never hardcoded. (done)
+- PII egress. `render_evidence` sends raw message content to OpenRouter. The
+  project's privacy stance (CLAUDE.md §7) is abstraction-only egress with remote
+  inference in this build. Decide whether raw events should be redacted or
+  summarised before they leave the machine, or run a local model. (follow-up,
+  important)
+- Prompt injection. Raw message text is untrusted input placed in the prompt;
+  a message could contain instructions to the model. Harden the system prompt,
+  keep evidence clearly delimited, and do not let the model's output trigger
+  actions. (follow-up, important)
+
+**If exposed over HTTP**
+- A `GET /principles/{id}/why` endpoint in `poc_demo/server` would return
+  `to_dict(trace)` plus `why`, 404 when the function returns `None`, one
+  connection per request (read-only), input validation, and rate limiting.
+  Pagination is not needed at this scale. (follow-up)
+
+**Configuration and cost**
+- Model id, temperature, DB path, and timeouts should be configurable rather
+  than living as defaults in code; the OpenRouter budget is shared, so add a
+  cost guard and cap concurrency. (follow-up)
+
+**CI**
+- Run ruff, ty, and pytest on every change, plus the schema and orphan checks
+  above, so drift and broken provenance fail in CI rather than at runtime.
+  (follow-up)
+
 ## Notes
 
 - `chat.db` is read **read-only**; the pipeline never writes to your Messages.
