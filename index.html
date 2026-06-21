@@ -83,6 +83,20 @@
     z-index: 60;
   }
 
+  /* ---- ON A REAL PHONE: drop the desktop mockup and go edge-to-edge. ----
+     The .phone/.screen frame + dark stage are a desktop preview shell; on a
+     small touch screen the device IS the frame, so fill the viewport and hide
+     the fake notch (the real one is handled by viewport-fit=cover). */
+  @media (max-width: 560px) {
+    .stage { background: #fffdf9; place-items: stretch; height: 100dvh; }
+    .phone {
+      height: 100dvh; width: 100vw; aspect-ratio: auto;
+      border-radius: 0; padding: 0; box-shadow: none; background: #fffdf9;
+    }
+    .screen { border-radius: 0; }
+    .island { display: none; }
+  }
+
   /* =========================================================
      LAYER 1 — the burnt vintage map (revealed underneath)
      ========================================================= */
