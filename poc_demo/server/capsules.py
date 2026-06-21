@@ -14,7 +14,9 @@ from __future__ import annotations
 
 import hashlib
 import mimetypes
-from datetime import UTC, datetime
+from datetime import datetime, timezone
+
+UTC = timezone.utc
 from pathlib import Path
 
 from core.capsule import MEDIA_KINDS, Capsule, Media

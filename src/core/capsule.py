@@ -34,7 +34,7 @@ MEDIA_KINDS = ("photo", "audio", "video", "text")
 CAPSULE_SOURCE = "capsule"
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True)
 class Media:
     """A single piece of media attached to a capsule.
 
@@ -95,7 +95,7 @@ class Media:
         )
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True)
 class Capsule:
     """A user-created captured memory: a place and its attached media.
 

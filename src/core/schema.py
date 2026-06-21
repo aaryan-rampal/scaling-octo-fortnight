@@ -26,7 +26,7 @@ def _parse_utc(value: str) -> datetime:
     return datetime.fromisoformat(value.replace("Z", "+00:00"))
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True)
 class Event:
     """A single message-level event.
 
@@ -90,7 +90,7 @@ class Event:
         )
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True)
 class Episode:
     """A contiguous run of events within one thread.
 

@@ -1,0 +1,1629 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<title>recapsule</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Caveat:wght@500;600;700&family=Dancing+Script:wght@500;600;700&display=swap" rel="stylesheet" />
+<!-- Leaflet (real map for the Dig-up flow) -->
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" defer></script>
+<style>
+  :root {
+    /* palette pulled from the logo art */
+    --map-rose:   #c9b3a8;
+    --map-rose-d: #b89c8d;
+    --map-deep:   #9c7d6b;
+    --ring-brown: #8a6a55;
+    --ink:        #3a3330;
+    --scroll-1:   #f6efce;
+    --scroll-2:   #ece2b0;
+    --scroll-3:   #d9c98a;
+    --band:       #e7d79a;
+    --band-d:     #c9b270;
+    --red-x:      #d65668;
+    --burnt:      #3d2415;
+    --paper:      #efe2c6;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  html, body {
+    height: 100%;
+    background: #1a1a1f;
+    font-family: 'Caveat', cursive;
+    overflow: hidden;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* ---- center the phone in the viewport ---- */
+  .stage {
+    height: 100%;
+    display: grid;
+    place-items: center;
+    background:
+      radial-gradient(120% 120% at 50% 0%, #26242b 0%, #141318 70%, #0d0c10 100%);
+  }
+
+  /* ---- the phone shell ---- */
+  .phone {
+    position: relative;
+    height: min(844px, 96vh);
+    width: auto;
+    aspect-ratio: 390 / 844;
+    border-radius: 54px;
+    background: #0b0b0d;
+    padding: 11px;
+    box-shadow:
+      0 0 0 2px #2a2a2e,
+      0 30px 70px -20px rgba(0,0,0,0.8),
+      0 8px 20px rgba(0,0,0,0.6);
+  }
+
+  .screen {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    border-radius: 44px;
+    overflow: clip;            /* clip (not hidden) so the screen can never be scrolled */
+    background: #fffdf9;
+    isolation: isolate;
+  }
+
+  /* notch / dynamic island */
+  .island {
+    position: absolute;
+    top: 12px; left: 50%;
+    transform: translateX(-50%);
+    width: 112px; height: 32px;
+    background: #000;
+    border-radius: 20px;
+    z-index: 60;
+  }
+
+  /* =========================================================
+     LAYER 1 — the burnt vintage map (revealed underneath)
+     ========================================================= */
+  .map {
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    opacity: 0;
+    background:
+      /* light tea-stain blotches for an aged, mottled feel */
+      radial-gradient(22% 15% at 24% 28%, rgba(120,82,48,0.13), rgba(120,82,48,0) 70%),
+      radial-gradient(26% 19% at 78% 66%, rgba(110,74,44,0.12), rgba(110,74,44,0) 70%),
+      radial-gradient(18% 14% at 30% 80%, rgba(96,64,38,0.10), rgba(96,64,38,0) 70%),
+      /* base: bright parchment center, darkening to burnt brown at the edges */
+      radial-gradient(118% 118% at 50% 44%,
+        #ecdcbd 0%, #e1ceaa 42%, #cdb389 66%, #a07e5a 86%, #6b4a30 100%);
+    /* charred frame — light enough to keep the field crisp */
+    box-shadow:
+      inset 0 0 60px 8px rgba(48,28,12,0.50),
+      inset 0 0 22px 2px rgba(28,15,6,0.55);
+  }
+
+  /* static charred dark vignette at the edges (no animation) */
+  .map::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background:
+      radial-gradient(120% 118% at 50% 47%,
+        rgba(60,36,18,0) 54%,
+        rgba(60,36,18,0.18) 68%,
+        rgba(45,26,12,0.45) 84%,
+        rgba(28,15,6,0.78) 95%,
+        rgba(16,8,3,0.9) 100%);
+    mix-blend-mode: multiply;
+    pointer-events: none;
+  }
+
+  /* hand-inked treasure-map features painted on the parchment */
+  .map-art {
+    position: absolute;
+    inset: 0;
+    z-index: 2;
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  /* =========================================================
+     LAYER 2 — intro text
+     ========================================================= */
+  .intro-text {
+    position: absolute;
+    inset: 0;
+    z-index: 30;
+    pointer-events: none;
+  }
+  .tagline {
+    position: absolute;
+    top: 14%; left: 0; right: 0;
+    text-align: center;
+    font-size: 34px;
+    font-weight: 700;
+    color: var(--ink);
+    letter-spacing: 1px;
+    opacity: 0;
+    transform: translateY(8px) rotate(-2deg);
+    animation: textIn .7s ease-out .25s forwards, textOut .5s ease-in 1.7s forwards;
+  }
+  .wordmark {
+    position: absolute;
+    bottom: 13%; left: 0; right: 0;
+    text-align: center;
+    font-family: 'Dancing Script', cursive;
+    font-size: 64px;
+    font-weight: 700;
+    color: var(--ink);
+    opacity: 0;
+    transform: translateY(10px);
+    animation: textIn .7s ease-out .5s forwards, textOut .5s ease-in 1.7s forwards;
+  }
+  @keyframes textIn  { to { opacity:1; transform: translateY(0) rotate(-2deg); } }
+  @keyframes textOut { to { opacity:0; transform: translateY(-6px) rotate(-2deg); } }
+
+  /* =========================================================
+     LAYER 3 — the logo badge that expands & "eats" the page
+     ========================================================= */
+  .badge-wrap {
+    position: absolute;
+    top: 50%; left: 50%;
+    z-index: 20;
+    width: 230px; height: 230px;
+    transform: translate(-50%, -50%) scale(0.55);
+    opacity: 0;
+    transform-origin: center center;
+    /* phases: pop-in -> hold -> expand to eat page -> fade out (hands off to crisp resting scroll) */
+    animation:
+      badgePop   .8s cubic-bezier(.34,1.56,.64,1) .15s forwards,
+      badgeEat   1.7s cubic-bezier(.7,0,.3,1) 2.0s forwards,
+      badgeFade  .55s ease-in 3.55s forwards;
+  }
+  @keyframes badgeFade { to { opacity: 0; } }
+  @keyframes badgePop {
+    0%   { opacity:0; transform: translate(-50%,-50%) scale(0.45) rotate(-8deg); }
+    100% { opacity:1; transform: translate(-50%,-50%) scale(1) rotate(0deg); }
+  }
+  /* scale far past the screen so the circle interior becomes the full background */
+  @keyframes badgeEat {
+    0%   { transform: translate(-50%,-50%) scale(1)   rotate(0deg); }
+    100% { transform: translate(-50%,-50%) scale(7.0) rotate(6deg); }
+  }
+
+  .badge { width:100%; height:100%; display:block; transform-origin:center; }
+
+  /* the badge's own ring/speckles fade as the real map takes over,
+     so the expansion reads as the interior "becoming" the map */
+  .badge .ring,
+  .badge .badge-bg,
+  .badge .speckles { animation: fadeOut .8s ease-in 2.7s forwards; }
+  @keyframes fadeOut { to { opacity: 0; } }
+
+  /* the scroll settles back to readable size after the badge blows up */
+  .scroll-grp {
+    transform-origin: 115px 118px;
+    animation: scrollSettle 1.7s cubic-bezier(.7,0,.3,1) 2.0s forwards;
+  }
+  /* counter-scale: badge goes x7, scroll shrinks ~x1/4.2 -> ends a touch bigger than start */
+  @keyframes scrollSettle {
+    0%   { transform: scale(1)    rotate(0deg); }
+    100% { transform: scale(0.22) rotate(-6deg); }
+  }
+
+  /* the treasure path + X drift outward & fade as page is eaten */
+  .map-marks { animation: marksOut 1.4s ease-out 2.1s forwards; }
+  @keyframes marksOut { to { opacity:0; transform: scale(1.25); } }
+
+  /* gentle idle bob for the settled scroll (kicks in after intro) */
+  .idle-bob { animation: bob 4.5s ease-in-out 4.0s infinite; transform-origin:center; }
+  @keyframes bob {
+    0%,100% { transform: translateY(0) rotate(-6deg); }
+    50%     { transform: translateY(-6px) rotate(-5deg); }
+  }
+
+  /* reveal the map near the end of the eat phase */
+  .map     { animation: mapIn 1.2s ease-out 2.6s forwards; }
+  .map-art { animation: mapIn 1.4s ease-out 3.0s forwards; }
+  @keyframes mapIn { to { opacity:1; } }
+
+  /* =========================================================
+     the crisp resting capsule (its own full-size element, so it
+     stays sharp — the giant scaled badge just fades out behind it)
+     ========================================================= */
+  .home-scroll {
+    position: absolute;
+    left: 50%; top: 50%;
+    width: 272px; z-index: 18;             /* matches the settled badge scroll size */
+    transform: translate(-50%, calc(-50% + 22px));
+    opacity: 0;
+    filter: drop-shadow(0 6px 10px rgba(60,40,20,0.28));
+    animation: homeScrollIn .55s ease-out 3.55s forwards;
+  }
+  @keyframes homeScrollIn { to { opacity: 1; } }
+  .home-scroll .bob {
+    transform-box: fill-box; transform-origin: center;
+    transform: rotate(-6deg);              /* matches the badge scroll's resting tilt */
+    animation: hsBob 4.6s ease-in-out 4.3s infinite;
+  }
+  @keyframes hsBob {
+    0%,100% { transform: translateY(0)    rotate(-6deg); }
+    50%     { transform: translateY(-6px) rotate(-5deg); }
+  }
+
+  @keyframes promptIn { to { opacity: 1; } }
+
+  /* ---- bottom action dock: shovel buttons ---- */
+  .dock {
+    position: absolute; left: 0; right: 0; bottom: 34px;
+    z-index: 44;
+    display: flex; justify-content: center; gap: 26px;
+    opacity: 0;
+    animation: promptIn .9s ease-out 4.2s forwards;
+  }
+  .tool {
+    display: flex; flex-direction: column; align-items: center; gap: 5px;
+    background: rgba(248,239,213,0.85);
+    border: 1.6px solid #b9a463;
+    border-radius: 18px;
+    padding: 11px 18px 9px;
+    cursor: pointer;
+    box-shadow: 0 4px 12px rgba(40,22,10,0.22);
+    transition: transform .14s ease, box-shadow .14s ease, background .14s ease;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .tool:hover  { transform: translateY(-2px); box-shadow: 0 8px 16px rgba(40,22,10,0.28); background: rgba(251,244,222,0.96); }
+  .tool:active { transform: translateY(1px) scale(.97); }
+  .tool svg { width: 34px; height: 38px; display: block; overflow: visible; }
+  .tool-label { font-family: 'Caveat', cursive; font-size: 18px; font-weight: 700; color: #4f3924; line-height: 1; }
+
+  /* idle digging motion on the shovels (faster on hover) */
+  .shovel { transform-box: fill-box; transform-origin: center; }
+  .tool-bury .shovel { animation: digDown 2.6s ease-in-out infinite; }
+  .tool-dig  .shovel { animation: digUp   2.6s ease-in-out infinite; }
+  .tool:hover .shovel { animation-duration: 1s; }
+  @keyframes digDown { 0%,68%,100% { transform: translateY(0) rotate(0); } 84% { transform: translateY(3px) rotate(4deg); } }
+  @keyframes digUp   { 0%,68%,100% { transform: translateY(0) rotate(0); } 84% { transform: translateY(-3px) rotate(-4deg); } }
+
+  /* ---- compass button, top-right corner ---- */
+  .compass-btn {
+    position: absolute; top: 16px; right: 12px; z-index: 45;
+    display: flex; flex-direction: column; align-items: center; gap: 1px;
+    background: none; border: none; cursor: pointer; padding: 0;
+    opacity: 0;
+    animation: promptIn 1s ease-out 4.4s forwards;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .compass-btn svg {
+    width: 52px; height: 52px; display: block;
+    filter: drop-shadow(0 2px 3px rgba(40,22,10,.35));
+    transition: transform .3s ease;
+  }
+  .compass-btn:hover svg { transform: scale(1.07); }
+  .compass-btn:active svg { transform: scale(.96); }
+  .compass-needle {
+    transform-box: fill-box; transform-origin: center;
+    animation: needleSway 4.2s ease-in-out infinite;
+  }
+  .compass-btn:hover .compass-needle { animation: needleSpin 1.1s cubic-bezier(.3,0,.2,1); }
+  @keyframes needleSway { 0%,100%{transform:rotate(-13deg);} 50%{transform:rotate(15deg);} }
+  @keyframes needleSpin { from{transform:rotate(0);} to{transform:rotate(360deg);} }
+  .compass-cap {
+    font-family: 'Caveat', cursive; font-size: 13.5px; font-weight: 700;
+    color: #4f3924; line-height: 1.05; max-width: 82px; text-align: center;
+    text-shadow: 0 1px 0 rgba(255,250,235,0.65);
+    transform: rotate(-3deg);
+  }
+
+  /* ---- gesture acknowledgement toast (placeholder until screens exist) ---- */
+  .toast {
+    position: absolute; left: 50%; top: 50%; z-index: 55;
+    transform: translate(-50%,-50%) translateY(12px);
+    font-family: 'Caveat', cursive; font-size: 27px; font-weight: 700;
+    color: #3a2410; background: rgba(247,238,210,0.94);
+    border: 1.5px solid #b9a463; border-radius: 14px;
+    padding: 9px 20px; opacity: 0; pointer-events: none; white-space: nowrap;
+    box-shadow: 0 8px 22px rgba(40,22,10,.35);
+    transition: opacity .25s ease, transform .25s ease;
+  }
+  .toast.show { opacity: 1; transform: translate(-50%,-50%) translateY(0); }
+
+  /* =========================================================
+     BURY FLOW  (camera → dig → bury → success)
+     ========================================================= */
+  .bury {
+    position: absolute; inset: 0; z-index: 80;
+    overflow: hidden;
+    opacity: 0; visibility: hidden;
+    transition: opacity .35s ease, visibility .35s;
+    background: #0c0b0f;
+  }
+  .bury.open { opacity: 1; visibility: visible; }
+
+  /* live camera feed (and fallback) fill the screen for the AR phases */
+  .cam, .cam-fallback {
+    position: absolute; inset: 0; width: 100%; height: 100%;
+    object-fit: cover;
+  }
+  .cam-fallback {
+    /* sky-over-ground viewfinder shown when there's no camera */
+    background:
+      linear-gradient(180deg, #acc7e0 0%, #c4d6e6 42%, #d8c6a4 58%, #9a6b3e 78%, #6e4827 100%);
+  }
+  .cam-fallback::after {
+    /* a faint horizon shimmer so the fallback feels live */
+    content: ""; position: absolute; inset: 0;
+    background: radial-gradient(60% 30% at 50% 55%, rgba(255,255,255,.18), transparent 70%);
+    animation: camPulse 4s ease-in-out infinite;
+  }
+  @keyframes camPulse { 0%,100%{opacity:.5;} 50%{opacity:.9;} }
+  .bury.has-cam .cam-fallback { display: none; }
+  .bury[data-phase="success"] .cam,
+  .bury[data-phase="success"] .cam-fallback,
+  .bury[data-phase="success"] .cam-scrim { display: none; }
+
+  /* darken slightly so white text reads over any camera image */
+  .cam-scrim {
+    position: absolute; inset: 0;
+    background: linear-gradient(180deg,
+      rgba(0,0,0,.55) 0%, rgba(0,0,0,.32) 22%, rgba(0,0,0,0) 42%,
+      rgba(0,0,0,0) 60%, rgba(0,0,0,.5) 100%);
+    pointer-events: none;
+  }
+
+  .bury-close {
+    position: absolute; top: 14px; left: 14px; z-index: 30;
+    width: 38px; height: 38px; border-radius: 50%;
+    background: rgba(0,0,0,.4); color: #fff; border: none;
+    font-size: 20px; line-height: 1; cursor: pointer;
+    backdrop-filter: blur(2px);
+  }
+  .bury[data-phase="success"] .bury-close { display: none; }
+
+  /* phase blocks: only the active phase shows */
+  .bphase { position: absolute; inset: 0; display: none; }
+  .bury[data-phase="choose"]  .b-choose  { display: block; }
+  .bury[data-phase="dig"]     .b-dig     { display: block; }
+  .bury[data-phase="success"] .b-success { display: flex; }
+
+  /* shared big banner text at the top */
+  .b-banner {
+    position: absolute; top: 56px; left: 0; right: 0;
+    text-align: center; padding: 0 36px;
+    font-family: 'Caveat', cursive; font-weight: 700; font-size: 26px;
+    color: #fff; text-shadow: 0 2px 5px rgba(0,0,0,.85), 0 0 14px rgba(0,0,0,.5);
+  }
+
+  /* ---- phase: choose ---- (title + sub stack in a flow column so they can't overlap) */
+  .b-choose { display: none; }
+  .b-choose-text {
+    position: absolute; top: 8%; left: 0; right: 0;
+    display: flex; flex-direction: column; align-items: center; gap: 18px;
+    padding: 0 34px; text-align: center;
+  }
+  .b-title {
+    margin: 0; line-height: 1.05;
+    font-family: 'Caveat', cursive; font-weight: 700; font-size: 40px;
+    color: #fff; text-shadow: 0 2px 5px rgba(0,0,0,.9), 0 0 18px rgba(0,0,0,.55);
+    animation: bFadeUp .7s ease-out both;
+  }
+  .b-sub {
+    margin: 0; line-height: 1.18;
+    font-family: 'Caveat', cursive; font-size: 21px; color: #fff;
+    text-shadow: 0 2px 5px rgba(0,0,0,.9), 0 0 14px rgba(0,0,0,.55);
+    animation: bFadeUp .7s ease-out .2s both;
+  }
+  .b-reticle {
+    position: absolute; top: 58%; left: 50%; width: 190px; height: 190px;
+    transform: translate(-50%,-50%);
+    border: 2px dashed rgba(255,255,255,.7); border-radius: 26px;
+    box-shadow: 0 0 0 2000px rgba(0,0,0,.12);
+    animation: reticle 2.4s ease-in-out infinite;
+  }
+  .b-reticle span { position:absolute; width:18px; height:18px; border:3px solid #fff; }
+  .b-reticle span:nth-child(1){ top:-2px; left:-2px; border-right:0; border-bottom:0; border-top-left-radius:8px;}
+  .b-reticle span:nth-child(2){ top:-2px; right:-2px; border-left:0; border-bottom:0; border-top-right-radius:8px;}
+  .b-reticle span:nth-child(3){ bottom:-2px; left:-2px; border-right:0; border-top:0; border-bottom-left-radius:8px;}
+  .b-reticle span:nth-child(4){ bottom:-2px; right:-2px; border-left:0; border-top:0; border-bottom-right-radius:8px;}
+  @keyframes reticle { 0%,100%{transform:translate(-50%,-50%) scale(1);opacity:.8;} 50%{transform:translate(-50%,-50%) scale(1.05);opacity:1;} }
+  @keyframes bFadeUp { from{opacity:0; transform:translateY(14px);} to{opacity:1; transform:translateY(0);} }
+
+  /* ---- phase: dig (tap repeatedly, hole grows, then bury) ---- */
+  .b-dig { display: none; }
+  .digzone {
+    position: absolute; left: 50%; bottom: 60px; transform: translateX(-50%);
+    display: flex; flex-direction: column; align-items: center; gap: 6px;
+    cursor: pointer; transition: opacity .35s ease, transform .35s ease;
+  }
+  .digzone.hide { opacity: 0; transform: translateX(-50%) translateY(22px) scale(.85); pointer-events: none; }
+  .big-shovel { width: 138px; height: 194px; display:block; filter: drop-shadow(0 8px 12px rgba(0,0,0,.45)); }
+  .big-shovel .blade-grp { transform-box: fill-box; transform-origin: center; animation: shovelHover 2.6s ease-in-out infinite; }
+  @keyframes shovelHover { 0%,100%{transform:translateY(0) rotate(0);} 50%{transform:translateY(-7px) rotate(-2deg);} }
+  .dig-label {
+    font-family:'Caveat',cursive; font-weight:700; font-size:24px; color:#fff; white-space:nowrap;
+    background: rgba(176,72,90,.92); padding: 6px 20px; border-radius: 16px;
+    box-shadow: 0 4px 12px rgba(0,0,0,.4);
+    animation: tapPulse 1.4s ease-in-out infinite;
+  }
+  @keyframes tapPulse { 0%,100%{transform:scale(1);} 50%{transform:scale(1.06);} }
+  /* one shovel stab per tap */
+  .digzone.stab .blade-grp { animation: shovelStab .4s ease-in-out; }
+  @keyframes shovelStab { 0%{transform:translateY(0);} 45%{transform:translateY(30px) rotate(1deg);} 100%{transform:translateY(0);} }
+
+  /* ---- the hole — grows with each tap (JS sets the scale, CSS eases it) ---- */
+  .hole-wrap {
+    position: absolute; left: 50%; bottom: 84px; transform: translateX(-50%);
+    width: 270px; height: 150px; pointer-events: none;
+  }
+  .mound, .hole, .hole-rim { transition: transform .42s cubic-bezier(.2,.8,.3,1); }
+  .mound {
+    position: absolute; left: 50%; bottom: 8px; transform: translateX(-50%) scale(0);
+    width: 286px; height: 120px; border-radius: 50%;
+    background: radial-gradient(ellipse at 50% 40%, #8a5a2e 0%, #6e4827 60%, #5a3a20 100%);
+    box-shadow: 0 8px 18px rgba(0,0,0,.4);
+  }
+  .hole {
+    position: absolute; left: 50%; bottom: 26px; transform: translate(-50%,0) scale(0);
+    width: 230px; height: 116px; border-radius: 50%;
+    background: radial-gradient(ellipse at 50% 32%, #140b04 0%, #2b1a0e 34%, #4a2f18 64%, #6b4423 90%, #7d5128 100%);
+    box-shadow: inset 0 14px 22px rgba(0,0,0,.75), inset 0 -6px 10px rgba(120,80,40,.4);
+  }
+  .hole-rim {
+    position:absolute; left:50%; bottom:20px; transform:translateX(-50%) scale(0);
+    width:244px; height:128px; border-radius:50%;
+    border: 6px solid #5a3a20; opacity:.5;
+  }
+
+  /* the capsule to bury */
+  .capsule-btn {
+    position: absolute; left: 50%; bottom: 150px; transform: translateX(-50%);
+    background: none; border: none; cursor: pointer; padding: 0;
+    opacity: 0; pointer-events: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .capsule-btn svg { width: 230px; display: block; filter: drop-shadow(0 10px 12px rgba(0,0,0,.45)); }
+  .b-dig.ready .capsule-btn { pointer-events: auto; animation: capRise .6s ease-out .15s forwards; }
+  @keyframes capRise { from{opacity:0; transform:translateX(-50%) translateY(-26px);} to{opacity:1; transform:translateX(-50%) translateY(0);} }
+  .b-dig.ready .capsule-btn .cap-bob { transform-box: fill-box; transform-origin:center; animation: hsBob 3.8s ease-in-out .8s infinite; }
+  /* burying: capsule drops into the hole */
+  .b-dig.burying .capsule-btn { animation: capDrop .8s cubic-bezier(.5,0,.8,1) forwards; }
+  @keyframes capDrop {
+    0%   { opacity:1; transform: translateX(-50%) translateY(0)   scale(1)   rotate(-4deg); }
+    100% { opacity:0; transform: translateX(-50%) translateY(150px) scale(.45) rotate(-10deg); }
+  }
+
+  /* dirt particles */
+  .dirt { position:absolute; inset:0; pointer-events:none; }
+  .speck {
+    position:absolute; width:8px; height:8px; border-radius:2px;
+    background:#6e4827; opacity:0;
+  }
+  .speck.go { animation: fly .7s ease-out forwards; }
+  @keyframes fly {
+    0%   { opacity:1; transform: translate(0,0) rotate(0); }
+    100% { opacity:0; transform: translate(var(--fx), var(--fy)) rotate(var(--fr)); }
+  }
+
+  /* ---- phase: success ---- */
+  .b-success {
+    display: none; flex-direction: column; align-items: center; justify-content: flex-start;
+    background:
+      radial-gradient(120% 90% at 50% 0%, #fffdf7 0%, #f3ead4 70%, #e7d8b6 100%);
+    padding-top: 60px;
+  }
+  .success-title {
+    font-family:'Caveat',cursive; font-weight:700; font-size:58px;
+    color:#e6b422; text-shadow: 1px 2px 0 #b8860b22, 0 3px 10px rgba(180,120,10,.25);
+    letter-spacing:1px; transform: rotate(-2deg);
+    animation: pop .6s cubic-bezier(.34,1.56,.64,1) both;
+  }
+  @keyframes pop { from{opacity:0; transform:scale(.6) rotate(-2deg);} to{opacity:1; transform:scale(1) rotate(-2deg);} }
+  .success-art { width: 88%; max-width: 340px; margin-top: 6px; animation: bFadeUp .6s ease-out .25s both; }
+  .b-loc {
+    font-family:'Caveat',cursive; font-size: 20px; color:#5a4029; margin-top: 4px;
+    text-align:center; padding: 0 30px; animation: bFadeUp .6s ease-out .4s both;
+  }
+  .b-done {
+    margin-top: auto; margin-bottom: 40px;
+    font-family:'Caveat',cursive; font-weight:700; font-size:22px; color:#4f3924;
+    background: rgba(248,239,213,.95); border: 1.8px solid #b9a463;
+    border-radius: 18px; padding: 12px 34px; cursor: pointer;
+    box-shadow: 0 6px 14px rgba(40,22,10,.22);
+    animation: bFadeUp .6s ease-out .5s both;
+  }
+  .b-done:active { transform: translateY(1px) scale(.98); }
+
+  /* =========================================================
+     DIG-UP FLOW  (map → lucky → empty → film-strip data)
+     ========================================================= */
+  .digup {
+    position: absolute; inset: 0; z-index: 82;
+    overflow: hidden; opacity: 0; visibility: hidden;
+    transition: opacity .35s ease, visibility .35s;
+    background: #f3ead4;
+  }
+  .digup.open { opacity: 1; visibility: visible; }
+  .digup .bphase { position: absolute; inset: 0; display: none; }
+  .digup[data-phase="map"]   .d-map   { display: block; }
+  .digup[data-phase="lucky"] .d-lucky { display: block; }
+  .digup[data-phase="empty"] .d-empty { display: block; }
+  .digup[data-phase="data"]  .d-data  { display: flex; }
+  .digup.has-cam .cam-fallback { display: none; }
+
+  /* ---- phase: map ---- */
+  .dig-map { position: absolute; inset: 0; background: #d8e6e8; }
+  /* sepia-tint the real map so it reads vintage but stays a real map */
+  .dig-map .leaflet-tile-pane { filter: sepia(.45) saturate(.85) contrast(.95) brightness(1.02); }
+  .leaflet-container { background:#dfe7e0 !important; font-family:'Caveat',cursive; }
+  .d-header {
+    position: absolute; top: 16px; left: 0; right: 0; z-index: 600;
+    text-align: center; pointer-events: none;
+    font-family:'Caveat',cursive; font-weight:700; font-size:30px; line-height:1.05;
+    color:#4f3924; text-shadow: 0 1px 0 #fff, 0 2px 8px rgba(255,250,235,.9);
+  }
+  .d-hint {
+    position: absolute; bottom: 22px; left: 16px; right: 16px; z-index: 600;
+    text-align: center; pointer-events: none;
+    font-family:'Caveat',cursive; font-size:18px; color:#4f3924;
+    background: rgba(248,239,213,.9); border:1.5px solid #c9b27a; border-radius: 14px;
+    padding: 8px 14px; box-shadow: 0 4px 12px rgba(40,22,10,.18);
+  }
+  /* capsule pin marker */
+  .cap-pin {
+    width: 40px; height: 40px; cursor: pointer;
+    filter: drop-shadow(0 3px 4px rgba(0,0,0,.4));
+    transition: transform .15s ease;
+  }
+  .cap-pin:hover { transform: scale(1.12); }
+
+  /* ---- phase: lucky ---- */
+  .d-lucky {
+    background: radial-gradient(120% 90% at 50% 10%, #fffdf7 0%, #f3ead4 70%, #e7d8b6 100%);
+    text-align: center;
+  }
+  .d-lucky-title {
+    position:absolute; top: 12%; left:0; right:0; padding:0 30px;
+    font-family:'Caveat',cursive; font-weight:700; font-size:40px; line-height:1.05;
+    color:#9c4a2a; text-shadow:0 2px 8px rgba(180,120,10,.18);
+    animation: bFadeUp .6s ease-out both;
+  }
+  .lucky-cap {
+    position:absolute; top:52%; left:50%; width: 230px;
+    transform: translate(-50%,-50%) rotate(-18deg);
+    filter: drop-shadow(0 12px 16px rgba(60,40,20,.3));
+    animation: luckyIn .7s cubic-bezier(.34,1.56,.64,1) both, luckyShake 1.1s ease-in-out 1s 2;
+  }
+  @keyframes luckyIn { from{opacity:0; transform:translate(-50%,-50%) rotate(-18deg) scale(.5);} to{opacity:1; transform:translate(-50%,-50%) rotate(-18deg) scale(1);} }
+  @keyframes luckyShake {
+    0%,100%{transform:translate(-50%,-50%) rotate(-18deg);}
+    25%{transform:translate(-50%,-50%) rotate(-26deg);}
+    75%{transform:translate(-50%,-50%) rotate(-10deg);}
+  }
+  .lucky-sparkle { position:absolute; inset:0; pointer-events:none; }
+
+  /* ---- phase: empty (camera + falling memories) ---- */
+  .empty-cap {
+    position:absolute; top: 20%; left:50%; width: 200px;
+    transform: translate(-50%,0) rotate(125deg);
+    filter: drop-shadow(0 8px 12px rgba(0,0,0,.4));
+    animation: emptyTip 1s ease-out both;
+  }
+  @keyframes emptyTip {
+    from { transform: translate(-50%,0) rotate(80deg); }
+    to   { transform: translate(-50%,0) rotate(125deg); }
+  }
+  .falling { position:absolute; inset:0; pointer-events:none; }
+  .memento {
+    position:absolute; left:50%; top:30%;
+    width: 56px; height: 56px; opacity:0;
+    display:flex; align-items:center; justify-content:center;
+    background:#fffdf5; border:2px solid #d8c9a0; border-radius:8px;
+    box-shadow: 0 6px 12px rgba(0,0,0,.3);
+    font-size: 26px;
+  }
+  .memento.env { background:#f3e7c8; }
+  .memento.go { animation: drop 1.5s cubic-bezier(.4,0,.7,1) forwards; }
+  @keyframes drop {
+    0%   { opacity:0; transform: translate(-50%,0) rotate(0) scale(.6); }
+    15%  { opacity:1; }
+    100% { opacity:0; transform: translate(calc(-50% + var(--mx)), var(--my)) rotate(var(--mr)) scale(1); }
+  }
+
+  /* ---- phase: data (movie film strip) ---- */
+  .d-data { flex-direction: column; background: #15120e; }
+  .film {
+    flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch;
+    /* sprocket-hole rails down both sides */
+    background:
+      repeating-linear-gradient(180deg, transparent 0 14px, #0a0907 14px 30px) left/26px 100% no-repeat,
+      repeating-linear-gradient(180deg, transparent 0 14px, #0a0907 14px 30px) right/26px 100% no-repeat,
+      #211b14;
+    border-left: 26px solid #0a0907; border-right: 26px solid #0a0907;
+    padding: 14px 14px 18px;
+  }
+  .film::-webkit-scrollbar { width: 0; }
+  .frame {
+    background:#fbf4e2; border-radius: 10px; margin: 0 6px 12px;
+    overflow:hidden; box-shadow: 0 4px 10px rgba(0,0,0,.4);
+    border: 1px solid #c9b27a;
+  }
+  .frame-label {
+    font-family:'Caveat',cursive; font-weight:700; font-size:20px; color:#4f3924;
+    padding: 7px 14px; border-bottom: 1.5px dashed #c9b27a; background:#f3e6c8;
+    display:flex; align-items:center; gap:8px;
+  }
+  .frame-body { padding: 12px 14px; font-family:'Caveat',cursive; color:#3a2f22; }
+  .frame-body.media { padding: 0; }
+  .frame-body img, .frame-body video { width:100%; display:block; }
+  .frame-date { font-size: 26px; font-weight:700; color:#9c4a2a; text-align:center; }
+  .frame-msg { font-size: 21px; line-height:1.35; }
+  .music-row { display:flex; align-items:center; gap:12px; padding:12px 14px; }
+  .music-cover { width:54px; height:54px; border-radius:8px; object-fit:cover; flex:none; }
+  .music-meta { flex:1; min-width:0; }
+  .music-title { font-weight:700; font-size:21px; color:#3a2f22; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .music-artist { font-size:17px; color:#7a5836; }
+  .music-bar { height:5px; border-radius:3px; background:#e0d3ad; margin-top:7px; position:relative; }
+  .music-bar::after { content:""; position:absolute; left:0; top:0; bottom:0; width:38%; background:#9c4a2a; border-radius:3px; }
+  .play-badge { width:30px;height:30px;border-radius:50%;background:#9c4a2a;color:#fff;display:flex;align-items:center;justify-content:center;flex:none;font-size:13px; }
+  .video-thumb { position:relative; }
+  .video-thumb .play-badge { position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); width:48px;height:48px;font-size:18px; box-shadow:0 3px 8px rgba(0,0,0,.5); }
+  .d-data-title {
+    text-align:center; color:#e9dba1; font-family:'Caveat',cursive; font-weight:700;
+    font-size:24px; padding:14px 0 6px; background:#15120e; flex:none;
+  }
+  .d-back { flex:none; align-self:center; margin:0; padding:11px 30px;
+    background:#15120e; border-top:1px solid #3a2f22; }
+  .d-data .d-back { width:100%; border-radius:0; border:none; border-top:1px solid #3a2f22;
+    background:#1c160f; color:#e9dba1; padding:14px 0 22px; }
+
+  /* ---- too-far message ---- */
+  .toofar {
+    position:absolute; inset:0; z-index: 700;
+    display:flex; align-items:center; justify-content:center; padding: 0 32px;
+    background: rgba(20,12,6,.55); opacity:0; visibility:hidden;
+    transition: opacity .3s ease, visibility .3s;
+  }
+  .toofar.show { opacity:1; visibility:visible; }
+  .toofar-card {
+    background:#f8efd5; border:2px solid #b9a463; border-radius:22px;
+    padding: 26px 24px 20px; text-align:center; max-width: 300px;
+    box-shadow: 0 14px 34px rgba(0,0,0,.4);
+    transform: scale(.9); transition: transform .3s cubic-bezier(.34,1.56,.64,1);
+  }
+  .toofar.show .toofar-card { transform: scale(1); }
+  .toofar-pin { width:42px;height:42px;margin:0 auto 8px; display:block; }
+  .toofar-title { font-family:'Caveat',cursive; font-weight:700; font-size:27px; color:#9c4a2a; line-height:1.1; }
+  .toofar-sub { font-family:'Caveat',cursive; font-size:21px; color:#4f3924; margin-top:6px; }
+  .toofar-dist { font-family:'Caveat',cursive; font-size:17px; color:#7a5836; margin-top:10px; }
+  .toofar-ok {
+    margin-top:18px; font-family:'Caveat',cursive; font-weight:700; font-size:20px; color:#fff;
+    background:#9c4a2a; border:none; border-radius:14px; padding:9px 28px; cursor:pointer;
+  }
+  .toofar-ok:active { transform: translateY(1px); }
+
+  /* =========================================================
+     PRINCIPLES OVERLAY  (compass → principles + connections)
+     ========================================================= */
+  .principles {
+    position: absolute; inset: 0; z-index: 83;
+    overflow: hidden; opacity: 0; visibility: hidden;
+    transition: opacity .35s ease, visibility .35s;
+    background: radial-gradient(120% 90% at 50% 10%, #fffdf7 0%, #f3ead4 70%, #e7d8b6 100%);
+    display: flex; flex-direction: column;
+  }
+  .principles.open { opacity: 1; visibility: visible; }
+  .prin-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 52px 20px 10px; flex: none;
+  }
+  .prin-title {
+    font-family: 'Dancing Script', cursive; font-size: 36px; font-weight: 700;
+    color: #4f3924; transform: rotate(-2deg);
+  }
+  .prin-close {
+    width: 36px; height: 36px; border-radius: 50%;
+    background: rgba(248,239,213,.9); border: 1.5px solid #c9b27a;
+    font-size: 18px; color: #4f3924; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 3px 8px rgba(40,22,10,.18);
+  }
+  .prin-scroll {
+    flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch;
+    padding: 0 16px 24px;
+  }
+  .prin-scroll::-webkit-scrollbar { width: 0; }
+  .prin-section-label {
+    font-family: 'Caveat', cursive; font-weight: 700; font-size: 20px;
+    color: #9c4a2a; margin: 14px 0 8px; letter-spacing: .5px;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .prin-section-label::after {
+    content: ""; flex: 1; height: 1.5px;
+    background: linear-gradient(90deg, #c9b27a, transparent);
+  }
+  .prin-card {
+    background: #fffdf5; border: 1.5px solid #d8c9a0; border-radius: 14px;
+    padding: 12px 14px; margin-bottom: 10px;
+    box-shadow: 0 3px 8px rgba(40,22,10,.10);
+  }
+  .prin-card-name {
+    font-family: 'Caveat', cursive; font-weight: 700; font-size: 20px;
+    color: #4f3924; margin-bottom: 4px;
+  }
+  .prin-card-text {
+    font-family: 'Caveat', cursive; font-size: 17px; color: #6a5030; line-height: 1.4;
+  }
+  .prin-connections {
+    background: #f3e6c8; border: 1.5px solid #c9b27a; border-radius: 14px;
+    padding: 14px; margin-bottom: 10px;
+    font-family: 'Caveat', cursive; font-size: 17px; color: #3a2f22;
+    line-height: 1.5; font-style: italic;
+  }
+  .prin-empty {
+    text-align: center; padding: 40px 24px;
+    font-family: 'Caveat', cursive; font-size: 20px; color: #7a5836; line-height: 1.5;
+  }
+  .prin-loading {
+    text-align: center; padding: 60px 24px;
+    font-family: 'Caveat', cursive; font-size: 22px; color: #9c7d5a;
+    animation: tapPulse 1.4s ease-in-out infinite;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { animation-duration: .001s !important; }
+  }
+</style>
+</head>
+<body>
+  <div class="stage">
+    <div class="phone">
+      <div class="screen" id="screen">
+        <div class="island"></div>
+
+        <!-- revealed background -->
+        <div class="map"></div>
+
+        <!-- treasure-map ink, drawn on the parchment -->
+        <svg class="map-art" viewBox="0 0 390 844" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <linearGradient id="inkFade" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stop-color="#4a3019"/>
+              <stop offset="100%" stop-color="#3a2410"/>
+            </linearGradient>
+          </defs>
+          <g stroke="url(#inkFade)" fill="none" opacity="0.42" stroke-linecap="round" stroke-linejoin="round">
+            <!-- island / coastline, upper area -->
+            <path d="M58 150 q-14 26 6 44 q-22 14 -6 38 q-10 30 22 36 q18 30 50 14 q30 16 46 -10 q30 4 26 -28 q22 -18 -2 -40 q8 -28 -22 -34 q-16 -26 -48 -14 q-30 -16 -52 4 q-20 0 -24 30 z"
+                  stroke-width="2.4"/>
+            <!-- faint inner hatching on the island -->
+            <path d="M86 196 q40 -10 78 6 M80 224 q56 -6 96 14 M92 256 q44 -4 74 10" stroke-width="1.2" opacity="0.6"/>
+            <!-- second small island, lower right -->
+            <path d="M250 600 q-18 10 -10 30 q-16 16 6 30 q6 22 32 18 q22 12 38 -8 q22 -6 12 -30 q10 -22 -16 -28 q-18 -18 -40 -6 q-16 -8 -22 4 z"
+                  stroke-width="2.2"/>
+            <!-- depth dots in the "sea" -->
+            <g fill="#4a3019" stroke="none" opacity="0.5">
+              <circle cx="210" cy="430" r="1.6"/><circle cx="250" cy="470" r="1.6"/>
+              <circle cx="300" cy="500" r="1.6"/><circle cx="150" cy="520" r="1.6"/>
+              <circle cx="110" cy="640" r="1.6"/><circle cx="320" cy="360" r="1.6"/>
+            </g>
+            <!-- the dashed treasure route -->
+            <path d="M120 250 C 200 300, 120 420, 220 470 S 360 560, 300 640"
+                  stroke-width="3.2" stroke-dasharray="2 16"/>
+            <!-- red X marks the spot -->
+            <g stroke="#c0485a" stroke-width="5" opacity="0.92">
+              <line x1="286" y1="624" x2="316" y2="656"/>
+              <line x1="316" y1="624" x2="286" y2="656"/>
+            </g>
+          </g>
+        </svg>
+
+        <!-- intro copy -->
+        <div class="intro-text">
+          <div class="tagline">dig up your past!</div>
+          <div class="wordmark">recapsule</div>
+        </div>
+
+        <!-- the logo badge -->
+        <div class="badge-wrap">
+          <svg class="badge" viewBox="0 0 230 230" xmlns="http://www.w3.org/2000/svg">
+            <defs>
+              <radialGradient id="badgeFill" cx="45%" cy="42%" r="65%">
+                <stop offset="0%"  stop-color="#d3bdb1"/>
+                <stop offset="70%" stop-color="#c6afa3"/>
+                <stop offset="100%" stop-color="#b89c8d"/>
+              </radialGradient>
+              <linearGradient id="scrollFill" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%"  stop-color="#f8f2d6"/>
+                <stop offset="55%" stop-color="#efe5b8"/>
+                <stop offset="100%" stop-color="#dccb8c"/>
+              </linearGradient>
+              <linearGradient id="bandFill" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stop-color="#ecdc9f"/>
+                <stop offset="100%" stop-color="#c9b270"/>
+              </linearGradient>
+            </defs>
+
+            <!-- outer rings -->
+            <circle class="ring" cx="115" cy="115" r="112" fill="none" stroke="var(--ring-brown)" stroke-width="3"/>
+            <circle class="ring" cx="115" cy="115" r="105" fill="none" stroke="var(--ring-brown)" stroke-width="2" opacity="0.6"/>
+
+            <!-- interior fill -->
+            <circle class="badge-bg" cx="115" cy="115" r="104" fill="url(#badgeFill)"/>
+
+            <!-- speckles -->
+            <g class="speckles" fill="#8a6a52" opacity="0.55">
+              <circle cx="70"  cy="55"  r="2.4"/>
+              <circle cx="150" cy="48"  r="2.0"/>
+              <circle cx="185" cy="95"  r="2.6"/>
+              <circle cx="60"  cy="120" r="2.2"/>
+              <circle cx="95"  cy="170" r="2.4"/>
+              <circle cx="160" cy="165" r="2.0"/>
+              <circle cx="190" cy="140" r="2.2"/>
+              <circle cx="45"  cy="160" r="1.8"/>
+              <circle cx="125" cy="92"  r="1.8"/>
+              <circle cx="175" cy="185" r="2.2"/>
+              <circle cx="40"  cy="92"  r="1.8"/>
+              <circle cx="110" cy="200" r="2.0"/>
+            </g>
+
+            <!-- treasure path + red X -->
+            <g class="map-marks" opacity="0.9">
+              <path d="M58 95 Q70 55 110 60 Q150 64 150 92"
+                    fill="none" stroke="var(--ink)" stroke-width="5"
+                    stroke-linecap="round" stroke-dasharray="11 12"/>
+              <path d="M120 150 Q120 185 158 185"
+                    fill="none" stroke="var(--ink)" stroke-width="5"
+                    stroke-linecap="round" stroke-dasharray="11 12"/>
+              <g stroke="var(--red-x)" stroke-width="6" stroke-linecap="round">
+                <line x1="168" y1="165" x2="190" y2="190"/>
+                <line x1="190" y1="165" x2="168" y2="190"/>
+              </g>
+            </g>
+
+            <!-- the rolled scroll / capsule -->
+            <g class="scroll-grp">
+              <g class="idle-bob">
+                <!-- body -->
+                <rect x="42" y="92" width="146" height="52" rx="9" fill="url(#scrollFill)"
+                      stroke="#b9a463" stroke-width="2.2"/>
+                <!-- bottom shading edge -->
+                <rect x="42" y="128" width="146" height="16" rx="9" fill="#d9c98a" opacity="0.6"/>
+                <!-- left rolled cap -->
+                <ellipse cx="50" cy="118" rx="13" ry="27" fill="#e9dba1" stroke="#b9a463" stroke-width="2.2"/>
+                <ellipse cx="50" cy="118" rx="6" ry="18" fill="#d4c184" opacity="0.7"/>
+                <!-- right rolled cap -->
+                <ellipse cx="180" cy="118" rx="12" ry="27" fill="#efe3ac" stroke="#b9a463" stroke-width="2.2"/>
+                <!-- two bands -->
+                <rect x="84"  y="86" width="17" height="64" rx="6" fill="url(#bandFill)" stroke="#b09a58" stroke-width="1.6"/>
+                <rect x="150" y="86" width="17" height="64" rx="6" fill="url(#bandFill)" stroke="#b09a58" stroke-width="1.6"/>
+                <!-- the word -->
+                <text x="116" y="124" text-anchor="middle"
+                      font-family="Caveat, cursive" font-size="30" font-weight="700"
+                      fill="#3a3330" transform="rotate(-3 116 120)">recapsule</text>
+              </g>
+            </g>
+          </svg>
+        </div>
+
+        <!-- crisp resting capsule (sharp; replaces the scaled badge scroll) -->
+        <svg class="home-scroll" viewBox="32 80 176 80" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <linearGradient id="hsScroll" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%"  stop-color="#f8f2d6"/>
+              <stop offset="55%" stop-color="#efe5b8"/>
+              <stop offset="100%" stop-color="#dccb8c"/>
+            </linearGradient>
+            <linearGradient id="hsBand" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stop-color="#ecdc9f"/>
+              <stop offset="100%" stop-color="#c9b270"/>
+            </linearGradient>
+          </defs>
+          <g class="bob">
+            <rect x="42" y="92" width="146" height="52" rx="9" fill="url(#hsScroll)" stroke="#b9a463" stroke-width="2.2"/>
+            <rect x="42" y="128" width="146" height="16" rx="9" fill="#d9c98a" opacity="0.6"/>
+            <ellipse cx="50" cy="118" rx="13" ry="27" fill="#e9dba1" stroke="#b9a463" stroke-width="2.2"/>
+            <ellipse cx="50" cy="118" rx="6" ry="18" fill="#d4c184" opacity="0.7"/>
+            <ellipse cx="180" cy="118" rx="12" ry="27" fill="#efe3ac" stroke="#b9a463" stroke-width="2.2"/>
+            <rect x="84"  y="86" width="17" height="64" rx="6" fill="url(#hsBand)" stroke="#b09a58" stroke-width="1.6"/>
+            <rect x="150" y="86" width="17" height="64" rx="6" fill="url(#hsBand)" stroke="#b09a58" stroke-width="1.6"/>
+            <text x="116" y="124" text-anchor="middle"
+                  font-family="Caveat, cursive" font-size="30" font-weight="700"
+                  fill="#3a3330" transform="rotate(-3 116 120)">recapsule</text>
+          </g>
+        </svg>
+
+        <!-- bottom action dock: shovel buttons -->
+        <div class="dock">
+          <!-- DIG UP: shovel lifted up (blade up) -->
+          <button class="tool tool-dig" id="digBtn" aria-label="dig up an old capsule">
+            <svg viewBox="0 0 36 40" xmlns="http://www.w3.org/2000/svg">
+              <g class="shovel">
+                <g transform="translate(0 40) scale(1 -1)">
+                  <rect x="11" y="2" width="14" height="9" rx="4.5" fill="none" stroke="#9c6b3f" stroke-width="3"/>
+                  <rect x="16" y="9.5" width="4" height="14.5" rx="2" fill="#a9763f"/>
+                  <rect x="13" y="22" width="10" height="4" rx="1.5" fill="#875729"/>
+                  <path d="M12 25 H24 V31 Q24 39 18 39 Q12 39 12 31 Z" fill="#d2d6db" stroke="#9aa1a8" stroke-width="1.3"/>
+                  <path d="M18 26 V37.5" stroke="#aeb4bb" stroke-width="1.2"/>
+                </g>
+              </g>
+            </svg>
+            <span class="tool-label">Dig up</span>
+          </button>
+
+          <!-- BURY: shovel pressing down (blade down) -->
+          <button class="tool tool-bury" id="buryBtn" aria-label="bury a new capsule">
+            <svg viewBox="0 0 36 40" xmlns="http://www.w3.org/2000/svg">
+              <g class="shovel">
+                <rect x="11" y="2" width="14" height="9" rx="4.5" fill="none" stroke="#9c6b3f" stroke-width="3"/>
+                <rect x="16" y="9.5" width="4" height="14.5" rx="2" fill="#a9763f"/>
+                <rect x="13" y="22" width="10" height="4" rx="1.5" fill="#875729"/>
+                <path d="M12 25 H24 V31 Q24 39 18 39 Q12 39 12 31 Z" fill="#d2d6db" stroke="#9aa1a8" stroke-width="1.3"/>
+                <path d="M18 26 V37.5" stroke="#aeb4bb" stroke-width="1.2"/>
+              </g>
+            </svg>
+            <span class="tool-label">Bury</span>
+          </button>
+        </div>
+
+        <!-- compass button, top-right -->
+        <button class="compass-btn" id="compassBtn" aria-label="find your principles">
+          <svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+            <defs>
+              <radialGradient id="compassFace" cx="42%" cy="38%" r="65%">
+                <stop offset="0%" stop-color="#f6ecca"/>
+                <stop offset="100%" stop-color="#e3d2a6"/>
+              </radialGradient>
+              <linearGradient id="brass" x1="0" y1="0" x2="1" y2="1">
+                <stop offset="0%"  stop-color="#ecd28a"/>
+                <stop offset="50%" stop-color="#bb9a52"/>
+                <stop offset="100%" stop-color="#866a37"/>
+              </linearGradient>
+            </defs>
+            <circle cx="50" cy="50" r="46" fill="url(#compassFace)" stroke="url(#brass)" stroke-width="6"/>
+            <circle cx="50" cy="50" r="40" fill="none" stroke="#b9a463" stroke-width="1.2" opacity=".7"/>
+            <!-- cardinal ticks -->
+            <g stroke="#7a5836" stroke-width="2" opacity=".7">
+              <line x1="50" y1="12" x2="50" y2="18"/>
+              <line x1="50" y1="82" x2="50" y2="88"/>
+              <line x1="12" y1="50" x2="18" y2="50"/>
+              <line x1="82" y1="50" x2="88" y2="50"/>
+            </g>
+            <!-- cardinal letters -->
+            <g fill="#5a4029" font-family="Caveat,cursive" font-size="14" font-weight="700" text-anchor="middle">
+              <text x="50" y="32">N</text>
+              <text x="50" y="76">S</text>
+              <text x="27" y="55">W</text>
+              <text x="73" y="55">E</text>
+            </g>
+            <!-- swinging needle -->
+            <g class="compass-needle">
+              <path d="M50 21 L56 50 L44 50 Z" fill="#c0485a"/>
+              <path d="M50 79 L56 50 L44 50 Z" fill="#efe3ac" stroke="#b9a463" stroke-width=".8"/>
+              <circle cx="50" cy="50" r="4.6" fill="#5a4029"/>
+              <circle cx="50" cy="50" r="2"   fill="#ecd28a"/>
+            </g>
+          </svg>
+          <span class="compass-cap">find your principles</span>
+        </button>
+
+        <!-- gesture acknowledgement -->
+        <div class="toast" id="toast"></div>
+
+        <!-- ============ BURY FLOW ============ -->
+        <div class="bury" id="bury" data-phase="choose">
+          <video class="cam" id="cam" autoplay muted playsinline></video>
+          <div class="cam-fallback"></div>
+          <div class="cam-scrim"></div>
+          <button class="bury-close" id="buryClose" aria-label="cancel">&times;</button>
+
+          <!-- PHASE 1: choose your spot -->
+          <div class="bphase b-choose">
+            <div class="b-choose-text">
+              <div class="b-title">choose your spot wisely</div>
+              <div class="b-sub">find a real place you'll be able to come back to</div>
+            </div>
+            <div class="b-reticle"><span></span><span></span><span></span><span></span></div>
+          </div>
+
+          <!-- PHASE 2: dig (tap repeatedly) then bury -->
+          <div class="bphase b-dig" id="bDig">
+            <div class="b-banner" id="digBanner">point the camera at the ground</div>
+            <div class="dirt" id="dirt"></div>
+            <div class="hole-wrap">
+              <div class="mound" id="mound"></div>
+              <div class="hole-rim" id="holeRim"></div>
+              <div class="hole" id="hole"></div>
+            </div>
+            <div class="digzone" id="digzone">
+              <svg class="big-shovel" viewBox="0 0 150 210" xmlns="http://www.w3.org/2000/svg">
+                <g class="blade-grp">
+                  <ellipse cx="75" cy="24" rx="22" ry="15" fill="none" stroke="#9c6b3f" stroke-width="7"/>
+                  <rect x="69" y="34" width="12" height="98" rx="4" fill="#a9763f"/>
+                  <rect x="58" y="128" width="34" height="12" rx="3" fill="#7a4e25"/>
+                  <path d="M48 140 H102 V168 Q102 204 75 208 Q48 204 48 168 Z" fill="#d2d6db" stroke="#9aa1a8" stroke-width="3"/>
+                  <path d="M75 142 V202" stroke="#aeb4bb" stroke-width="3"/>
+                </g>
+              </svg>
+              <div class="dig-label" id="digLabel">tap to dig</div>
+            </div>
+            <button class="capsule-btn" id="capsuleBtn" aria-label="bury capsule">
+              <svg viewBox="32 80 176 80" xmlns="http://www.w3.org/2000/svg">
+                <defs>
+                  <linearGradient id="bScroll" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stop-color="#f8f2d6"/><stop offset="55%" stop-color="#efe5b8"/><stop offset="100%" stop-color="#dccb8c"/>
+                  </linearGradient>
+                  <linearGradient id="bBand" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stop-color="#ecdc9f"/><stop offset="100%" stop-color="#c9b270"/>
+                  </linearGradient>
+                </defs>
+                <g class="cap-bob">
+                  <rect x="42" y="92" width="146" height="52" rx="9" fill="url(#bScroll)" stroke="#b9a463" stroke-width="2.2"/>
+                  <rect x="42" y="128" width="146" height="16" rx="9" fill="#d9c98a" opacity="0.6"/>
+                  <ellipse cx="50" cy="118" rx="13" ry="27" fill="#e9dba1" stroke="#b9a463" stroke-width="2.2"/>
+                  <ellipse cx="50" cy="118" rx="6" ry="18" fill="#d4c184" opacity="0.7"/>
+                  <ellipse cx="180" cy="118" rx="12" ry="27" fill="#efe3ac" stroke="#b9a463" stroke-width="2.2"/>
+                  <rect x="84"  y="86" width="17" height="64" rx="6" fill="url(#bBand)" stroke="#b09a58" stroke-width="1.6"/>
+                  <rect x="150" y="86" width="17" height="64" rx="6" fill="url(#bBand)" stroke="#b09a58" stroke-width="1.6"/>
+                  <text x="116" y="124" text-anchor="middle" font-family="Caveat, cursive" font-size="30" font-weight="700" fill="#3a3330" transform="rotate(-3 116 120)">recapsule</text>
+                </g>
+              </svg>
+            </button>
+          </div>
+
+          <!-- PHASE 4: success -->
+          <div class="bphase b-success">
+            <div class="success-title">SUCCESS!</div>
+            <svg class="success-art" viewBox="0 0 360 384" xmlns="http://www.w3.org/2000/svg">
+              <defs>
+                <linearGradient id="sScroll" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stop-color="#f8f2d6"/><stop offset="55%" stop-color="#efe5b8"/><stop offset="100%" stop-color="#dccb8c"/>
+                </linearGradient>
+                <linearGradient id="sBand" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stop-color="#ecdc9f"/><stop offset="100%" stop-color="#c9b270"/>
+                </linearGradient>
+              </defs>
+
+              <!-- parchment map scroll -->
+              <rect x="34" y="22" width="14" height="172" rx="7" fill="#e7d39f" stroke="#b9a463" stroke-width="2"/>
+              <rect x="312" y="22" width="14" height="172" rx="7" fill="#e7d39f" stroke="#b9a463" stroke-width="2"/>
+              <rect x="44" y="30" width="272" height="156" rx="6" fill="#f3e6c8" stroke="#c9b27a" stroke-width="2"/>
+              <!-- sea tint -->
+              <rect x="48" y="34" width="264" height="148" rx="4" fill="#dfe7e0" opacity="0.45"/>
+
+              <!-- continents (stylized, roughly positioned) -->
+              <g transform="translate(48 40) scale(0.733 0.778)" fill="#7bb464" stroke="#5d9a4d" stroke-width="2.4" stroke-linejoin="round">
+                <path d="M58 24 Q92 14 116 30 Q132 44 112 56 Q126 70 100 78 Q72 90 62 66 Q42 60 50 44 Q44 30 58 24 Z"/>
+                <path d="M104 96 Q132 92 132 116 Q140 140 118 152 Q104 162 100 140 Q96 116 104 96 Z"/>
+                <path d="M170 34 Q196 28 204 44 Q196 56 178 54 Q166 50 170 34 Z"/>
+                <path d="M170 62 Q210 56 214 86 Q220 116 192 126 Q170 130 168 104 Q160 80 170 62 Z"/>
+                <path d="M214 26 Q270 16 312 34 Q330 50 300 64 Q322 84 282 92 Q236 96 220 74 Q204 50 214 26 Z"/>
+                <path d="M292 120 Q322 114 328 134 Q320 148 300 146 Q286 140 292 120 Z"/>
+              </g>
+
+              <!-- location pin + halo (positioned by JS) -->
+              <g id="locPin">
+                <circle id="pinHalo" cx="123" cy="92" r="14" fill="#c0485a" opacity="0.18"/>
+                <circle id="pinRing" cx="123" cy="92" r="9" fill="none" stroke="#c0485a" stroke-width="2.4"/>
+                <circle id="pinDot"  cx="123" cy="92" r="4" fill="#c0485a"/>
+              </g>
+
+              <!-- connector from capsule to pin -->
+              <line id="connector" x1="120" y1="276" x2="123" y2="100" stroke="#3a2410" stroke-width="1.6" stroke-dasharray="3 5" opacity="0.7"/>
+
+              <!-- the buried capsule, tilted, lower-left -->
+              <g transform="translate(2 250) rotate(-28 115 118) scale(0.64)">
+                <rect x="42" y="92" width="146" height="52" rx="9" fill="url(#sScroll)" stroke="#b9a463" stroke-width="2.2"/>
+                <rect x="42" y="128" width="146" height="16" rx="9" fill="#d9c98a" opacity="0.6"/>
+                <ellipse cx="50" cy="118" rx="13" ry="27" fill="#e9dba1" stroke="#b9a463" stroke-width="2.2"/>
+                <ellipse cx="50" cy="118" rx="6" ry="18" fill="#d4c184" opacity="0.7"/>
+                <ellipse cx="180" cy="118" rx="12" ry="27" fill="#efe3ac" stroke="#b9a463" stroke-width="2.2"/>
+                <rect x="84"  y="86" width="17" height="64" rx="6" fill="url(#sBand)" stroke="#b09a58" stroke-width="1.6"/>
+                <rect x="150" y="86" width="17" height="64" rx="6" fill="url(#sBand)" stroke="#b09a58" stroke-width="1.6"/>
+                <text x="116" y="124" text-anchor="middle" font-family="Caveat, cursive" font-size="30" font-weight="700" fill="#3a3330" transform="rotate(-3 116 120)">recapsule</text>
+              </g>
+            </svg>
+            <div class="b-loc" id="bLoc"></div>
+            <button class="b-done" id="buryDone">back to map</button>
+          </div>
+        </div>
+
+        <!-- ============ PRINCIPLES OVERLAY ============ -->
+        <div class="principles" id="principles">
+          <div class="prin-header">
+            <div class="prin-title">your principles</div>
+            <button class="prin-close" id="principlesClose" aria-label="close">✕</button>
+          </div>
+          <div class="prin-scroll" id="principlesScroll">
+            <div class="prin-loading">reading your memories…</div>
+          </div>
+        </div>
+
+        <!-- ============ DIG-UP FLOW ============ -->
+        <div class="digup" id="digup" data-phase="map">
+          <button class="bury-close" id="digupClose" aria-label="cancel">&times;</button>
+
+          <!-- PHASE 1: real map with capsule pins -->
+          <div class="bphase d-map">
+            <div id="digMap" class="dig-map"></div>
+            <div class="d-header">Choose a capsule<br>to dig up</div>
+            <div class="d-hint">tap a capsule pin — you must be within 15 miles to open it</div>
+          </div>
+
+          <!-- PHASE 2: here's your lucky capsule -->
+          <div class="bphase d-lucky">
+            <div class="d-lucky-title">Here's your<br>lucky capsule</div>
+            <svg class="lucky-cap" viewBox="32 80 176 80" xmlns="http://www.w3.org/2000/svg">
+              <defs>
+                <linearGradient id="dScroll" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stop-color="#f8f2d6"/><stop offset="55%" stop-color="#efe5b8"/><stop offset="100%" stop-color="#dccb8c"/>
+                </linearGradient>
+                <linearGradient id="dBand" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stop-color="#ecdc9f"/><stop offset="100%" stop-color="#c9b270"/>
+                </linearGradient>
+              </defs>
+              <rect x="42" y="92" width="146" height="52" rx="9" fill="url(#dScroll)" stroke="#b9a463" stroke-width="2.2"/>
+              <rect x="42" y="128" width="146" height="16" rx="9" fill="#d9c98a" opacity="0.6"/>
+              <ellipse cx="50" cy="118" rx="13" ry="27" fill="#e9dba1" stroke="#b9a463" stroke-width="2.2"/>
+              <ellipse cx="50" cy="118" rx="6" ry="18" fill="#d4c184" opacity="0.7"/>
+              <ellipse cx="180" cy="118" rx="12" ry="27" fill="#efe3ac" stroke="#b9a463" stroke-width="2.2"/>
+              <rect x="84"  y="86" width="17" height="64" rx="6" fill="url(#dBand)" stroke="#b09a58" stroke-width="1.6"/>
+              <rect x="150" y="86" width="17" height="64" rx="6" fill="url(#dBand)" stroke="#b09a58" stroke-width="1.6"/>
+              <text x="116" y="124" text-anchor="middle" font-family="Caveat, cursive" font-size="30" font-weight="700" fill="#3a3330" transform="rotate(-3 116 120)">recapsule</text>
+            </svg>
+          </div>
+
+          <!-- PHASE 3: emptying animation (camera + falling memories) -->
+          <div class="bphase d-empty">
+            <video class="cam" id="digCam" autoplay muted playsinline></video>
+            <div class="cam-fallback"></div>
+            <div class="cam-scrim"></div>
+            <div class="b-banner">tipping out your memories…</div>
+            <svg class="empty-cap" viewBox="32 80 176 80" xmlns="http://www.w3.org/2000/svg">
+              <rect x="42" y="92" width="146" height="52" rx="9" fill="url(#dScroll)" stroke="#b9a463" stroke-width="2.2"/>
+              <ellipse cx="50" cy="118" rx="13" ry="27" fill="#e9dba1" stroke="#b9a463" stroke-width="2.2"/>
+              <!-- open mouth at the spilling end -->
+              <ellipse cx="184" cy="118" rx="11" ry="26" fill="#2b1f12"/>
+              <ellipse cx="186" cy="118" rx="7" ry="20" fill="#473320"/>
+              <rect x="84"  y="86" width="17" height="64" rx="6" fill="url(#dBand)" stroke="#b09a58" stroke-width="1.6"/>
+              <rect x="150" y="86" width="17" height="64" rx="6" fill="url(#dBand)" stroke="#b09a58" stroke-width="1.6"/>
+            </svg>
+            <div class="falling" id="falling"></div>
+          </div>
+
+          <!-- PHASE 4: film-strip data feed -->
+          <div class="bphase d-data">
+            <div class="d-data-title">— your capsule —</div>
+            <div class="film" id="film"></div>
+            <button class="b-done d-back" id="digupDone">back to map</button>
+          </div>
+
+          <!-- too-far message -->
+          <div class="toofar" id="toofar">
+            <div class="toofar-card">
+              <svg class="toofar-pin" viewBox="0 0 24 24" fill="#9c4a2a" xmlns="http://www.w3.org/2000/svg">
+                <path d="M12 2C7.6 2 4 5.6 4 10c0 5.2 7 11.4 7.3 11.6.4.3.9.3 1.3 0C13 21.4 20 15.2 20 10c0-4.4-3.6-8-8-8zm0 11a3 3 0 110-6 3 3 0 010 6z"/>
+              </svg>
+              <div class="toofar-title">Return to the location to unlock</div>
+              <div class="toofar-sub">You're too far right now.</div>
+              <div class="toofar-dist" id="toofarDist"></div>
+              <button class="toofar-ok" id="toofarOk">got it</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // ---- shared helpers ----
+    const toast = document.getElementById('toast');
+    let _toastTimer;
+    function showToast(msg){
+      toast.textContent = msg;
+      toast.classList.add('show');
+      clearTimeout(_toastTimer);
+      _toastTimer = setTimeout(() => toast.classList.remove('show'), 1500);
+    }
+    function escHTML(s){
+      return (s||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    }
+
+    // retire the giant scaled badge after intro
+    setTimeout(() => {
+      const bw = document.querySelector('.badge-wrap');
+      if (bw) bw.style.display = 'none';
+    }, 4300);
+
+    // ============ BURY FLOW ============
+    const bury     = document.getElementById('bury');
+    const bDig     = document.getElementById('bDig');
+    const digzone  = document.getElementById('digzone');
+    const hole     = document.getElementById('hole');
+    const holeRim  = document.getElementById('holeRim');
+    const mound    = document.getElementById('mound');
+    const digLabel = document.getElementById('digLabel');
+    const digBanner= document.getElementById('digBanner');
+    let camStream = null;
+    let chooseTimer = null;
+
+    const TARGET_DIGS = 4;
+    let digCount = 0;
+    const DIG_PROMPTS = ['tap to dig', 'dig deeper!', 'keep digging!', 'almost there!'];
+    const BANNER_PROMPTS = [
+      'point the camera at the ground',
+      'nice — keep tapping to dig deeper!',
+      "deeper… you've got this!",
+      'almost deep enough!'
+    ];
+    function setHoleProgress(p){
+      mound.style.transform   = `translateX(-50%) scale(${p})`;
+      holeRim.style.transform = `translateX(-50%) scale(${p})`;
+      hole.style.transform    = `translate(-50%,0) scale(${p})`;
+    }
+    function resetDig(){
+      digCount = 0;
+      setHoleProgress(0);
+      digLabel.textContent  = DIG_PROMPTS[0];
+      digBanner.textContent = BANNER_PROMPTS[0];
+      bDig.classList.remove('dug','ready','burying');
+      digzone.classList.remove('hide','stab');
+    }
+
+    async function startCamera(){
+      try {
+        camStream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: { ideal: 'environment' } }, audio: false
+        });
+        const cam = document.getElementById('cam');
+        cam.srcObject = camStream;
+        await cam.play().catch(() => {});
+        bury.classList.add('has-cam');
+      } catch(e){ bury.classList.remove('has-cam'); }
+    }
+    function stopCamera(){
+      if (camStream){ camStream.getTracks().forEach(t => t.stop()); camStream = null; }
+    }
+    const setPhase = p => { bury.dataset.phase = p; };
+
+    function openBury(){
+      resetDig();
+      setPhase('choose');
+      bury.classList.add('open');
+      startCamera();
+      clearTimeout(chooseTimer);
+      chooseTimer = setTimeout(() => { if (bury.dataset.phase === 'choose') setPhase('dig'); }, 2800);
+    }
+    function closeBury(){
+      bury.classList.remove('open');
+      stopCamera();
+      clearTimeout(chooseTimer);
+    }
+
+    document.getElementById('buryBtn').addEventListener('click', openBury);
+    document.getElementById('buryClose').addEventListener('click', closeBury);
+    document.getElementById('buryDone').addEventListener('click', closeBury);
+
+    function doDig(){
+      if (bDig.classList.contains('dug')) return;
+      digCount++;
+      digzone.classList.remove('stab'); void digzone.offsetWidth; digzone.classList.add('stab');
+      spray(10);
+      setHoleProgress(Math.min(digCount / TARGET_DIGS, 1));
+      if (digCount >= TARGET_DIGS){
+        bDig.classList.add('dug');
+        digBanner.textContent = 'tap the capsule to bury it';
+        setTimeout(() => digzone.classList.add('hide'), 220);
+        setTimeout(() => bDig.classList.add('ready'), 480);
+      } else {
+        digLabel.textContent  = DIG_PROMPTS[Math.min(digCount, DIG_PROMPTS.length - 1)];
+        digBanner.textContent = BANNER_PROMPTS[Math.min(digCount, BANNER_PROMPTS.length - 1)];
+      }
+    }
+    digzone.addEventListener('click', doDig);
+
+    document.getElementById('capsuleBtn').addEventListener('click', () => {
+      if (!bDig.classList.contains('ready') || bDig.classList.contains('burying')) return;
+      bDig.classList.add('burying');
+      setTimeout(() => spray(18), 520);
+      setTimeout(() => { stopCamera(); setPhase('success'); renderSuccess(); }, 1150);
+    });
+
+    function spray(n){
+      const dirt = document.getElementById('dirt');
+      const rect = bury.getBoundingClientRect();
+      const cx = rect.width / 2;
+      const cy = rect.height - 150;
+      for (let i = 0; i < n; i++){
+        const s = document.createElement('div');
+        s.className = 'speck';
+        s.style.left = (cx - 4 + (Math.random()*60 - 30)) + 'px';
+        s.style.top  = (cy + (Math.random()*16 - 8)) + 'px';
+        const ang  = -Math.PI/2 + (Math.random() - 0.5) * 1.7;
+        const dist = 55 + Math.random()*95;
+        s.style.setProperty('--fx', Math.cos(ang)*dist + 'px');
+        s.style.setProperty('--fy', Math.sin(ang)*dist + 'px');
+        s.style.setProperty('--fr', (Math.random()*540 - 270) + 'deg');
+        const sz = 5 + Math.random()*7;
+        s.style.width = sz + 'px'; s.style.height = sz + 'px';
+        dirt.appendChild(s);
+        requestAnimationFrame(() => s.classList.add('go'));
+        setTimeout(() => s.remove(), 760);
+      }
+    }
+
+    // POST the buried capsule to the backend (fire-and-forget).
+    async function buryToBackend(lat, lng){
+      try {
+        const form = new FormData();
+        const place = (lat != null)
+          ? `${Number(lat).toFixed(4)}, ${Number(lng).toFixed(4)}`
+          : 'Unknown location';
+        form.append('place_name', place);
+        if (lat != null){ form.append('lat', lat); form.append('lng', lng); }
+        await fetch('/api/capsules', { method:'POST', body:form });
+      } catch(e){ console.warn('Could not save capsule:', e); }
+    }
+
+    function renderSuccess(){
+      const setPin = (lat, lon, label) => {
+        const x = 48 + (lon + 180) * 0.733;
+        const y = 40 + (90 - lat) * 0.778;
+        ['pinHalo','pinRing','pinDot'].forEach(id => {
+          const el = document.getElementById(id);
+          el.setAttribute('cx', x); el.setAttribute('cy', y);
+        });
+        const conn = document.getElementById('connector');
+        conn.setAttribute('x2', x); conn.setAttribute('y2', y + 8);
+        document.getElementById('bLoc').textContent = label;
+        buryToBackend(lat, lon);
+      };
+      const fallback = () => setPin(41.31, -72.92, 'pinned to your spot · New Haven, CT');
+      if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(
+          pos => setPin(pos.coords.latitude, pos.coords.longitude,
+                        `pinned to your spot · ${pos.coords.latitude.toFixed(3)}, ${pos.coords.longitude.toFixed(3)}`),
+          () => fallback(),
+          { timeout: 4000, maximumAge: 600000 }
+        );
+      } else fallback();
+    }
+
+    // ============ DIG-UP FLOW ============
+    const digup = document.getElementById('digup');
+    let digMap = null, digMapMarkers = [], userLoc = null, digCamStream = null, capDataPromise = null;
+    let cachedCapsules = [];
+
+    const BAY_AREA = [37.66, -122.27];
+
+    async function loadCapsules(){
+      try {
+        const resp = await fetch('/api/capsules');
+        if (!resp.ok) return [];
+        const json = await resp.json();
+        return json.capsules || [];
+      } catch { return []; }
+    }
+
+    function getUserLatLng(){
+      return new Promise(resolve => {
+        if (!navigator.geolocation) return resolve({ lat:41.31, lng:-72.92 });
+        navigator.geolocation.getCurrentPosition(
+          pos => resolve({ lat:pos.coords.latitude, lng:pos.coords.longitude }),
+          ()  => resolve({ lat:41.31, lng:-72.92 }),
+          { timeout:4000, maximumAge:600000 }
+        );
+      });
+    }
+    function milesBetween(la1, lo1, la2, lo2){
+      const R = 3958.8, toR = Math.PI/180;
+      const dLa = (la2-la1)*toR, dLo = (lo2-lo1)*toR;
+      const a = Math.sin(dLa/2)**2 + Math.cos(la1*toR)*Math.cos(la2*toR)*Math.sin(dLo/2)**2;
+      return 2 * R * Math.asin(Math.sqrt(a));
+    }
+
+    const CAPSULE_PIN_SVG =
+      '<svg class="cap-pin" viewBox="0 0 40 46" xmlns="http://www.w3.org/2000/svg">' +
+      '<path d="M20 2C11.2 2 4 9.2 4 18c0 11.5 13.6 23 15.1 24.2.5.4 1.3.4 1.8 0C22.4 41 36 29.5 36 18 36 9.2 28.8 2 20 2z" fill="#b9863f" stroke="#7a4e25" stroke-width="1.5"/>' +
+      '<circle cx="20" cy="18" r="11" fill="#f3e6c1"/>' +
+      '<rect x="11" y="14" width="18" height="8" rx="3" fill="#ecdc9f" stroke="#b09a58" stroke-width="1"/>' +
+      '<rect x="15.5" y="12" width="2.6" height="12" rx="1" fill="#c9b270"/>' +
+      '<rect x="22" y="12" width="2.6" height="12" rx="1" fill="#c9b270"/>' +
+      '</svg>';
+
+    function clearMarkers(){
+      digMapMarkers.forEach(m => { try { digMap.removeLayer(m); } catch(e){} });
+      digMapMarkers = [];
+    }
+    function addMarker(cap){
+      const icon = L.divIcon({ className:'', html: CAPSULE_PIN_SVG, iconSize:[40,46], iconAnchor:[20,42] });
+      const m = L.marker([cap.lat, cap.lng], { icon })
+        .addTo(digMap)
+        .bindPopup(escHTML(cap.place_name || 'capsule'))
+        .on('click', () => selectCapsule(cap));
+      digMapMarkers.push(m);
+    }
+    async function initMap(center, zoom){
+      if (!digMap){
+        digMap = L.map('digMap', { zoomControl:true, attributionControl:false }).setView(center, zoom || 13);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom:19 }).addTo(digMap);
+      } else {
+        clearMarkers();
+      }
+      cachedCapsules = await loadCapsules();
+      const withLoc = cachedCapsules.filter(c => c.lat != null && c.lng != null);
+      withLoc.forEach(addMarker);
+      if (withLoc.length > 0) digMap.setView([withLoc[0].lat, withLoc[0].lng], 14);
+    }
+
+    const setDigPhase = p => { digup.dataset.phase = p; };
+
+    async function selectCapsule(cap){
+      if (digMap) digMap.flyTo([cap.lat, cap.lng], 16, { duration:0.8 });
+      const me = await getUserLatLng();
+      userLoc = me;
+      const miles = milesBetween(me.lat, me.lng, cap.lat, cap.lng);
+      if (miles > 15){
+        document.getElementById('toofarDist').textContent =
+          "you're about " + (miles < 10 ? miles.toFixed(1) : Math.round(miles)) + ' miles away';
+        document.getElementById('toofar').classList.add('show');
+        return;
+      }
+      capDataPromise = Promise.resolve(cap);
+      setTimeout(() => setDigPhase('lucky'), 850);
+      setTimeout(() => startEmptying(), 850 + 2400);
+    }
+
+    function startEmptying(){
+      setDigPhase('empty');
+      startDigCam();
+      dropMementos();
+      setTimeout(async () => {
+        const cap = await capDataPromise;
+        renderFilm(cap);
+        stopDigCam();
+        setDigPhase('data');
+      }, 2700);
+    }
+
+    function dropMementos(){
+      const box = document.getElementById('falling');
+      box.innerHTML = '';
+      const kinds = ['🖼️','♪','✉','🎬','🖼️','♪','✉','🖼️'];
+      kinds.forEach((txt, i) => {
+        const el = document.createElement('div');
+        el.className = 'memento' + (txt === '✉' ? ' env' : '');
+        el.textContent = txt;
+        el.style.left = (44 + Math.random()*10) + '%';
+        el.style.top  = '24%';
+        el.style.setProperty('--mx', (Math.random()*240 - 120) + 'px');
+        el.style.setProperty('--my', (380 + Math.random()*180) + 'px');
+        el.style.setProperty('--mr', (Math.random()*360 - 180) + 'deg');
+        box.appendChild(el);
+        setTimeout(() => el.classList.add('go'), 120 + i*170);
+        setTimeout(() => el.remove(), 120 + i*170 + 1600);
+      });
+    }
+
+    function renderFilm(cap){
+      const film = document.getElementById('film');
+      const date = cap.created_at
+        ? new Date(cap.created_at).toLocaleDateString('en-US',{year:'numeric',month:'long',day:'numeric'})
+        : '—';
+      let html =
+        '<div class="frame"><div class="frame-label">📅 Buried</div>' +
+        '<div class="frame-body"><div class="frame-date">' + escHTML(date) + '</div>' +
+        '<div class="frame-msg" style="margin-top:4px;font-size:18px">' + escHTML(cap.place_name || '') + '</div></div></div>';
+
+      const media = cap.media || [];
+      if (media.length === 0){
+        html += '<div class="frame"><div class="frame-label">📦 Contents</div><div class="frame-body"><div class="frame-msg" style="opacity:.7">no media attached to this capsule</div></div></div>';
+      }
+      media.forEach(item => {
+        const src = '/media/' + item.file_path;
+        if (item.kind === 'photo'){
+          html += '<div class="frame"><div class="frame-label">📷 Photo</div><div class="frame-body media"><img src="' + src + '" alt="photo" loading="lazy"></div></div>';
+        } else if (item.kind === 'video'){
+          html += '<div class="frame"><div class="frame-label">🎬 Video</div><div class="frame-body media"><video src="' + src + '" controls playsinline style="width:100%;display:block"></video></div></div>';
+        } else if (item.kind === 'audio'){
+          html += '<div class="frame"><div class="frame-label">🎵 Audio</div><div class="frame-body"><audio src="' + src + '" controls style="width:100%;margin:8px 0"></audio></div></div>';
+        } else if (item.kind === 'text'){
+          const eid = 'tf-' + item.id;
+          html += '<div class="frame"><div class="frame-label">✉️ Note</div><div class="frame-body"><div class="frame-msg" id="' + eid + '">…</div></div></div>';
+          fetch(src).then(r => r.text()).then(t => { const el = document.getElementById(eid); if(el) el.textContent = t; }).catch(() => {});
+        }
+      });
+      if (cap.lat != null){
+        html += '<div class="frame"><div class="frame-label">📍 Location</div><div class="frame-body"><div class="frame-msg">' + Number(cap.lat).toFixed(4) + ', ' + Number(cap.lng).toFixed(4) + '</div></div></div>';
+      }
+      film.innerHTML = html;
+      film.scrollTop = 0;
+    }
+
+    async function startDigCam(){
+      try {
+        digCamStream = await navigator.mediaDevices.getUserMedia({ video:{ facingMode:{ ideal:'environment' } }, audio:false });
+        const v = document.getElementById('digCam');
+        v.srcObject = digCamStream; await v.play().catch(() => {});
+        digup.classList.add('has-cam');
+      } catch(e){ digup.classList.remove('has-cam'); }
+    }
+    function stopDigCam(){ if (digCamStream){ digCamStream.getTracks().forEach(t => t.stop()); digCamStream = null; } }
+
+    async function openDigup(){
+      setDigPhase('map');
+      document.getElementById('toofar').classList.remove('show');
+      digup.classList.add('open');
+      initMap(BAY_AREA, 9);
+      getUserLatLng().then(me => { userLoc = me; });
+      setTimeout(() => { if (digMap) digMap.invalidateSize(); }, 280);
+    }
+    function closeDigup(){
+      digup.classList.remove('open');
+      stopDigCam();
+    }
+
+    document.getElementById('digBtn').addEventListener('click', openDigup);
+    document.getElementById('digupClose').addEventListener('click', closeDigup);
+    document.getElementById('digupDone').addEventListener('click', closeDigup);
+    document.getElementById('toofarOk').addEventListener('click',
+      () => document.getElementById('toofar').classList.remove('show'));
+
+    // ============ PRINCIPLES OVERLAY ============
+    const principles = document.getElementById('principles');
+
+    async function openPrinciples(){
+      principles.classList.add('open');
+      const scroll = document.getElementById('principlesScroll');
+      scroll.innerHTML = '<div class="prin-loading">reading your memories…</div>';
+      try {
+        const resp = await fetch('/api/networks');
+        if (resp.status === 503){
+          scroll.innerHTML = '<div class="prin-empty">Principles aren\'t ready yet.<br><br>Run <b>recall load</b> to build your mental models, then try again.</div>';
+          return;
+        }
+        if (!resp.ok) throw new Error('fetch failed');
+        const data = await resp.json();
+        renderPrinciples(scroll, data);
+      } catch {
+        scroll.innerHTML = '<div class="prin-empty">Could not load principles.<br>Make sure the backend is running on port 8000.</div>';
+      }
+    }
+
+    function renderPrinciples(scroll, data){
+      let html = '';
+      const ps = data.principles || [];
+      if (ps.length){
+        html += '<div class="prin-section-label">🧭 Principles</div>';
+        ps.forEach(p => {
+          html += '<div class="prin-card"><div class="prin-card-name">' + escHTML(p.name) + '</div>' +
+                  '<div class="prin-card-text">' + escHTML(p.content) + '</div></div>';
+        });
+      }
+      if (data.connections){
+        html += '<div class="prin-section-label">✦ Connections</div>';
+        html += '<div class="prin-connections">' + escHTML(data.connections) + '</div>';
+      }
+      const people = data.people || [];
+      if (people.length){
+        html += '<div class="prin-section-label">👥 People</div>';
+        people.forEach(p => {
+          html += '<div class="prin-card"><div class="prin-card-name">' + escHTML(p.name) + '</div>' +
+                  '<div class="prin-card-text">' + escHTML(p.note || '') + '</div></div>';
+        });
+      }
+      if (!html){
+        html = '<div class="prin-empty">No principles yet.<br><br>Load more memories with <b>recall load</b> to build your mental models.</div>';
+      }
+      scroll.innerHTML = html;
+    }
+
+    function closePrinciples(){ principles.classList.remove('open'); }
+
+    document.getElementById('principlesClose').addEventListener('click', closePrinciples);
+    document.getElementById('compassBtn').addEventListener('click', openPrinciples);
+  </script>
+</body>
+</html>
