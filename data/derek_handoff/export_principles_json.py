@@ -35,7 +35,8 @@ ROOT = HERE.parents[1]
 # the DB's own principles/edges as-is.
 USERS = {
     "aaryan":      (HERE / "recall_new.db",        ROOT / "principles.aaryan.json",      None),
-    "selin":       (HERE / "recall_expansive.db",  ROOT / "principles.selin.json",       40),
+    # selin's curated sample: 6 principles with real edges + full trace (use as-is).
+    "selin":       (HERE / "selin_sample.db",      ROOT / "principles.selin.json",       None),
     # a 3rd login: aaryan's expansive set, similarity-connected (top 40 by depth).
     "aaryan-full": (HERE / "recall_expansive.db",  ROOT / "principles.aaryan-full.json", 40),
 }
