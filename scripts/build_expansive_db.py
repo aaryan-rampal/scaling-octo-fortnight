@@ -1,10 +1,18 @@
-"""Build a full-recall, fully-traceable ``recall_expansive.db`` from ALL pg0 memories.
+"""Build a diverse, fully-traceable ``recall_expansive.db`` from pg0 memories.
 
 The normal pipeline mints principles from a capped Hindsight ``recall`` slice
-(~111 of ~3458 memories). This script bypasses that cap: it pulls EVERY memory
-straight from pg0, clusters them at the same 0.78 threshold (~415 clusters),
-mints every cluster, and materialises the full provenance ladder into a SEPARATE
-``data/recall_expansive.db`` with the same schema as ``recall.db``.
+(~111 of ~3458 memories), and naive cluster-first minting over the full pool is
+worse: the pool is 92%% claude (3187 claude / 186 imessage / 60 spotify / 25
+photos), so embedding clusters are flooded by claude and principles come out
+monochrome.
+
+This script instead pulls every pg0 memory, then **stratifies by source** rather
+than clustering: claude is down-sampled to a cap, every other source is kept
+whole, and each source is sliced into small fixed-size batches that the proposer
+mints one at a time. Principles come out labeled by source and balanced across
+imessage / spotify / photos / (capped) claude. The full provenance ladder is
+materialised into a SEPARATE ``data/recall_expansive.db`` with the same schema as
+``recall.db``.
 
 The killed experiment (``scripts/exp_full_recall_mint.py``) saved nothing because
 it only reported after all clusters. This script CHECKPOINTS every minted
@@ -50,7 +58,6 @@ from core.schema import Event
 from pipeline.mint import (
     MemoryCard,
     build_ledger,
-    cluster_memories,
     compute_confidence,
     mint_cluster,
 )
@@ -151,36 +158,83 @@ def _append_checkpoint(records: list[dict]) -> None:
             fh.write(json.dumps(rec, ensure_ascii=False) + "\n")
 
 
-def _mint_all(cards: list[MemoryCard], threshold: float) -> list[dict]:
-    """Cluster all cards and mint every cluster, checkpointing incrementally.
+def _stratified_batches(
+    cards: list[MemoryCard], claude_cap: int, batch_size: int, seed: int
+) -> list[tuple[str, list[MemoryCard]]]:
+    """Group memories by source into small batches — no embedding clustering.
 
-    Each principle is written to the JSONL checkpoint the moment its cluster is
-    minted, plus a ``cluster_idx`` progress marker, so a kill loses only the
-    in-flight cluster and a re-run resumes past completed ones.
+    Clustering-first lets the dominant source (claude, 92% of the pool) flood
+    every cluster. Instead we stratify by source: claude is down-sampled to
+    ``claude_cap``, every other source is kept whole, and each source is sliced
+    into fixed-size batches in timestamp order. The LLM sees one small,
+    source-pure batch at a time and must still cite >=2 — so principles come out
+    labeled and balanced across sources rather than monochrome.
 
     Args:
         cards: All embedded memories from pg0.
-        threshold: Cluster cosine threshold (0.78 = same as the experiment).
+        claude_cap: Max claude memories to keep (random sample if exceeded).
+        batch_size: Memories per batch sent to the proposer.
+        seed: RNG seed for the claude down-sample (reproducible).
 
     Returns:
-        All principle dicts (id/text/confidence/derived_from), resumed + new.
+        List of (source, batch) pairs. Singleton batches (<2 cards) are dropped.
     """
-    clusters = cluster_memories(cards, threshold=threshold)
-    logger.info("clustered {} cards into {} clusters @ {}", len(cards), len(clusters), threshold)
+    import random
+
+    by_source: dict[str, list[MemoryCard]] = {}
+    for c in cards:
+        by_source.setdefault(c.source or "unknown", []).append(c)
+
+    rng = random.Random(seed)
+    batches: list[tuple[str, list[MemoryCard]]] = []
+    for source in sorted(by_source):
+        pool = by_source[source]
+        if source == "claude" and len(pool) > claude_cap:
+            pool = rng.sample(pool, claude_cap)
+            logger.info("claude down-sampled {} -> {}", len(by_source[source]), claude_cap)
+        pool = sorted(pool, key=lambda m: m.ts)
+        n_batches = 0
+        for start in range(0, len(pool), batch_size):
+            batch = pool[start : start + batch_size]
+            if len(batch) >= 2:
+                batches.append((source, batch))
+                n_batches += 1
+        logger.info("source={} pool={} -> {} batches", source, len(pool), n_batches)
+    return batches
+
+
+def _mint_all(cards: list[MemoryCard], claude_cap: int, batch_size: int, seed: int) -> list[dict]:
+    """Mint source-stratified batches (no clustering), checkpointing incrementally.
+
+    Each principle is written to the JSONL checkpoint the moment its batch is
+    minted, plus a ``cluster_idx`` progress marker, so a kill loses only the
+    in-flight batch and a re-run resumes past completed ones.
+
+    Args:
+        cards: All embedded memories from pg0.
+        claude_cap: Max claude memories to keep (prunes the dominant source).
+        batch_size: Memories per batch.
+        seed: RNG seed for the claude down-sample.
+
+    Returns:
+        All principle dicts (id/text/confidence/derived_from/source), resumed + new.
+    """
+    batches = _stratified_batches(cards, claude_cap, batch_size, seed)
+    logger.info("stratified {} cards into {} source batches", len(cards), len(batches))
 
     principles, last_done = _load_checkpoint()
     proposer = LLMProposer()
     embedder = QwenEmbedder()
 
-    for idx, cluster in enumerate(clusters, 1):
+    for idx, (source, batch) in enumerate(batches, 1):
         if idx <= last_done:
             continue
         t0 = time.perf_counter()
         new_records: list[dict] = []
         try:
-            candidates = mint_cluster(cluster, proposer, embedder.embed)
+            candidates = mint_cluster(batch, proposer, embedder.embed)
         except Exception as exc:
-            logger.error("cluster {} failed: {}: {}", idx, type(exc).__name__, exc)
+            logger.error("batch {} ({}) failed: {}: {}", idx, source, type(exc).__name__, exc)
             candidates = []
         for cand in candidates:
             ledger = build_ledger(cand.cited)
@@ -190,18 +244,20 @@ def _mint_all(cards: list[MemoryCard], threshold: float) -> list[dict]:
                 "text": cand.text,
                 "confidence": compute_confidence(ledger),
                 "derived_from": derived,
+                "source": source,
                 "cluster_idx": idx,
             }
             new_records.append(rec)
             principles.append(rec)
-        # Always write a progress marker, even for empty clusters, so resume skips them.
+        # Always write a progress marker, even for empty batches, so resume skips them.
         new_records.append({"cluster_idx": idx, "marker": True})
         _append_checkpoint(new_records)
         logger.info(
-            "[{}/{}] size={} -> {} principle(s) ({:.1f}s, total {})",
+            "[{}/{}] {} size={} -> {} principle(s) ({:.1f}s, total {})",
             idx,
-            len(clusters),
-            len(cluster),
+            len(batches),
+            source,
+            len(batch),
             len(candidates),
             time.perf_counter() - t0,
             len([p for p in principles if "id" in p]),
@@ -380,8 +436,20 @@ def main() -> None:
     """Pull all pg0 memories, mint every cluster, materialise the expansive DB."""
     configure_logging()
     ap = argparse.ArgumentParser(description="Build full-recall recall_expansive.db.")
-    ap.add_argument("--threshold", type=float, default=0.78, help="Cluster cosine threshold.")
     ap.add_argument("--bank", default=BANK)
+    ap.add_argument(
+        "--claude-cap",
+        type=int,
+        default=150,
+        help="Max claude memories to keep (prunes the 92%%-dominant source). Default 150.",
+    )
+    ap.add_argument(
+        "--batch-size",
+        type=int,
+        default=12,
+        help="Memories per source batch sent to the proposer (no clustering). Default 12.",
+    )
+    ap.add_argument("--seed", type=int, default=7, help="RNG seed for the claude down-sample.")
     ap.add_argument(
         "--days", type=int, default=0, help="Re-segmentation window (0 = whole DB, matches dump)."
     )
@@ -408,7 +476,7 @@ def main() -> None:
         if not cards:
             logger.error("no embedded memories pulled — is the bank populated?")
             sys.exit(1)
-        principles = _mint_all(cards, args.threshold)
+        principles = _mint_all(cards, args.claude_cap, args.batch_size, args.seed)
         logger.info("minting done: {} principles", len(principles))
         if args.mint_only:
             return
