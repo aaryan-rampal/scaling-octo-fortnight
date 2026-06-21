@@ -24,11 +24,14 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
 
-from core.schema import _parse_utc
+from core.schema import Event, _parse_utc
 
 #: Allowed media kinds. Kept permissive and explicit so the API can validate
 #: uploads without guessing from MIME alone.
 MEDIA_KINDS = ("photo", "audio", "video", "text")
+
+#: ``source`` tag for capsule-born events in the unified ``events`` table.
+CAPSULE_SOURCE = "capsule"
 
 
 @dataclass(frozen=True, slots=True)
@@ -138,4 +141,45 @@ class Capsule:
             lat=data.get("lat"),
             lng=data.get("lng"),
             media=[Media.from_dict(m) for m in data.get("media", [])],
+        )
+
+    def to_event(self, note: str | None = None) -> Event:
+        """Project this capsule onto the canonical :class:`~core.schema.Event`.
+
+        The seam that puts user-created capsules on the **same provenance path**
+        as the passive sources (iMessage / Spotify / photos): the resulting event
+        is persisted into the unified ``events`` table, so a capsule is a
+        traceable raw_data row that can rise into memory — the active counterpart
+        to passive ingest, matching the flywheel's "a capsule births raw_data".
+
+        A capsule is *intentionally created by the user*, so ``author_role`` is
+        ``"self"``. Place, geo, and media references ride in ``additional_data``;
+        ``thread_id`` is left ``None`` — a capsule is a standalone moment, not a
+        conversation thread.
+
+        ``content`` defaults to ``None`` here to keep this projection pure (no
+        disk I/O): the journal note lives in a ``text`` media file on disk, and
+        the binaries are deliberately not read at this layer. Callers that have
+        the note text in hand (e.g. the upload service) can pass ``note`` to set
+        ``content`` — first-person text is the strongest grounding the flywheel
+        doc names, so surfacing it is worthwhile when available.
+        """
+        return Event(
+            id=self.id,
+            t_utc=self.created_at,
+            author_role="self",
+            content=note,
+            thread_id=None,
+            reply_to=None,
+            raw_ref=f"capsule#{self.id}",
+            source=CAPSULE_SOURCE,
+            additional_data={
+                "place_name": self.place_name,
+                "lat": self.lat,
+                "lng": self.lng,
+                "media": [
+                    {"id": m.id, "kind": m.kind, "file_path": m.file_path, "mime": m.mime}
+                    for m in self.media
+                ],
+            },
         )

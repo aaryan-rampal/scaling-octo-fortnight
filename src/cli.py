@@ -12,6 +12,7 @@ import argparse
 import contextlib
 import os
 from datetime import date
+from pathlib import Path
 
 from adapters.imessage import DEFAULT_DB_PATH, ingest
 from core.schema import read_events_jsonl, write_events_jsonl
@@ -137,6 +138,62 @@ def _handle_all(args: argparse.Namespace) -> None:
     _run_show(args.bank)
 
 
+def _find_ui_dir() -> Path | None:
+    """Locate the static ``ui/`` directory by walking up from this file.
+
+    Works whether ``recall`` is run from the repo (``ui/`` at the root) or an
+    editable install whose ``src`` sits beside it. Returns ``None`` if not found,
+    so ``serve`` can still run the API without a UI.
+    """
+    for parent in Path(__file__).resolve().parents:
+        candidate = parent / "ui"
+        if (candidate / "index.html").is_file():
+            return candidate
+    return None
+
+
+def _run_serve(host: str, port: int, token: str | None) -> None:
+    """Serve the local app: FastAPI (API + media) with the static UI mounted.
+
+    One origin serves the UI, the API, and uploaded media, so the whole
+    local-first app runs from a single command and a phone can reach it at
+    ``http://<this-machine-ip>:<port>``. Binding ``0.0.0.0`` (the default) is
+    what makes that mobile access work; use ``--host 127.0.0.1`` to keep it
+    laptop-only.
+
+    When ``token`` is set (or ``RECALL_TOKEN`` is in the env), the API + media
+    are gated behind that passcode — required before exposing the laptop over a
+    tunnel for mobile, so data stays local and only the passcode-holder gets in.
+    """
+    import uvicorn
+    from fastapi.staticfiles import StaticFiles
+
+    from poc_demo.server import app as app_module
+
+    if token:
+        app_module.RECALL_TOKEN = token
+
+    app = app_module.app
+    ui_dir = _find_ui_dir()
+    if ui_dir is not None:
+        # Mount last and at root so /api and /media (registered on import) win;
+        # html=True serves index.html at /.
+        app.mount("/", StaticFiles(directory=str(ui_dir), html=True), name="ui")
+        print(f"Serving UI from {ui_dir}")
+    else:
+        print("No ui/ directory found — serving API only.")
+    gate = "passcode-gated" if app_module.RECALL_TOKEN else "OPEN (no passcode)"
+    print(f"recall serve → http://{host}:{port}  [{gate}]  (phone: http://<your-ip>:{port})")
+    if host == "0.0.0.0" and not app_module.RECALL_TOKEN:
+        print("  ⚠ exposed on the network with no passcode — pass --token to protect it.")
+    uvicorn.run(app, host=host, port=port)
+
+
+def _handle_serve(args: argparse.Namespace) -> None:
+    """Dispatch the ``serve`` subcommand."""
+    _run_serve(args.host, args.port, args.token)
+
+
 def _build_parser() -> argparse.ArgumentParser:
     """Build the top-level argument parser with one entry per subcommand."""
     parser = argparse.ArgumentParser(prog="recall", description="iMessage memory POC.")
@@ -179,6 +236,24 @@ def _build_parser() -> argparse.ArgumentParser:
     p_all.add_argument("--bank", default=DEFAULT_BANK)
     p_all.add_argument("--limit", type=int, default=DEFAULT_LIMIT, help="0 = all.")
     p_all.set_defaults(handler=_handle_all)
+
+    p_serve = sub.add_parser(
+        "serve", help="Run the local app: UI + API + media on one origin."
+    )
+    p_serve.add_argument(
+        "--host",
+        default="0.0.0.0",
+        help="Bind address. Default 0.0.0.0 (reachable from phones on the same "
+        "wifi); use 127.0.0.1 for laptop-only.",
+    )
+    p_serve.add_argument("--port", type=int, default=8000, help="Port (default 8000).")
+    p_serve.add_argument(
+        "--token",
+        default=None,
+        help="Passcode required for API + media (or set RECALL_TOKEN). Strongly "
+        "recommended when binding 0.0.0.0 / exposing over a tunnel.",
+    )
+    p_serve.set_defaults(handler=_handle_serve)
 
     return parser
 

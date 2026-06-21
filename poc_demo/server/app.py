@@ -21,8 +21,10 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import Any
 
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
 from hindsight_client import Hindsight
 
 from poc_demo.server import data
@@ -35,6 +37,27 @@ from runtime.hindsight import embedded_hindsight
 from storage.store import CapsuleStore
 
 DEFAULT_BANK = os.environ.get("RECALL_BANK", "imessage-v0")
+
+#: Shared-secret passcode for the local-first auth gate. When set (via
+#: ``RECALL_TOKEN`` or ``recall serve --token``), every protected request must
+#: send a matching ``X-Recall-Token`` header — the passcode the UI's lock screen
+#: collects. When unset, the app is open (convenient for laptop-only local dev).
+#: This is what makes it safe to expose the laptop over a tunnel for mobile: the
+#: data stays local, and only someone with the passcode can reach it.
+RECALL_TOKEN = os.environ.get("RECALL_TOKEN") or None
+
+
+#: Paths reachable without the passcode: the lock screen probes health, and the
+#: static UI assets (the lock screen itself) must load so the user can enter it.
+_OPEN_PATHS = ("/api/health",)
+
+
+def _is_protected(path: str) -> bool:
+    """Whether a request path requires the passcode (API + media; not health)."""
+    if path in _OPEN_PATHS:
+        return False
+    return path.startswith("/api/") or path.startswith("/media/")
+
 
 _state: dict[str, Any] = {}
 
@@ -49,11 +72,24 @@ MEDIA_ROOT = DEFAULT_MEDIA_ROOT
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
-    """Boot the embedded Hindsight server once and capture its base URL."""
-    with embedded_hindsight() as client:
-        _state["base_url"] = client._base_url
+    """Boot the embedded Hindsight server, degrading gracefully if it can't start.
+
+    Hindsight (memory networks) needs OpenRouter, so it may be unavailable in a
+    keyless local/mobile run. The capsule write path — upload → SQLite → media —
+    needs none of that, so when the boot fails we log it, leave
+    ``_state["base_url"]`` unset, and let the server come up anyway. Only
+    ``/api/networks`` degrades; capsule creation, listing, and media all work.
+    """
+    try:
+        with embedded_hindsight() as client:
+            _state["base_url"] = client._base_url
+            yield
+    except Exception as exc:
+        print(f"[recall] Hindsight unavailable ({exc}); memory networks disabled.")
+        _state["base_url"] = None
         yield
-    _state.clear()
+    finally:
+        _state.clear()
 
 
 app = FastAPI(title="Recall demo API", lifespan=lifespan)
@@ -63,6 +99,34 @@ app.add_middleware(
     allow_methods=["GET", "POST"],
     allow_headers=["*"],
 )
+
+
+@app.middleware("http")
+async def passcode_gate(request: Request, call_next):
+    """Gate protected paths behind the shared-secret passcode.
+
+    When ``RECALL_TOKEN`` is set, requests to ``/api/*`` (except health) and
+    ``/media/*`` must send a matching ``X-Recall-Token`` header — the passcode
+    the UI's lock screen collects. This is what makes exposing the laptop over a
+    tunnel safe: data stays local and only the passcode-holder gets in. When no
+    token is configured, the gate is a no-op (laptop-only local dev).
+    """
+    if RECALL_TOKEN is not None and _is_protected(request.url.path):
+        # Header for API calls; ?t= query param for media (<img>/<video> can't
+        # send headers).
+        supplied = request.headers.get("x-recall-token") or request.query_params.get("t")
+        if supplied != RECALL_TOKEN:
+            return JSONResponse(
+                status_code=401, content={"detail": "invalid or missing passcode"}
+            )
+    return await call_next(request)
+
+
+# Serve uploaded capsule media at /media/<file_path>, which is the URL the UI
+# builds for photos/videos. The directory is created up front so the mount works
+# even before the first upload.
+MEDIA_ROOT.mkdir(parents=True, exist_ok=True)
+app.mount("/media", StaticFiles(directory=str(MEDIA_ROOT)), name="media")
 
 
 def _fetch_networks(base_url: str, bank: str) -> dict[str, Any]:
@@ -75,28 +139,56 @@ def _fetch_networks(base_url: str, bank: str) -> dict[str, Any]:
 
 
 @app.get("/api/health")
-def health() -> dict[str, str]:
-    """Report whether the embedded server is ready."""
-    return {"status": "ok" if _state.get("base_url") else "starting", "bank": DEFAULT_BANK}
+def health() -> dict[str, Any]:
+    """Report server readiness and whether memory networks are available.
+
+    ``memory`` is ``False`` when Hindsight could not boot (e.g. no OpenRouter
+    key); the capsule write path is unaffected, so ``status`` is still ``ok``.
+    """
+    return {
+        "status": "ok",
+        "bank": DEFAULT_BANK,
+        "memory": _state.get("base_url") is not None,
+        "auth_required": RECALL_TOKEN is not None,
+    }
 
 
 @app.get("/api/networks")
 async def networks(bank: str = DEFAULT_BANK) -> dict[str, Any]:
-    """Return all five memory networks for ``bank`` as JSON.
+    """Return all memory networks for ``bank``, or 503 if Hindsight is disabled.
 
     Runs a fresh sync client in a worker thread so its aiohttp loop is local to
-    that thread.
+    that thread. When Hindsight did not boot (keyless local run), returns 503 so
+    the UI can fall back to seed data rather than erroring.
     """
-    base_url = _state["base_url"]
+    base_url = _state.get("base_url")
+    if base_url is None:
+        raise HTTPException(status_code=503, detail="memory networks unavailable")
     return await asyncio.to_thread(_fetch_networks, base_url, bank)
 
 
 # ---- capsule write-path (active raw_data) --------------------------------
 #
-# Persists user-created capsules (place + media) to the SQLite store. Conversion
-# to canonical Events + Hindsight retain + the swarm is the next stage and is not
-# done here — see TIME_CAPSULE_FLYWHEEL.md. The store is the seam where that
-# downstream work picks the capsule up.
+# Persists user-created capsules (place + media) to the SQLite store AND projects
+# each into the unified ``events`` table as a canonical Event (source="capsule"),
+# so capsules ride the same provenance path as the passive sources. Hindsight
+# retain + the agentic workflow that consumes these events is the next stage and
+# is a future deliverable — see TIME_CAPSULE_FLYWHEEL.md.
+
+
+def _note_from_uploads(uploads: list[tuple[str, bytes, str | None]]) -> str | None:
+    """Extract the journal note text from a ``text/*`` upload, if present.
+
+    The UI attaches the user's written reflection as a ``text/plain`` file. We
+    have its bytes in hand here, so we can surface that authored text as the
+    event's ``content`` without re-reading from disk.
+    """
+    for _filename, content, content_type in uploads:
+        if content_type and content_type.startswith("text/"):
+            text = content.decode("utf-8", "replace").strip()
+            if text:
+                return text
+    return None
 
 
 def _create_capsule(
@@ -105,9 +197,18 @@ def _create_capsule(
     lng: float | None,
     uploads: list[tuple[str, bytes, str | None]],
 ) -> dict[str, Any]:
-    """Build, persist, and serialize a capsule (blocking)."""
+    """Build the capsule, persist it, project it to a canonical event, return it.
+
+    A capsule is persisted twice on purpose: to the ``capsules``/``media`` tables
+    (the structured write path the UI reads back), **and** as a canonical
+    :class:`~core.schema.Event` in the unified ``events`` table via
+    :meth:`Capsule.to_event`. The latter puts the capsule on the same provenance
+    path as the passive sources, so it is a traceable raw_data row ready to rise
+    into memory. (The agentic workflow that consumes it is a future deliverable.)
+    """
     capsule = build_capsule(place_name, lat, lng, uploads, media_root=MEDIA_ROOT)
     _store.add_capsule(capsule)
+    _store.add_events([capsule.to_event(note=_note_from_uploads(uploads))])
     return capsule.to_dict()
 
 

@@ -73,3 +73,35 @@ def test_create_capsule_no_media(client: TestClient) -> None:
     resp = client.post("/api/capsules", data={"place_name": "Empty"})
     assert resp.status_code == 201
     assert resp.json()["media"] == []
+
+
+def test_create_capsule_persists_canonical_event(client: TestClient) -> None:
+    # The honest write path: a capsule also lands in the unified events table as
+    # a canonical Event (source="capsule"), alongside the passive sources.
+    resp = client.post(
+        "/api/capsules",
+        data={"place_name": "Greek Theatre", "lat": "37.873", "lng": "-122.254"},
+        files={"media": ("photo.jpg", b"\xff\xd8image", "image/jpeg")},
+    )
+    assert resp.status_code == 201
+    capsule_id = resp.json()["id"]
+
+    events = app_module._store.list_events(source="capsule")
+    assert len(events) == 1
+    ev = events[0]
+    assert ev.id == capsule_id
+    assert ev.raw_ref == f"capsule#{capsule_id}"
+    assert ev.additional_data["place_name"] == "Greek Theatre"
+    assert app_module._store.verify_event(ev.id) is True  # provenance intact
+
+
+def test_capsule_note_becomes_event_content(client: TestClient) -> None:
+    # The journal note (a text/plain upload) is surfaced as the event content.
+    resp = client.post(
+        "/api/capsules",
+        data={"place_name": "Lake"},
+        files={"media": ("note.txt", b"a calm evening", "text/plain")},
+    )
+    assert resp.status_code == 201
+    events = app_module._store.list_events(source="capsule")
+    assert events[-1].content == "a calm evening"

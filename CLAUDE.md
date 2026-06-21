@@ -71,7 +71,8 @@ which layer you're touching.
 |---|---|
 | iMessage ingest → events → episodes → Hindsight → show / web UI | **BUILT** — this is the POC, end to end |
 | Four memory networks + `reflect` (synthesized connection) | **BUILT** (via Hindsight) |
-| Time-capsule write path + SQLite store | **PARTIAL** — `src/core/capsule.py`, `src/storage/store.py`, `poc_demo/server/capsule*` exist |
+| Time-capsule write path (UI → SQLite → unified events) | **BUILT** — UI upload (place + photos + note) persists to the capsules tables AND projects to a canonical `Event` (`source="capsule"`) in the unified `events` table via `Capsule.to_event`; media served at `/media`. The agentic workflow that consumes these events is the deferred next deliverable |
+| Local-first app + mobile + passcode auth | **BUILT** — `recall serve` runs UI + API + media on one origin; `--token` gates `/api/*` + `/media` behind a passcode (themed lock screen in the UI). Data stays on the device; phone reaches the laptop over LAN/tunnel (Tailscale/ngrok). Nothing is uploaded to a server |
 | Photos / Spotify / Claude-chat adapters | **BUILT but not wired** — `src/adapters/*` parse the source → canonical `Event` → persist to the unified `events` table (tested), but nothing in the `recall` CLI / episodes→Hindsight flow calls them yet. Only Spotify has its own `python -m adapters.spotify` CLI |
 | Unified events store (one source-agnostic `events` table) | **BUILT** — every adapter persists via `src/storage/persist.py` into one table in `src/storage/store.py` |
 | Location geofence / "locked until you return" | **FAKED for the demo** — an "I'm back" button, not real GPS |
@@ -116,7 +117,7 @@ src/
     hindsight.py       boot embedded Hindsight (pg0 + OpenRouter)
 poc_demo/server/   FastAPI backend (boots embedded Hindsight, serves JSON)
 poc_demo/web/      Vite + React + TypeScript frontend
-ui/                static mobile web app ("recapsule") — on the ui-scaffold branch
+ui/                static mobile web app ("recapsule"); served by `recall serve`
 docs/              TIME_CAPSULE_FLYWHEEL.md (north-star) + adapter / store design docs
 context/           team transcripts, Q&A, design docs (decision history)
 tests/             pytest mirroring src: tests/{core,models,adapters,storage,pipeline}/
@@ -144,7 +145,15 @@ uv pip install --python .venv/bin/python -e .
 # Pipeline (Doppler injects OPENROUTER_API_KEY)
 doppler run --project berkeley-hackathon --config dev -- recall all --top-n 5 --limit 150
 
-# Web demo (two terminals)
+# Local-first app: UI + API + media on one origin (the capsule flow)
+#   NOTE: poc_demo isn't packaged, so run from the repo root with it on the path:
+PYTHONPATH=src:. .venv/bin/python -m cli serve --host 127.0.0.1      # laptop-only
+#   mobile (data stays on the laptop): add --host 0.0.0.0 --token <passcode>,
+#   then open http://<laptop-ip>:8000 on a phone (same wifi, or via Tailscale).
+#   Memory networks need OpenRouter; without it /api/networks degrades and the
+#   capsule flow still works keyless.
+
+# Original web demo (Vite/React; two terminals)
 doppler run --project berkeley-hackathon --config dev -- \
   .venv/bin/python -m uvicorn poc_demo.server.app:app --port 8000
 cd poc_demo/web && pnpm dev          # → http://localhost:5173
