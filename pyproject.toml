@@ -1,0 +1,49 @@
+[project]
+name = "recall"
+version = "0.1.0"
+requires-python = ">=3.13"
+dependencies = [
+    "hindsight-api-slim[embedded-db]",
+    "hindsight-client",
+    "pydantic>=2",
+    "python-dotenv",
+]
+
+[project.scripts]
+recall = "cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = [
+    "src/core",
+    "src/models",
+    "src/adapters",
+    "src/storage",
+    "src/pipeline",
+    "src/runtime",
+]
+sources = ["src"]
+force-include = { "src/cli.py" = "cli.py" }
+
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "SIM", "RUF"]
+
+[tool.ty.rules]
+unresolved-import = "error"
+invalid-argument-type = "error"
+invalid-assignment = "error"
+invalid-return-type = "error"
+missing-argument = "error"
+unresolved-attribute = "error"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+addopts = "-q"
