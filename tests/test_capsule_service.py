@@ -24,9 +24,7 @@ def test_kind_for_mime() -> None:
 
 
 def test_save_media_file_writes_bytes_and_record(tmp_path: Path) -> None:
-    media = save_media_file(
-        "cap1", "photo.jpg", b"\xff\xd8data", "image/jpeg", media_root=tmp_path
-    )
+    media = save_media_file("cap1", "photo.jpg", b"\xff\xd8data", "image/jpeg", media_root=tmp_path)
     assert media.kind == "photo"
     assert media.byte_size == len(b"\xff\xd8data")
     assert (tmp_path / media.file_path).read_bytes() == b"\xff\xd8data"

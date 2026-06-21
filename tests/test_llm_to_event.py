@@ -7,8 +7,6 @@ into the single events table, exactly like iMessage and Spotify.
 
 from __future__ import annotations
 
-from datetime import UTC
-
 from adaptors._persist import persist_events
 from adaptors.llm_chats import to_chat_events
 from models.llm_export import ClaudeConversation

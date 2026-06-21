@@ -181,6 +181,7 @@ def test_blank_top_level_falls_back_to_blocks() -> None:
         ],
     )
     ev = to_chat_events(conv)[0]
+    assert ev.content is not None
     assert "block one" in ev.content
     assert "block two" in ev.content
 
@@ -206,7 +207,8 @@ def test_thinking_text_never_leaks() -> None:
     )
     events = to_chat_events(conv)
     assert events, "message with a visible text block should be emitted"
-    joined = "\n".join(e.content for e in events)
+    assert all(e.content is not None for e in events)
+    joined = "\n".join(e.content for e in events if e.content is not None)
     assert "SECRET_THINKING_DO_NOT_LEAK" not in joined
     assert "visible reply" in joined
 
@@ -237,7 +239,8 @@ def test_tool_result_raw_text_never_leaks_marker_present() -> None:
     )
     events = to_chat_events(conv)
     assert events, "a tool marker is non-empty content, so the message is emitted"
-    joined = "\n".join(e.content for e in events)
+    assert all(e.content is not None for e in events)
+    joined = "\n".join(e.content for e in events if e.content is not None)
     assert "SECRET_TOOL_OUTPUT" not in joined
     assert "SECRET_TOOL_INPUT" not in joined
     assert "[tool: web_search]" in joined

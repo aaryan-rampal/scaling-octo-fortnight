@@ -68,10 +68,20 @@ def contact_label(thread_id: str) -> str:
     return label or thread_id
 
 
-def _event_line(role: str, content: str, contact: str) -> str:
-    """Render one transcript line, mapping ``self`` to ``me``."""
+def _event_line(role: str | None, content: str | None, contact: str) -> str:
+    """Render one transcript line, mapping ``self`` to ``me``.
+
+    Args:
+        role: Author role; ``"self"`` renders as ``"me"``, anything else
+            (including ``None``) renders as the contact label.
+        content: Message body; ``None`` renders as an empty body.
+        contact: Contact label for non-self speakers.
+
+    Returns:
+        A ``"{speaker}: {content}"`` transcript line.
+    """
     speaker = "me" if role == "self" else contact
-    return f"{speaker}: {content}"
+    return f"{speaker}: {content or ''}"
 
 
 def episode_to_content(episode: Episode) -> str:

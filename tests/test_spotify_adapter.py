@@ -63,6 +63,7 @@ def test_to_event_lands_on_canonical_event() -> None:
     assert event.source == "spotify"
     assert event.author_role == "self"
     assert event.thread_id == SPOTIFY_THREAD_ID
+    assert event.content is not None
     assert "Pasoori" in event.content and "Shae Gill" in event.content
     # raw_ref points back to the play, with no doubled prefix.
     assert event.raw_ref.startswith("spotify:track:7lvDsmTRXFE3dK4OjvRiWB#")
@@ -80,9 +81,7 @@ def test_event_id_is_deterministic_and_unique_per_play() -> None:
 def _write_export(tmp_path: Path, records: list[dict]) -> Path:
     folder = tmp_path / "Spotify Extended Streaming History"
     folder.mkdir()
-    (folder / "Streaming_History_Audio_2024.json").write_text(
-        json.dumps(records), encoding="utf-8"
-    )
+    (folder / "Streaming_History_Audio_2024.json").write_text(json.dumps(records), encoding="utf-8")
     return tmp_path
 
 

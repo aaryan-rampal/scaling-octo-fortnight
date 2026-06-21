@@ -18,14 +18,14 @@ _TS = datetime(2024, 1, 1, 12, 0, 0, tzinfo=UTC)
 
 
 def _record(**overrides: object) -> IMessageRecord:
-    base = dict(
-        rowid=1,
-        thread_id="+15551234567",
-        t_utc=_TS,
-        content="yo",
-        is_from_me=False,
-        reply_to_guid=None,
-    )
+    base: dict[str, object] = {
+        "rowid": 1,
+        "thread_id": "+15551234567",
+        "t_utc": _TS,
+        "content": "yo",
+        "is_from_me": False,
+        "reply_to_guid": None,
+    }
     base.update(overrides)
     return IMessageRecord(**base)  # type: ignore[arg-type]
 
@@ -50,9 +50,7 @@ def test_event_id_matches_legacy_formula() -> None:
     # The id must equal the legacy recall.ingest derivation so re-ingest stays
     # idempotent and already-stored events keep matching across the refactor.
     apple_ns = int((_TS.timestamp() - APPLE_EPOCH_OFFSET) * 1e9)
-    legacy = hashlib.sha256(
-        f"+15551234567|{apple_ns}|0|yo".encode()
-    ).hexdigest()[:16]
+    legacy = hashlib.sha256(f"+15551234567|{apple_ns}|0|yo".encode()).hexdigest()[:16]
     assert _record().to_event().id == legacy
 
 

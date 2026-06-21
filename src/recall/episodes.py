@@ -45,7 +45,7 @@ def _make_episode(thread_id: str, events: list[Event]) -> Episode:
     """
     first = events[0]
     last = events[-1]
-    participants = sorted({e.author_role for e in events})
+    participants = sorted({e.author_role for e in events if e.author_role is not None})
     return Episode(
         id=_episode_id(thread_id, first.id, first.t_utc.isoformat()),
         thread_id=thread_id,
@@ -75,6 +75,11 @@ def window_thread(events: list[Event], gap_minutes: int = 30) -> list[Episode]:
         return []
     ordered = sorted(events, key=lambda e: e.t_utc)
     thread_id = ordered[0].thread_id
+    if thread_id is None:
+        raise ValueError(
+            "window_thread requires conversational events with a thread_id; "
+            f"event {ordered[0].id!r} (source {ordered[0].source!r}) has none"
+        )
     gap = timedelta(minutes=gap_minutes)
     episodes: list[Episode] = []
     current: list[Event] = [ordered[0]]
@@ -97,10 +102,13 @@ def build_episodes(events: list[Event], gap_minutes: int = 30) -> list[Episode]:
 
     Returns:
         All episodes from all threads. Events are grouped by ``thread_id``
-        before windowing so episodes never span threads.
+        before windowing so episodes never span threads. Non-conversational
+        events (those with no ``thread_id``, e.g. photos) are skipped.
     """
     by_thread: dict[str, list[Event]] = defaultdict(list)
     for event in events:
+        if event.thread_id is None:
+            continue
         by_thread[event.thread_id].append(event)
     episodes: list[Episode] = []
     for thread_events in by_thread.values():

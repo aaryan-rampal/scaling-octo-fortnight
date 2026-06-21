@@ -44,6 +44,7 @@ def content_sha(event: Event) -> str:
     )
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
+
 #: Default on-disk location, alongside the JSONL state the POC already writes.
 DEFAULT_DB_PATH = Path("data/recall.db")
 
@@ -186,9 +187,7 @@ class CapsuleStore:
     def get_capsule(self, capsule_id: str) -> Capsule | None:
         """Return one capsule with its media, or ``None`` if not found."""
         with self._cursor() as cur:
-            row = cur.execute(
-                "SELECT * FROM capsules WHERE id = ?", (capsule_id,)
-            ).fetchone()
+            row = cur.execute("SELECT * FROM capsules WHERE id = ?", (capsule_id,)).fetchone()
             if row is None:
                 return None
             media = self._media_for(cur, capsule_id)
@@ -197,13 +196,8 @@ class CapsuleStore:
     def list_capsules(self) -> list[Capsule]:
         """Return all capsules with their media, newest first."""
         with self._cursor() as cur:
-            rows = cur.execute(
-                "SELECT * FROM capsules ORDER BY created_at DESC"
-            ).fetchall()
-            return [
-                self._row_to_capsule(row, self._media_for(cur, row["id"]))
-                for row in rows
-            ]
+            rows = cur.execute("SELECT * FROM capsules ORDER BY created_at DESC").fetchall()
+            return [self._row_to_capsule(row, self._media_for(cur, row["id"])) for row in rows]
 
     @staticmethod
     def _media_for(cur: sqlite3.Cursor, capsule_id: str) -> list[Media]:
@@ -293,9 +287,7 @@ class CapsuleStore:
         original source.
         """
         with self._cursor() as cur:
-            row = cur.execute(
-                "SELECT * FROM events WHERE id = ?", (event_id,)
-            ).fetchone()
+            row = cur.execute("SELECT * FROM events WHERE id = ?", (event_id,)).fetchone()
         if row is None:
             return None
         return content_sha(self._row_to_event(row)) == row["content_sha"]
