@@ -387,6 +387,16 @@ LLM citations are post-rationalized, arXiv 2412.18004). Scope membership catches
 entailment verifier is the honest fix and is **post-v0** — same status as the
 node-level entailment gap in §3.
 
+**Similarity is Hindsight's, not ours — we never re-embed.** The `hindsight_client`
+`RecallResult` exposes no vector field, so "embedding-similar" is computed via
+`recall(bank, query)` (ranks by Hindsight's own `qwen/qwen3-embedding-8b`
+vectors), and entity/temporal proximity via `RecallResult.entities` /
+`occurred_start/end`. Running our own `E(text)` over the same memories would be
+redundant, cost a second OpenRouter call, and create a divergent notion of
+"similar." This is why rung ③ clustering also leans on `recall()` neighborhoods
+rather than a self-computed embedding cluster. See `v0-pipeline-contract.md`
+"Models & inference / Embedding & clustering".
+
 **Open v0 choice (not yet decided):** typed LLM-minted edges from the start
 (needs the citation-verification dance above) vs. deterministic untyped
 "co-occur/relate" edges first (zero LLM, from the 24 temporal overlaps directly),

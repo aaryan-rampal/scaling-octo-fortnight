@@ -113,6 +113,67 @@ reaching past the ledgers. Honest labeling: an edge that passes is **grounded**
 entailment. An NLI entailment verifier is the post-v0 upgrade. Same `derived_from`
 fail-fast applies: empty list rejected at write time.
 
+### Models & inference — decided
+
+**Everything is offloaded to OpenRouter; no local model loads.** Our runtime sets
+`EMBEDDINGS_PROVIDER=openrouter`, `LLM_PROVIDER=openai` (OpenRouter base URL), and
+`RERANKER_PROVIDER=rrf` (pure math, no model). `sentence_transformers` is not
+installed — Hindsight's local `LocalSTEmbeddings` path is never selected and
+cannot run here. The only local process is pg0 (stores vectors; does not compute
+them). Secrets via Doppler (`berkeley-hackathon/dev`, `OPENROUTER_API_KEY`).
+
+- **LLM** (Hindsight retain/reflect, and our rung ③/④ minting/linking calls):
+  **`google/gemini-3.5-flash`** (`DEFAULT_LLM_MODEL` in `runtime/hindsight.py`).
+- **Embeddings:** **`qwen/qwen3-embedding-8b` truncated to 2000-dim** (see below).
+
+### Embedding & clustering — decided (verified working end-to-end)
+
+**Embedding model: `qwen/qwen3-embedding-8b`, truncated to 2000 dimensions.**
+Configured in `src/runtime/hindsight.py`. The non-obvious constraints (each one
+hit and fixed during setup — do not regress them):
+
+1. **pgvector HNSW caps at 2000 dims.** The embedded pg0 ships **only pgvector**
+   (no vchord / pgvectorscale / pg_diskann — checked the extension dir), and its
+   HNSW index rejects any dimension > 2000. qwen3-embedding-8b is natively
+   **4096**, so it cannot be indexed at full width here. (A Docker Hindsight with
+   vchord/pgvectorscale has no such cap — that is why full 4096 worked there.)
+2. **Truncate via Matryoshka.** qwen3 is MRL-trained, so a 2000-dim prefix stays
+   meaningful. We set `EMBEDDINGS_TRUNCATE_DIM = 2000`.
+3. **The plain `openrouter` embeddings provider does NOT forward a `dimensions`
+   request.** So we use the **`litellm-sdk`** provider (note the hyphen) pointed
+   at qwen through OpenRouter (`model="openai/qwen/qwen3-embedding-8b"`,
+   `api_base=https://openrouter.ai/api/v1`), which sends
+   `dimensions=2000`. Still 100% OpenRouter; LiteLLM is only the request shim.
+4. **Bank is model-specific.** A dimension/model change invalidates an existing
+   bank (incomparable vectors); pg0 also refuses to migrate a non-empty
+   `memory_units` table. Switch **before** the first live retain, or wipe pg0
+   (`~/.pg0/instances/hindsight`) and re-retain.
+
+Verified: embedded Hindsight boots, retains, and recalls at qwen@2000 end-to-end
+(`RETAIN_OK / RECALL_RESULTS:1 / EXIT=0`).
+
+**We never re-embed. `recall()` is our only similarity primitive.** The
+`hindsight_client` `RecallResult` exposes `id, text, type, entities,
+occurred_start/end, metadata, tags, source_fact_ids` — **no vector field.**
+Hindsight embeds text once at `retain`; we do not run a second `E(text)` over the
+same memories (it would be redundant, cost a second OpenRouter call, and create a
+second, divergent notion of "similar"). Instead:
+- **similarity** between memories / to a principle = `recall(bank, query)`, which
+  ranks by Hindsight's own qwen vectors;
+- **entity / temporal** grouping = `RecallResult.entities` and
+  `occurred_start/end`, already structured by Hindsight.
+
+Do **not** read pg0's internal pgvector column to get raw vectors — it works but
+couples us to Hindsight's private schema and breaks the layer discipline above.
+
+**Rung ③ clustering (decided): lean on `recall()` similarity** (seed-query
+neighborhoods over the qwen vectors) rather than our own embedding-cluster. Each
+seed query pulls a coherent neighborhood; mint per neighborhood; the neighborhood
+bounds which `memory_id`s a principle may cite (the same bounded-citation guard
+rung ④ uses). This is the reflection-tree's "ask a question → retrieve → insight"
+shape (`rung3-minting-strategy.md` §2 calls the question step a soft clustering),
+realized through Hindsight `recall` so no re-embedding is needed.
+
 ---
 
 ## Rung ① — builder-segment

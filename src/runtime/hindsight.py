@@ -20,8 +20,15 @@ import uvicorn
 from hindsight_client import Hindsight
 
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
-DEFAULT_LLM_MODEL = "google/gemini-2.5-flash-lite"
-DEFAULT_EMBEDDINGS_MODEL = "openai/text-embedding-3-small"
+DEFAULT_LLM_MODEL = "google/gemini-3.5-flash"
+DEFAULT_EMBEDDINGS_MODEL = "qwen/qwen3-embedding-8b"
+
+# qwen3-embedding-8b is natively 4096-dim, but pgvector's HNSW index caps at 2000.
+# The model is Matryoshka-trained, so a 2000-dim prefix stays meaningful; we route
+# through LiteLLM (which forwards a ``dimensions`` request to OpenRouter) and
+# truncate to this. The embedded pg0 ships only pgvector (no vchord/pgvectorscale),
+# so staying <= 2000 is what makes qwen usable here at all.
+EMBEDDINGS_TRUNCATE_DIM = 2000
 
 _HOST = "127.0.0.1"
 _STARTUP_TIMEOUT_S = 120.0
@@ -50,10 +57,13 @@ def _apply_openrouter_env(api_key: str, llm_model: str, embeddings_model: str) -
         "HINDSIGHT_API_LLM_API_KEY": api_key,
         "HINDSIGHT_API_LLM_MODEL": llm_model,
         "HINDSIGHT_API_LLM_BASE_URL": OPENROUTER_BASE_URL,
-        # Embeddings via OpenRouter.
-        "HINDSIGHT_API_EMBEDDINGS_PROVIDER": "openrouter",
-        "HINDSIGHT_API_EMBEDDINGS_OPENROUTER_API_KEY": api_key,
-        "HINDSIGHT_API_EMBEDDINGS_OPENROUTER_MODEL": embeddings_model,
+        # Embeddings via LiteLLM → OpenRouter, so we can pass a truncated
+        # ``dimensions`` (the plain openrouter provider does not forward it).
+        "HINDSIGHT_API_EMBEDDINGS_PROVIDER": "litellm-sdk",
+        "HINDSIGHT_API_EMBEDDINGS_LITELLM_SDK_API_KEY": api_key,
+        "HINDSIGHT_API_EMBEDDINGS_LITELLM_SDK_MODEL": f"openai/{embeddings_model}",
+        "HINDSIGHT_API_EMBEDDINGS_LITELLM_SDK_API_BASE": OPENROUTER_BASE_URL,
+        "HINDSIGHT_API_EMBEDDINGS_LITELLM_SDK_OUTPUT_DIMENSIONS": str(EMBEDDINGS_TRUNCATE_DIM),
         # No neural reranker: RRF passthrough needs no model or external call.
         "HINDSIGHT_API_RERANKER_PROVIDER": "rrf",
     }
