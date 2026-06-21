@@ -26,8 +26,11 @@ ROOT = HERE.parents[1]
 # that user; with no args it exports all. Each maps a source DB → the JSON the
 # web app fetches (principles.<user>.json), picked by the login username.
 USERS = {
-    "aaryan": (HERE / "recall_new.db",        ROOT / "principles.aaryan.json"),
-    "selin":  (HERE / "recall_expansive.db",  ROOT / "principles.selin.json"),
+    "aaryan":      (HERE / "recall_new.db",        ROOT / "principles.aaryan.json"),
+    "selin":       (HERE / "recall_expansive.db",  ROOT / "principles.selin.json"),
+    # a 3rd login: aaryan's expansive 79-principle set (no edges), to compare
+    # against the curated 14-principle graph without replacing it.
+    "aaryan-full": (HERE / "recall_expansive.db",  ROOT / "principles.aaryan-full.json"),
 }
 # The default file the app loads when no/unknown user (kept = aaryan's set).
 DEFAULT_OUT = ROOT / "principles.json"

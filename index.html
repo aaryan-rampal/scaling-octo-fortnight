@@ -2157,7 +2157,11 @@
 
     // Which principle set to load, by login user. Each maps to a JSON file the
     // export wrote; unknown/blank users fall back to the default principles.json.
-    const PRINCIPLE_FILES = { aaryan: 'principles.aaryan.json', selin: 'principles.selin.json' };
+    const PRINCIPLE_FILES = {
+      aaryan: 'principles.aaryan.json',
+      selin: 'principles.selin.json',
+      'aaryan-full': 'principles.aaryan-full.json',   // expansive 79-principle set
+    };
 
     async function whoAmI(){
       try { const r = await fetch('/whoami', { cache: 'no-store' }); if (r.ok) return ((await r.json()).user || '').toLowerCase(); }
