@@ -51,7 +51,7 @@ from loguru import logger
 from core.logging import configure_logging
 from core.principle import Edge, Principle
 from observability.sentry import init_sentry
-from pipeline.link import LLMEdgeProposer, run_linking, run_merge
+from pipeline.link import LLMEdgeProposer, PipelineTrace, run_linking, run_merge
 from pipeline.mint import MemoryCard
 from pipeline.propose import PgVectorReader, QwenEmbedder, recall_to_cards
 from runtime.hindsight import embedded_hindsight
@@ -61,6 +61,9 @@ BANK = "slice-7d"
 RECALL_QUERY = "personal values, habits, relationships, emotions, recurring patterns"
 INPUT_PATH = Path("data/principles.json")
 MERGED_PATH = Path("data/principles.merged.json")
+#: Display-only sidecar for the demo viz: captured merge/link intermediate steps.
+#: Never read by the pipeline; absorbed principles here are not traceable.
+TRACE_PATH = Path("data/link_trace.json")
 EDGES_PATH = Path("data/edges.json")
 
 
@@ -224,8 +227,13 @@ def main() -> None:
         logger.info("[dry-run] skipping all LLM calls -- dry-run complete.")
         return
 
+    # The trace captures the intermediate merge/link steps for the demo viz ONLY.
+    # It is written to a display-only sidecar; the absorbed (pre-merge) principles
+    # it records NEVER enter recall.db and are never traceable — only the merged
+    # survivors below go to the principle layer.
+    trace = PipelineTrace()
     t0 = time.perf_counter()
-    merged_principles = run_merge(principles, embedder, cards_by_id)
+    merged_principles = run_merge(principles, embedder, cards_by_id, trace=trace)
     elapsed = time.perf_counter() - t0
     logger.info(
         "merge complete: {} -> {} principles in {:.1f}s",
@@ -246,6 +254,7 @@ def main() -> None:
             embedder,
             proposer,
             limit=args.limit,
+            trace=trace,
         )
     elapsed = time.perf_counter() - t0
     logger.info(
@@ -279,6 +288,21 @@ def main() -> None:
         logger.info(
             "also wrote JSON (observability-only): {} + {}", MERGED_PATH, EDGES_PATH
         )
+
+    # DISPLAY-ONLY sidecar for the demo viz: the intermediate merge/link steps.
+    # The `absorbed` (pre-merge) principles recorded here are NOT in recall.db and
+    # MUST NOT be traced — they exist only to animate the forward merge pass. The
+    # `display_only` flag and this file's separation from recall.db enforce that.
+    TRACE_PATH.parent.mkdir(parents=True, exist_ok=True)
+    TRACE_PATH.write_text(
+        json.dumps({"display_only": True, **trace.to_dict()}, indent=2, ensure_ascii=False)
+    )
+    logger.info(
+        "wrote display-only pipeline trace ({} merges, {} link pairs) -> {}",
+        len(trace.merges),
+        len(trace.link_pairs),
+        TRACE_PATH,
+    )
 
     # Final tally
     rel_counts: dict[str, int] = {}

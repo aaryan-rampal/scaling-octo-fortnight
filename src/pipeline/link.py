@@ -30,6 +30,7 @@ import hashlib
 import json
 import math
 import re
+from dataclasses import dataclass, field
 from typing import Any, Protocol
 
 from loguru import logger
@@ -37,6 +38,31 @@ from loguru import logger
 from core.principle import Edge, LedgerRow, Principle, Relation
 from observability.sentry import capture_exception, gen_ai_span, record_gen_ai_usage
 from pipeline.mint import MemoryCard, compute_confidence
+
+
+@dataclass
+class PipelineTrace:
+    """Optional collector for the rung-④ intermediate steps (merge + link).
+
+    The merge/link passes normally discard *how* they got their result — which
+    principles collapsed together, which pairs were considered and at what
+    similarity. Pass an instance to :func:`run_merge` / :func:`run_linking` to
+    capture that for visualisation; leave it ``None`` to keep the old behaviour.
+
+    Attributes:
+        merges: One record per merge group of size >1: the survivor id/text and
+            the absorbed members (id/text/confidence), so the merge is replayable.
+        link_pairs: One record per considered (merged) principle pair: the two
+            ids, their cosine, whether it landed in the link band, and the
+            resulting edge relation (or ``None`` if no edge was minted).
+    """
+
+    merges: list[dict] = field(default_factory=list)
+    link_pairs: list[dict] = field(default_factory=list)
+
+    def to_dict(self) -> dict:
+        """Return a JSON-serialisable view of the captured steps."""
+        return {"merges": self.merges, "link_pairs": self.link_pairs}
 
 #: Pairs at or above this cosine are merge candidates (near-duplicates).
 MERGE_COSINE = 0.80
@@ -167,7 +193,11 @@ def _build_merge_groups(
     return groups
 
 
-def _merge_group(group: list[Principle], cards_by_id: dict[str, MemoryCard]) -> Principle:
+def _merge_group(
+    group: list[Principle],
+    cards_by_id: dict[str, MemoryCard],
+    trace: PipelineTrace | None = None,
+) -> Principle:
     """Collapse a merge-group into one principle.
 
     The survivor text is the highest-confidence member's text. The merged
@@ -177,6 +207,7 @@ def _merge_group(group: list[Principle], cards_by_id: dict[str, MemoryCard]) -> 
     Args:
         group: Principles to collapse (>=1).
         cards_by_id: MemoryCards keyed by memory_id, used to rebuild ledger rows.
+        trace: Optional collector; when set, the merge group is recorded.
 
     Returns:
         A single merged :class:`~core.principle.Principle`.
@@ -198,6 +229,18 @@ def _merge_group(group: list[Principle], cards_by_id: dict[str, MemoryCard]) -> 
     ledger = _rebuild_ledger(union_ids, cards_by_id)
     confidence = compute_confidence(ledger)
     new_id = _merged_principle_id(survivor.text, union_ids)
+    if trace is not None:
+        trace.merges.append(
+            {
+                "merged_id": new_id,
+                "survivor": {"id": survivor.principle_id, "text": survivor.text},
+                "absorbed": [
+                    {"id": p.principle_id, "text": p.text, "confidence": p.confidence}
+                    for p in group
+                    if p.principle_id != survivor.principle_id
+                ],
+            }
+        )
     return Principle(
         principle_id=new_id,
         text=survivor.text,
@@ -243,6 +286,7 @@ def run_merge(
     cards_by_id: dict[str, MemoryCard],
     *,
     threshold: float = MERGE_COSINE,
+    trace: PipelineTrace | None = None,
 ) -> list[Principle]:
     """MERGE pass: embed all principles and collapse near-duplicate groups.
 
@@ -251,6 +295,7 @@ def run_merge(
         embedder: Embeds principle texts.
         cards_by_id: MemoryCards keyed by id, for ledger reconstruction.
         threshold: Cosine similarity at/above which two principles are merged.
+        trace: Optional collector for the intermediate merge groups (viz).
 
     Returns:
         Deduplicated principle list (N → M where M ≤ N).
@@ -272,7 +317,7 @@ def run_merge(
 
     merged: list[Principle] = []
     for group in groups:
-        merged.append(_merge_group(group, cards_by_id))
+        merged.append(_merge_group(group, cards_by_id, trace))
     logger.info("merge: {} → {} principles", len(principles), len(merged))
     return merged
 
@@ -324,6 +369,7 @@ def run_linking(
     lo: float = LINK_COSINE_LO,
     hi: float = LINK_COSINE_HI,
     limit: int = 0,
+    trace: PipelineTrace | None = None,
 ) -> list[Edge]:
     """LINKING pass: propose typed edges for principle pairs in the cosine band.
 
@@ -334,6 +380,7 @@ def run_linking(
         lo: Lower bound of the "related" cosine band.
         hi: Upper bound; pairs at or above go to merge, not link.
         limit: Max pairs to send to the LLM (0 = all). For smoke runs.
+        trace: Optional collector for considered pairs + their outcome (viz).
 
     Returns:
         Accepted :class:`~core.principle.Edge` objects.
@@ -403,6 +450,15 @@ def run_linking(
             len(cited),
             len(edges),
         )
+        if trace is not None:
+            trace.link_pairs.append(
+                {
+                    "src": src.principle_id,
+                    "dst": dst.principle_id,
+                    "cosine": round(sim, 4),
+                    "relation": relation,
+                }
+            )
 
     logger.info("link: {} edges from {} pairs", len(edges), len(pairs))
     return edges
