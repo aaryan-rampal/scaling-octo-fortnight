@@ -38,6 +38,13 @@ def _make_long_attributed_body(text: str) -> bytes:
     return header + b"\x84\x01+\x81" + struct.pack("<H", len(payload)) + payload
 
 
+def _make_xlong_attributed_body(text: str) -> bytes:
+    """Build a typedstream BLOB using the 0x82 (uint32) long-length encoding."""
+    payload = text.encode("utf-8")
+    header = b"\x04\x0bstreamtyped\x84\x84\x84\x08NSString\x01\x94"
+    return header + b"\x84\x01+\x82" + struct.pack("<I", len(payload)) + payload
+
+
 def _unix_to_apple_ns(dt: datetime) -> int:
     """Convert a UTC datetime to an Apple-epoch nanosecond integer."""
     return int((dt.timestamp() - APPLE_EPOCH_OFFSET) * 1e9)
@@ -124,6 +131,14 @@ def test_attributed_body_short_length() -> None:
 def test_attributed_body_long_length() -> None:
     text = "x" * 300
     blob = _make_long_attributed_body(text)
+    assert decode_attributed_body(blob) == text
+
+
+def test_attributed_body_xlong_length() -> None:
+    # The 0x82 (uint32) path is used for payloads > 65535 bytes. Exercises a real
+    # decode so the payload start offset is correct (no stray leading byte).
+    text = "y" * 70_000
+    blob = _make_xlong_attributed_body(text)
     assert decode_attributed_body(blob) == text
 
 

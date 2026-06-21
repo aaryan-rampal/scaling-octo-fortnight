@@ -1,4 +1,4 @@
-"""Tests for the Claude-chat adaptor (adaptors.llm_chats).
+"""Tests for the Claude-chat adapter (adapters.llm_chats).
 
 Pins the canonical mapping from a ClaudeConversation to canonical Events:
 role/source/thread_id/raw_ref, the reply_to root sentinel, deterministic ids,

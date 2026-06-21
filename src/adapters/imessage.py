@@ -92,7 +92,7 @@ def decode_attributed_body(blob: bytes | None) -> str | None:
         if pos + 5 > len(blob):
             return None
         length = struct.unpack_from("<I", blob, pos + 1)[0]
-        start = pos + 4
+        start = pos + 5
     else:
         length = first
         start = pos + 1
