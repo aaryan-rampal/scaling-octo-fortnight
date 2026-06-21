@@ -1050,14 +1050,16 @@
   .compose-upload:hover { background: rgba(251,244,222,.96); }
   .compose-upload-text { font-family: 'Caveat', cursive; font-size: 20px; color: #4f3924; }
   .compose-thumbs {
-    display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0 20px; min-height: 0;
+    display: flex; flex-wrap: wrap; gap: 10px; margin: 10px 0 20px;
+    flex: none;                 /* don't let the flex column shrink the thumbs */
   }
+  .compose-thumbs:empty { margin: 0; }   /* no gap before a photo is added */
   .compose-thumb {
-    width: 74px; height: 74px; object-fit: cover;
+    width: 74px; height: 74px; object-fit: cover; display: block;
     border-radius: 10px; border: 1.5px solid #c9b27a;
     box-shadow: 0 3px 7px rgba(40,22,10,.18);
   }
-  .compose-thumb-wrap { position: relative; display: inline-block; }
+  .compose-thumb-wrap { position: relative; display: inline-block; vertical-align: top; flex: none; }
   .compose-thumb-del {
     position: absolute; top: -6px; right: -6px;
     width: 20px; height: 20px; border-radius: 50%;
