@@ -1,6 +1,4 @@
-recapsule
-
-# Recall — iMessage memory POC
+# recapsule — iMessage memory POC
 
 Ingests your local iMessages, builds memory networks with
 [Hindsight](https://github.com/vectorize-io/hindsight) (episodic / semantic /
