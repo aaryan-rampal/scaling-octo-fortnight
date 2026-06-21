@@ -27,6 +27,8 @@ import hashlib
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
+from loguru import logger
+
 from core.schema import Event
 from storage.store import CapsuleStore
 
@@ -248,6 +250,66 @@ def _apply_weekly_quota(
     return kept
 
 
+def _stratify_by_source_budget(
+    units: list[Unit], ceiling: int, floor: int
+) -> list[Unit]:
+    """Cap each source's contributed EVENTS at ``ceiling``, warning below ``floor``.
+
+    The imbalance Hindsight sees is event-driven, not unit-driven: a dense source
+    (e.g. claude conversations) folds in far more events per unit, so it dominates
+    the synthesized memories. This keeps whole units per source — largest first —
+    until that source's cumulative ``derived_from`` count would exceed ``ceiling``,
+    so every source contributes at most ``ceiling`` events. Sources whose total
+    available events fall below ``floor`` are kept entirely (thin sources are not
+    inflated — honesty over forced equality) but logged so the skew is visible.
+
+    Args:
+        units: Units already quota-selected (whole units, provenance intact).
+        ceiling: Max events any single source may contribute (0 = no cap).
+        floor: Minimum events we'd like per source; a source under it is kept
+            whole and a warning is logged (we cannot synthesize events we lack).
+
+    Returns:
+        The kept units, ordered by ``t_start``. Whole units only — never reshaped.
+    """
+    if ceiling <= 0:
+        return units
+    by_source: dict[str, list[Unit]] = {}
+    for u in units:
+        by_source.setdefault(u.source, []).append(u)
+
+    kept: list[Unit] = []
+    for source, group in by_source.items():
+        ranked = sorted(group, key=lambda u: len(u.derived_from), reverse=True)
+        total = sum(len(u.derived_from) for u in ranked)
+        running = 0
+        taken: list[Unit] = []
+        for u in ranked:
+            if running + len(u.derived_from) > ceiling and taken:
+                break
+            taken.append(u)
+            running += len(u.derived_from)
+        kept.extend(taken)
+        logger.info(
+            "stratify {}: {} events available -> {} kept ({} units, ceiling={})",
+            source,
+            total,
+            running,
+            len(taken),
+            ceiling,
+        )
+        if total < floor:
+            logger.warning(
+                "stratify {}: only {} events available (< floor {}) — source "
+                "under-represented; cannot synthesize what isn't ingested",
+                source,
+                total,
+                floor,
+            )
+    kept.sort(key=lambda u: u.t_start)
+    return kept
+
+
 def segment_windowed_quota(
     db_path: str | None = None,
     gap: timedelta = DEFAULT_GAP,
@@ -255,6 +317,8 @@ def segment_windowed_quota(
     interval: timedelta = timedelta(days=7),
     per_interval: int = DEFAULT_PER_INTERVAL,
     min_imessage_msgs: int = 20,
+    source_event_ceiling: int = 0,
+    source_event_floor: int = 0,
 ) -> list[Unit]:
     """Segment a long span, then thin it to an even per-interval quota.
 
@@ -273,9 +337,15 @@ def segment_windowed_quota(
             :data:`DEFAULT_PER_INTERVAL`.
         min_imessage_msgs: Minimum source events for an iMessage unit to survive
             the gate. Defaults to 20.
+        source_event_ceiling: Max events any single source may contribute, applied
+            after the quota to stop a dense source (claude) dominating Hindsight's
+            synthesized memories. ``0`` (default) disables stratification.
+        source_event_floor: Minimum events we'd like per source; sources below it
+            are kept whole and a warning is logged. Only used when ceiling > 0.
 
     Returns:
-        Units ordered by ``t_start``, gated then quota-capped.
+        Units ordered by ``t_start``: gated, quota-capped, then (optionally)
+        stratified to an even per-source event budget.
     """
     store = CapsuleStore() if db_path is None else CapsuleStore(db_path)
     try:
@@ -285,4 +355,5 @@ def segment_windowed_quota(
     events = _slice_recent(events, span)
     units = segment_events(events, gap)
     gated = [u for u in units if _passes_imessage_gate(u, min_imessage_msgs)]
-    return _apply_weekly_quota(gated, interval, per_interval)
+    quota = _apply_weekly_quota(gated, interval, per_interval)
+    return _stratify_by_source_budget(quota, source_event_ceiling, source_event_floor)

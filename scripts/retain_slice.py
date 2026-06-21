@@ -166,6 +166,21 @@ def main() -> None:
         help="Min source events for an iMessage unit to survive the gate "
         "(quota sampler only).",
     )
+    ap.add_argument(
+        "--source-event-ceiling",
+        type=int,
+        default=1000,
+        help="Cap events any one source contributes, so a dense source (claude) "
+        "doesn't dominate Hindsight's memories. ON by default (1000); pass 0 to "
+        "disable stratification.",
+    )
+    ap.add_argument(
+        "--source-event-floor",
+        type=int,
+        default=200,
+        help="Min events we'd like per source; below it a warning is logged "
+        "(only used with --source-event-ceiling).",
+    )
     args = ap.parse_args()
 
     if args.quota > 0:
@@ -174,6 +189,8 @@ def main() -> None:
             interval=timedelta(days=args.interval_days),
             per_interval=args.quota,
             min_imessage_msgs=args.min_imessage_msgs,
+            source_event_ceiling=args.source_event_ceiling,
+            source_event_floor=args.source_event_floor,
         )
     else:
         window = timedelta(days=args.days) if args.days > 0 else None

@@ -97,9 +97,15 @@ fi
 # --- 4. retain via the temporal-spread sampler (LIVE) ------------------------
 # The quota sampler reaches 90 days back but keeps only ~K units per week, so
 # retain cost stays ~30-days-worth while principles draw on real history.
-log "Retaining into Hindsight bank slice-7d (quota sampler, K=$QUOTA — LIVE, a few minutes)"
+# --source-event-ceiling stratifies what Hindsight sees: it caps the events any
+# one source contributes so a dense source (e.g. claude conversations) can't
+# dominate the synthesized memories. Without it, principles skew toward whichever
+# source has the chattiest data. Override with CEILING=.
+CEILING="${CEILING:-1000}"
+log "Retaining into Hindsight bank slice-7d (quota K=$QUOTA, source ceiling=$CEILING — LIVE)"
 $DOPPLER env PYTHONPATH=src "$PY" scripts/retain_slice.py \
   --quota "$QUOTA" --span-days 90 --interval-days 7 --min-imessage-msgs 20 \
+  --source-event-ceiling "$CEILING" \
   2>&1 | tee /tmp/bootstrap_retain.log
 grep -q "into bank" /tmp/bootstrap_retain.log \
   || die "Retain did not finish — see /tmp/bootstrap_retain.log"
