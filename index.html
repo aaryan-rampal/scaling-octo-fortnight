@@ -895,6 +895,7 @@
   .pgraph-edges line.supports   { stroke: #4a7230; stroke-width: 2; }
   .pgraph-edges line.refines    { stroke: #c8902a; stroke-width: 2; stroke-dasharray: 5 3; }
   .pgraph-edges line.contradicts{ stroke: #c84030; stroke-width: 2; stroke-dasharray: 4 3; }
+  .pgraph-edges line.similar    { stroke: #b09a58; stroke-width: 1.6; opacity: .55; }
   .pgraph-edges.dim line { opacity: .14; }
   .pgraph-edges line.lit { opacity: 1 !important; }
   .pgraph-nodes { position: absolute; inset: 0; }
@@ -945,7 +946,10 @@
   /* two-color clusters on principle nodes */
   .pnode.cluster-0 .pdot { background: radial-gradient(circle at 38% 32%, #f3d9a0, #d39a3e 70%, #b97f33); border-color: #8a5a22; }
   .pnode.cluster-1 .pdot { background: radial-gradient(circle at 38% 32%, #cfe0c2, #7faa6a 72%, #4a7230); border-color: #3a5a24; }
-  .pnode.cluster-2 .pdot { background: radial-gradient(circle at 38% 32%, #e6d8c4, #b3a48c 72%, #8a7a60); border-color: #6a5a44; }
+  .pnode.cluster-2 .pdot { background: radial-gradient(circle at 38% 32%, #cdb9e0, #9a78c0 72%, #6e4ea0); border-color: #4e3a72; }
+  .pnode.cluster-3 .pdot { background: radial-gradient(circle at 38% 32%, #f0c4b0, #d68a6a 72%, #b05a3a); border-color: #8a4222; }
+  .pnode.cluster-4 .pdot { background: radial-gradient(circle at 38% 32%, #a9c6e0, #6e9ac0 72%, #4070a0); border-color: #2f5070; }
+  .pnode.cluster-5 .pdot { background: radial-gradient(circle at 38% 32%, #e6d8c4, #b3a48c 72%, #8a7a60); border-color: #6a5a44; }
   /* memory nodes — small dots ringed around a focused principle */
   .mnode {
     position: absolute; transform: translate(-50%, -50%);
@@ -2219,8 +2223,10 @@
       const byId = {};
       const pnodes = plist.map((p) => { const n = { id: p.id, kind: 'principle', p, conn: new Set() }; byId[p.id] = n; return n; });
       edges.forEach((e) => { if (byId[e.src] && byId[e.dst]) { byId[e.src].conn.add(e.dst); byId[e.dst].conn.add(e.src); } });
-      // two-color community: BFS from the highest-degree node splits the graph
-      assignClusters(pnodes, edges, byId);
+      // cluster: use the export's `cluster` field when present (similarity-derived
+      // graphs), else fall back to the 2-color edge community split.
+      if (plist.some((p) => p.cluster != null)) pnodes.forEach((n) => { n.cluster = n.p.cluster || 0; });
+      else assignClusters(pnodes, edges, byId);
       layoutPGraph(pnodes, edges, byId);
       pgState = { pnodes, edges, byId, memById, focus: null, mnodes: [], detailMode: null,
                   view: { x: 0, y: 0, k: 1 } };
@@ -2344,43 +2350,39 @@
       edges.forEach((e) => { if (adj[e.src] && adj[e.dst]) { adj[e.src].push(e.dst); adj[e.dst].push(e.src); } });
       const deg = (n) => adj[n.id].length;
 
-      const connected = nodes.filter((n) => deg(n) > 0);
-      const isolated = nodes.filter((n) => deg(n) === 0);
-      const clusters = [
-        connected.filter((n) => n.cluster === 0),
-        connected.filter((n) => n.cluster === 1),
-      ].filter((c) => c.length);
+      // group nodes by their cluster id (works for 2 or many clusters)
+      const isolatedAll = nodes.filter((n) => deg(n) === 0 && n.cluster == null);
+      const grouped = {};
+      nodes.forEach((n) => { if (!(deg(n) === 0 && n.cluster == null)) (grouped[n.cluster ?? 0] ||= []).push(n); });
+      const clusters = Object.keys(grouped).sort((a, b) => grouped[b].length - grouped[a].length).map((k) => grouped[k]);
 
-      // place each cluster as a hub + concentric ring of its other nodes
-      const COLW = 64;                                   // horizontal gap between clusters
-      const baseX = 50 - ((clusters.length - 1) * COLW) / 2;
+      // tile each cluster-blob in a grid of cells; within a cell a hub sits at the
+      // center with the rest ringed around it. Sized to the cluster's count.
+      const CELL = 80;                                    // gap between cluster centers
+      const ncols = Math.max(1, Math.ceil(Math.sqrt(clusters.length)));
       clusters.forEach((cl, ci) => {
-        const cx = baseX + ci * COLW, cy = 46;
+        const col = ci % ncols, row = Math.floor(ci / ncols);
+        const cx = 50 + (col - (ncols - 1) / 2) * CELL;
+        const cy = 50 + (row - (Math.ceil(clusters.length / ncols) - 1) / 2) * CELL;
         const ranked = [...cl].sort((a, b) => deg(b) - deg(a));
         const hub = ranked[0], rest = ranked.slice(1);
         hub.x = cx; hub.y = cy;
-        const R = 30;
+        const R = Math.min(30, 10 + rest.length * 2);     // ring grows with size
         rest.forEach((n, i) => {
-          const a = (2 * Math.PI * i) / Math.max(rest.length, 1) - Math.PI / 2;
-          n.x = cx + R * Math.cos(a);
-          n.y = cy + R * Math.sin(a);
+          const ring = Math.floor(i / 8), idx = i % 8, per = Math.min(8, rest.length - ring * 8);
+          const a = (2 * Math.PI * idx) / Math.max(per, 1) - Math.PI / 2;
+          n.x = cx + (R + ring * 14) * Math.cos(a);
+          n.y = cy + (R + ring * 14) * Math.sin(a);
         });
       });
 
-      // isolated nodes: a GRID (wraps into rows) so even many of them stay
-      // visible and browsable. If there are no clusters (an edgeless set, e.g.
-      // 79 principles with no edges), the grid is the whole graph and is centered.
-      if (isolated.length){
+      // truly-isolated, unclustered nodes (rare): a grid below everything
+      if (isolatedAll.length){
         const gap = 30;
-        const cols = Math.max(1, Math.round(Math.sqrt(isolated.length * 1.1)));
-        const rows = Math.ceil(isolated.length / cols);
-        const gw = (cols - 1) * gap, gh = (rows - 1) * gap;
-        const ox = 50 - gw / 2;                 // centered horizontally
-        const oy = (clusters.length ? 46 + 46 : 50 - gh / 2); // below clusters, or centered
-        isolated.forEach((n, i) => {
-          n.x = ox + (i % cols) * gap;
-          n.y = oy + Math.floor(i / cols) * gap;
-        });
+        const cols = Math.max(1, Math.round(Math.sqrt(isolatedAll.length * 1.1)));
+        const gw = (cols - 1) * gap;
+        const ox = 50 - gw / 2, oy = (clusters.length ? 50 + 60 : 50);
+        isolatedAll.forEach((n, i) => { n.x = ox + (i % cols) * gap; n.y = oy + Math.floor(i / cols) * gap; });
       }
 
       // a few relaxation passes so linked nodes settle nearer each other without
