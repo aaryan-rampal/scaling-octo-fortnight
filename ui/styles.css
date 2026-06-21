@@ -838,39 +838,47 @@ body {
   color: #fff; text-shadow: 0 1px 4px #000, 0 0 8px rgba(0,0,0,.8); letter-spacing: .2px;
 }
 
-/* capsule marker (real memory) — a little gold canister */
+/* capsule marker — a little horizontal time-capsule canister (like the sketch) */
 .mk.cap .mk-dot {
-  width: 28px; height: 40px; border-radius: 14px;
-  background: linear-gradient(140deg, #ffe7bd 0%, #f0ad5e 50%, #c87a32 100%);
-  box-shadow: inset 0 0 0 1.5px rgba(255,255,255,.45), 0 0 16px rgba(232,145,80,.9), 0 5px 12px rgba(0,0,0,.6);
+  width: 44px; height: 21px; border-radius: 11px;
+  background: linear-gradient(180deg, #f6d49b 0%, #e3ad60 48%, #bf8030 100%);
+  box-shadow:
+    inset 0 1.5px 0 rgba(255,255,255,.6),
+    inset 0 -3px 7px rgba(120,66,18,.45),
+    0 3px 6px rgba(0,0,0,.5),
+    0 0 12px rgba(232,160,80,.5);
 }
+/* the two end-cap rings on the canister */
 .mk.cap .mk-seam {
-  position: absolute; left: 4px; right: 4px; top: 50%; height: 2px; transform: translateY(-50%);
-  background: rgba(110,60,20,.5); border-radius: 2px;
+  position: absolute; inset: 0; border-radius: 11px; pointer-events: none;
+  background: linear-gradient(90deg,
+    transparent 0 18%, rgba(120,66,18,.55) 18% 20.5%, transparent 20.5% 79.5%,
+    rgba(120,66,18,.55) 79.5% 82%, transparent 82%);
 }
 .mk.cap .mk-dot::after {
-  content: ""; position: absolute; inset: -5px; border-radius: 18px;
-  border: 1.5px solid rgba(232,193,136,.6); animation: ping 2.6s var(--easing) infinite;
+  content: ""; position: absolute; inset: -4px; border-radius: 14px;
+  border: 1.5px solid rgba(232,193,136,.5); animation: ping 2.8s var(--easing) infinite;
 }
 .mk.cap.sealed .mk-dot { filter: saturate(.9) brightness(.92); }
 .mk-lock {
-  position: absolute; top: -4px; right: -4px; width: 18px; height: 18px; border-radius: 50%;
+  position: absolute; top: -7px; right: -7px; width: 17px; height: 17px; border-radius: 50%;
   background: #1a140e; border: 1px solid var(--hairline); display: grid; place-items: center; color: var(--gold);
 }
 .mk-lock svg { width: 10px; height: 10px; }
 
 /* locked / fogged marker */
 .mk.fog .mk-dot {
-  width: 30px; height: 30px; color: rgba(255,255,255,.7);
+  width: 26px; height: 26px; color: rgba(255,255,255,.7);
   background: rgba(20,16,12,.55); border: 1.5px solid rgba(255,255,255,.35);
   backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px);
   box-shadow: 0 2px 10px rgba(0,0,0,.6);
 }
+.mk.fog .mk-dot svg { width: 13px; height: 13px; }
 .mk.fog .mk-label { color: rgba(255,255,255,.6); }
 
 /* discovered, empty (seal here) */
 .mk.empty .mk-dot {
-  width: 34px; height: 34px; color: var(--gold);
+  width: 30px; height: 30px; color: var(--gold);
   background: rgba(28,22,16,.55); border: 1.5px dashed rgba(232,193,136,.7);
   backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px);
 }

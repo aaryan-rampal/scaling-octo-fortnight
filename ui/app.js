@@ -119,13 +119,25 @@ function ensureMap() {
   });
   map.addControl(new maplibregl.AttributionControl({ compact: true }));
   map.on("load", () => {
-    // STATIC: no auto-rotation, no pitch, no fly-in. It just sits there.
+    // STATIC: no auto-rotation, no pitch, no fly-in. Just frame the pins so they
+    // spread across the view instead of stacking on top of each other.
     drawMarkers();
     map.resize();
-    document.getElementById("map").classList.add("ready"); // one-time fade-in (no map movement)
+    fitToMarkers(false);
+    document.getElementById("map").classList.add("ready"); // one-time fade-in
   });
 }
 function stopSpin() {} // map no longer auto-moves
+
+// frame all pins with padding so they're spread out and labels stay readable
+function fitToMarkers(animate) {
+  if (!map) return;
+  const pts = SEED.map.filter((m) => m.lat != null && m.lng != null).map((m) => [m.lng, m.lat]);
+  if (!pts.length) { map.jumpTo({ center: MAP_CENTER, zoom: MAP_ZOOM }); return; }
+  const b = new maplibregl.LngLatBounds(pts[0], pts[0]);
+  pts.forEach((p) => b.extend(p));
+  map.fitBounds(b, { padding: { top: 74, bottom: 86, left: 58, right: 58 }, maxZoom: 16.4, duration: animate ? 600 : 0 });
+}
 
 function drawMarkers() {
   if (!map) return;
