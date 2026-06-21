@@ -266,9 +266,32 @@ def _save_vision_cache(cache_path: Path, cache: dict[str, dict[str, Any]]) -> No
     cache_path.write_text(json.dumps(cache, indent=2, sort_keys=True))
 
 
-def _resolve_image_path(record: PhotoRecord, library_root: str) -> Path:
-    """Resolve a record's library-relative ``original_path`` to an on-disk path."""
-    return Path(library_root) / record.original_path
+def _derivative_path(record: PhotoRecord, library_root: str) -> Path | None:
+    """Return a local derivative-thumbnail JPEG for the record, or ``None``.
+
+    When the full-res original is iCloud-offloaded (absent on disk), the rendered
+    thumbnail under ``resources/derivatives/<hex>/<UUID>_*.jpeg`` is usually still
+    local — and a one-line scene description does not need full resolution. The
+    derivative tree is sharded by the asset id's first character. Returns the
+    first matching JPEG, or ``None`` if none is on disk.
+    """
+    shard = record.id[:1]
+    deriv_dir = Path(library_root) / "resources" / "derivatives" / shard
+    matches = sorted(deriv_dir.glob(f"{record.id}*.jpeg"))
+    return matches[0] if matches else None
+
+
+def _resolve_image_path(record: PhotoRecord, library_root: str) -> Path | None:
+    """Resolve a record to an on-disk image path, or ``None`` if unavailable.
+
+    Prefers the full-res original; when it is iCloud-offloaded (missing on disk),
+    falls back to a local derivative thumbnail. Returns ``None`` when neither is
+    present, so the caller skips the photo rather than failing the pass.
+    """
+    original = Path(library_root) / record.original_path
+    if original.exists():
+        return original
+    return _derivative_path(record, library_root)
 
 
 def _transcode_to_jpeg(src: Path, dest: Path) -> None:
@@ -453,12 +476,12 @@ def _enrich_one(
 ) -> dict[str, Any] | None:
     """Enrich a single uncached photo, writing the result into ``cache`` in place.
 
-    Returns the ``{description, tags}`` result, or ``None`` when the binary is
-    missing on disk (skipped, not fatal). Raises if a call is needed but no key
-    is set.
+    Returns the ``{description, tags}`` result, or ``None`` when no image (neither
+    original nor a local thumbnail) is on disk (skipped, not fatal). Raises if a
+    call is needed but no key is set.
     """
     path = _resolve_image_path(record, library_root)
-    if not path.exists():
+    if path is None:
         return None
     if not api_key:
         raise RuntimeError(

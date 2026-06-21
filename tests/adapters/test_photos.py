@@ -16,6 +16,7 @@ from adapters.photos import (
     APPLE_EPOCH_OFFSET,
     GPS_SENTINEL,
     _parse_vision_response,
+    _resolve_image_path,
     apple_date_to_utc,
     enrich_photos,
     ingest_photos,
@@ -236,6 +237,28 @@ def _write_image(library_root: Path, rel: str) -> None:
     target = library_root / rel
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_bytes(b"\xff\xd8\xff\xe0fake-jpeg")
+
+
+def test_resolve_image_path_prefers_original_when_present(tmp_path: Path) -> None:
+    rec = _photo("ABCD1234", rel="originals/A/o.jpg")
+    _write_image(tmp_path, "originals/A/o.jpg")
+    resolved = _resolve_image_path(rec, str(tmp_path))
+    assert resolved == tmp_path / "originals/A/o.jpg"
+
+
+def test_resolve_image_path_falls_back_to_derivative_thumbnail(tmp_path: Path) -> None:
+    # Original is iCloud-offloaded (never written); the derivative thumbnail is local.
+    rec = _photo("ABCD1234", rel="originals/A/o.jpg")
+    deriv = tmp_path / "resources" / "derivatives" / "A" / "ABCD1234_1_105_c.jpeg"
+    deriv.parent.mkdir(parents=True, exist_ok=True)
+    deriv.write_bytes(b"\xff\xd8\xff\xe0thumb")
+    resolved = _resolve_image_path(rec, str(tmp_path))
+    assert resolved == deriv
+
+
+def test_resolve_image_path_none_when_neither_on_disk(tmp_path: Path) -> None:
+    rec = _photo("ABCD1234", rel="originals/A/o.jpg")
+    assert _resolve_image_path(rec, str(tmp_path)) is None
 
 
 def test_parse_vision_response_handles_plain_and_fenced_json() -> None:
