@@ -1,8 +1,10 @@
-// Static file server + API proxy for local development.
+// Static file server + API proxy for local development / LAN sharing.
 // Serves index.html and proxies /api/* and /media/* to the Python backend.
 //
-// Run:  node server.js
-// Then: open http://localhost:4321
+// Run (LAN, passcode-gated):  PASSCODE=yourcode node server.js
+//   then others on the same wifi open  http://<your-ip>:4321  and type the
+//   passcode (leave the username blank). Without PASSCODE the app is open.
+// Run (local only):  node server.js   →  http://localhost:4321
 //
 // Requires the Python backend on BACKEND (default http://localhost:8000).
 // Keyless capsule-only:  .venv/bin/python -m uvicorn poc_demo.server.capsule_app:app --port 8000
@@ -11,10 +13,42 @@
 const http = require('http');
 const fs   = require('fs');
 const path = require('path');
+const os   = require('os');
 
-const ROOT    = __dirname;
-const PORT    = process.env.PORT    || 4321;
-const BACKEND = process.env.BACKEND || 'http://localhost:8000';
+const ROOT     = __dirname;
+const PORT     = process.env.PORT     || 4321;
+const HOST     = process.env.HOST     || '0.0.0.0';   // bind all interfaces → LAN reachable
+const BACKEND  = process.env.BACKEND  || 'http://localhost:8000';
+const PASSCODE = process.env.PASSCODE || '';           // set to require a passcode
+
+// HTTP Basic Auth gate: the browser shows a native prompt; we only check the
+// password field against PASSCODE (the username is ignored — "just a passcode").
+// Returns true if the request may proceed, false if a 401 challenge was sent.
+function passcodeOK(req, res) {
+  if (!PASSCODE) return true;                          // no passcode configured → open
+  const hdr = req.headers['authorization'] || '';
+  if (hdr.startsWith('Basic ')) {
+    const decoded = Buffer.from(hdr.slice(6), 'base64').toString('utf8');
+    const pass = decoded.slice(decoded.indexOf(':') + 1); // user:pass → take pass
+    if (pass === PASSCODE) return true;
+  }
+  res.writeHead(401, {
+    'WWW-Authenticate': 'Basic realm="recapsule - enter the passcode", charset="UTF-8"',
+    'Content-Type': 'text/plain',
+  });
+  res.end('Passcode required.');
+  return false;
+}
+
+// Best-effort LAN IPv4 for the "open this on your phone" hint.
+function lanIP() {
+  for (const ifs of Object.values(os.networkInterfaces())) {
+    for (const i of ifs || []) {
+      if (i.family === 'IPv4' && !i.internal) return i.address;
+    }
+  }
+  return 'localhost';
+}
 
 const TYPES = {
   '.html': 'text/html; charset=utf-8',
@@ -29,6 +63,9 @@ const TYPES = {
 const backendUrl = new URL(BACKEND);
 
 http.createServer((req, res) => {
+  // Gate EVERYTHING behind the passcode (page, API, media) before any work.
+  if (!passcodeOK(req, res)) return;
+
   const urlPath = decodeURIComponent(req.url.split('?')[0]);
 
   // Proxy /api/* and /media/* to the Python backend.
@@ -69,7 +106,14 @@ http.createServer((req, res) => {
     res.writeHead(200, { 'Content-Type': ct });
     res.end(data);
   });
-}).listen(PORT, () => {
+}).listen(PORT, HOST, () => {
+  const ip = lanIP();
   console.log(`recapsule  →  http://localhost:${PORT}`);
+  if (HOST === '0.0.0.0' && ip !== 'localhost') {
+    console.log(`on the LAN  →  http://${ip}:${PORT}   (same wifi)`);
+  }
   console.log(`API proxy  →  ${BACKEND}`);
+  console.log(PASSCODE
+    ? `passcode   →  REQUIRED (enter it in the browser prompt; leave username blank)`
+    : `passcode   →  none (open — set PASSCODE=... to require one)`);
 });
