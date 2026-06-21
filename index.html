@@ -1922,12 +1922,16 @@
       } catch { return []; }
     }
 
+    // Resolve the user's location. `precise` is true only on a real GPS fix;
+    // false when geolocation is unsupported / denied / times out (a fallback).
+    // The geofence is only enforced on a precise fix — so on mobile without GPS
+    // (or over plain http, where geolocation is blocked) capsules still open.
     function getUserLatLng(){
       return new Promise(resolve => {
-        if (!navigator.geolocation) return resolve({ lat:41.31, lng:-72.92 });
+        if (!navigator.geolocation) return resolve({ lat:41.31, lng:-72.92, precise:false });
         navigator.geolocation.getCurrentPosition(
-          pos => resolve({ lat:pos.coords.latitude, lng:pos.coords.longitude }),
-          ()  => resolve({ lat:41.31, lng:-72.92 }),
+          pos => resolve({ lat:pos.coords.latitude, lng:pos.coords.longitude, precise:true }),
+          ()  => resolve({ lat:41.31, lng:-72.92, precise:false }),
           { timeout:4000, maximumAge:600000 }
         );
       });
@@ -1979,12 +1983,16 @@
       if (digMap) digMap.flyTo([cap.lat, cap.lng], 16, { duration:0.8 });
       const me = await getUserLatLng();
       userLoc = me;
-      const miles = milesBetween(me.lat, me.lng, cap.lat, cap.lng);
-      if (miles > 15){
-        document.getElementById('toofarDist').textContent =
-          "you're about " + (miles < 10 ? miles.toFixed(1) : Math.round(miles)) + ' miles away';
-        document.getElementById('toofar').classList.add('show');
-        return;
+      // Only geofence when we have a real GPS fix; otherwise open it (mobile
+      // without GPS / http where geolocation is blocked shouldn't be locked out).
+      if (me.precise){
+        const miles = milesBetween(me.lat, me.lng, cap.lat, cap.lng);
+        if (miles > 15){
+          document.getElementById('toofarDist').textContent =
+            "you're about " + (miles < 10 ? miles.toFixed(1) : Math.round(miles)) + ' miles away';
+          document.getElementById('toofar').classList.add('show');
+          return;
+        }
       }
       capDataPromise = Promise.resolve(cap);
       setTimeout(() => setDigPhase('lucky'), 850);
