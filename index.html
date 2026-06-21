@@ -906,6 +906,64 @@
     font-family: 'Caveat', cursive; font-size: 18px; color: #9c7d5a; text-align: center;
   }
 
+  /* ---- multi-layer graph extras ---- */
+  /* two-color clusters on principle nodes */
+  .pnode.cluster-0 .pdot { background: radial-gradient(circle at 38% 32%, #f3d9a0, #d39a3e 70%, #b97f33); border-color: #8a5a22; }
+  .pnode.cluster-1 .pdot { background: radial-gradient(circle at 38% 32%, #cfe0c2, #7faa6a 72%, #4a7230); border-color: #3a5a24; }
+  .pnode.cluster-2 .pdot { background: radial-gradient(circle at 38% 32%, #e6d8c4, #b3a48c 72%, #8a7a60); border-color: #6a5a44; }
+  /* memory nodes — small dots ringed around a focused principle */
+  .mnode {
+    position: absolute; transform: translate(-50%, -50%);
+    width: 16px; height: 16px; border-radius: 50%; cursor: pointer; padding: 0;
+    border: 1.5px solid #7a4e25; box-shadow: 0 2px 5px rgba(40,22,10,.35);
+    animation: mnodeIn .3s ease-out both;
+  }
+  .mnode.exp   { background: radial-gradient(circle at 38% 32%, #e7c98a, #c8902a); }
+  .mnode.world { background: radial-gradient(circle at 38% 32%, #a9c6e0, #5a86b0); border-color: #2f5070; }
+  .mnode:hover { transform: translate(-50%, -50%) scale(1.25); }
+  @keyframes mnodeIn { from { opacity: 0; transform: translate(-50%, -50%) scale(.3); } to { opacity: 1; } }
+  .pgraph-edges line.spoke { stroke: rgba(200,144,42,.55); stroke-width: 1.5; stroke-dasharray: 2 3; }
+  .pgraph-legend b { display: inline-block; width: 11px; height: 11px; border-radius: 50%; vertical-align: middle; margin-right: 4px; border: 1.5px solid #7a4e25; }
+  .pgraph-legend b.dot-exp { background: #c8902a; }
+  .pgraph-legend b.dot-world { background: #5a86b0; border-color: #2f5070; }
+
+  /* richer detail panel: relations, memory list, raw events */
+  .pgraph-detail { max-height: 240px; overflow-y: auto; }
+  .pgraph-detail::-webkit-scrollbar { width: 0; }
+  .pgraph-detail .pd-rels { display: flex; flex-direction: column; gap: 3px; margin: 8px 0 4px; }
+  .pgraph-detail .pd-rel {
+    font-family: 'Caveat', cursive; font-size: 16px; color: #9c4a2a; font-weight: 700;
+  }
+  .pgraph-detail .pd-mem-label {
+    font-family: 'Caveat', cursive; font-weight: 700; font-size: 16px; color: #9c7d5a;
+    margin: 10px 0 6px; display: flex; align-items: center; gap: 8px;
+  }
+  .pgraph-detail .pd-mem-label::after { content: ""; flex: 1; height: 1px; background: linear-gradient(90deg, #d8c9a0, transparent); }
+  .pgraph-detail .pd-mems { display: flex; flex-direction: column; gap: 6px; }
+  .pd-mem {
+    text-align: left; width: 100%; cursor: pointer;
+    background: #fdf8ea; border: 1.4px solid #e0d2ac; border-left-width: 4px; border-radius: 10px;
+    padding: 7px 10px; font-family: 'Caveat', cursive; font-size: 16px; color: #4f3924; line-height: 1.25;
+  }
+  .pd-mem.exp   { border-left-color: #c8902a; }
+  .pd-mem.world { border-left-color: #5a86b0; }
+  .pd-mem em { color: #9c7d5a; font-style: italic; }
+  .pd-mem-kind { margin-right: 5px; }
+  .pd-mem:active { transform: scale(.99); }
+  .pd-back {
+    background: none; border: none; cursor: pointer; padding: 0 0 6px;
+    font-family: 'Caveat', cursive; font-weight: 700; font-size: 17px; color: #9c4a2a;
+  }
+  .pd-evs { display: flex; flex-direction: column; gap: 7px; }
+  .pd-ev {
+    background: #fffdf6; border: 1.2px solid #e6dabc; border-radius: 9px; padding: 7px 9px;
+  }
+  .pd-ev-meta {
+    font-family: 'JetBrains Mono', monospace; font-size: 10px; color: #b09a58;
+    text-transform: uppercase; letter-spacing: .3px; margin-bottom: 3px;
+  }
+  .pd-ev-text { font-family: 'Caveat', cursive; font-size: 15px; color: #5a4530; line-height: 1.3; }
+
   /* =========================================================
      COMPOSE PHASE  (fill the capsule)
      ========================================================= */
@@ -1999,7 +2057,12 @@
     // sample provenance DB). Nodes = principles (sized by confidence), connected
     // by typed edges (supports / refines / contradicts). Tap a node to focus its
     // connections and read its text + trace depth.
-    let pgState = null; // { nodes, edges, focus }
+    // Multi-layer principle graph: principle nodes (large, gold, sized by
+    // confidence) + memory nodes (small, color-coded by fact_type) that appear
+    // when a principle is focused. Drill: principle → memories → raw events.
+    // Edges carry their shared-memory evidence (tap an edge to see why two
+    // principles connect). Two thematic clusters are colored by community.
+    let pgState = null;
 
     async function openPrinciples(){
       principles.classList.add('open');
@@ -2016,45 +2079,60 @@
     }
 
     function renderPrincipleGraph(scroll, data){
-      const principlesList = data.principles || [];
+      const plist = data.principles || [];
       const edges = data.edges || [];
-      if (!principlesList.length){
-        scroll.innerHTML = '<div class="prin-empty">No principles to show yet.</div>';
-        return;
-      }
+      const memById = {};
+      (data.memories || []).forEach((m) => { memById[m.id] = m; });
+      if (!plist.length){ scroll.innerHTML = '<div class="prin-empty">No principles to show yet.</div>'; return; }
+
       scroll.innerHTML =
         '<div class="pgraph" id="pgraph">' +
           '<svg class="pgraph-edges" id="pgraphEdges" viewBox="0 0 100 100" preserveAspectRatio="none"></svg>' +
           '<div class="pgraph-nodes" id="pgraphNodes"></div>' +
         '</div>' +
-        '<div class="pgraph-legend"><span><i class="supports"></i>supports</span>' +
-          '<span><i class="refines"></i>refines</span></div>' +
+        '<div class="pgraph-legend">' +
+          '<span><i class="supports"></i>supports</span>' +
+          '<span><b class="dot-exp"></b>experience</span>' +
+          '<span><b class="dot-world"></b>world</span>' +
+        '</div>' +
         '<div class="pgraph-detail" id="pgraphDetail">' +
-          '<div class="pd-hint">Tap a principle to see how it connects.</div></div>';
+          '<div class="pd-hint">Tap a principle to open its memories. Tap a link to see the evidence.</div></div>';
 
-      // build node objects with a connection set, laid out by a small force sim
+      // principle nodes + connection sets
       const byId = {};
-      const nodes = principlesList.map((p) => {
-        const n = { id: p.id, p, conn: new Set() };
-        byId[p.id] = n; return n;
-      });
-      edges.forEach((e) => {
-        if (byId[e.src] && byId[e.dst]) { byId[e.src].conn.add(e.dst); byId[e.dst].conn.add(e.src); }
-      });
-      layoutPGraph(nodes, edges, byId);
-      pgState = { nodes, edges, byId, focus: null };
+      const pnodes = plist.map((p) => { const n = { id: p.id, kind: 'principle', p, conn: new Set() }; byId[p.id] = n; return n; });
+      edges.forEach((e) => { if (byId[e.src] && byId[e.dst]) { byId[e.src].conn.add(e.dst); byId[e.dst].conn.add(e.src); } });
+      // two-color community: BFS from the highest-degree node splits the graph
+      assignClusters(pnodes, edges, byId);
+      layoutPGraph(pnodes, edges, byId);
+      pgState = { pnodes, edges, byId, memById, focus: null, mnodes: [], detailMode: null };
       drawPGraph();
     }
 
-    // tiny force-directed layout into 0..100 space (same idea as the seed graph)
+    // color the graph into 2 communities by a simple label-propagation pass
+    function assignClusters(nodes, edges, byId){
+      const adj = {}; nodes.forEach((n) => adj[n.id] = []);
+      edges.forEach((e) => { if (adj[e.src] && adj[e.dst]) { adj[e.src].push(e.dst); adj[e.dst].push(e.src); } });
+      // seed: the two highest-degree nodes start the two clusters
+      const byDeg = [...nodes].sort((a, b) => adj[b.id].length - adj[a.id].length);
+      const seedA = byDeg[0], seedB = byDeg.find((n) => !adj[seedA.id].includes(n.id) && n !== seedA) || byDeg[1];
+      const cluster = {}; if (seedA) cluster[seedA.id] = 0; if (seedB) cluster[seedB.id] = 1;
+      for (let it = 0; it < 20; it++){
+        nodes.forEach((n) => {
+          if (n === seedA || n === seedB) return;
+          const votes = [0, 0];
+          adj[n.id].forEach((o) => { if (cluster[o] != null) votes[cluster[o]]++; });
+          if (votes[0] || votes[1]) cluster[n.id] = votes[1] > votes[0] ? 1 : 0;
+        });
+      }
+      nodes.forEach((n) => { n.cluster = cluster[n.id] != null ? cluster[n.id] : (adj[n.id].length ? 0 : 2); });
+    }
+
     function layoutPGraph(nodes, edges, byId){
       const N = nodes.length;
-      nodes.forEach((n, i) => {
-        const a = (2 * Math.PI * i) / N;
-        n.x = 50 + 24 * Math.cos(a); n.y = 50 + 24 * Math.sin(a);
-      });
-      const K = 26;
-      for (let it = 0; it < 260; it++){
+      nodes.forEach((n, i) => { const a = (2 * Math.PI * i) / N; n.x = 50 + 26 * Math.cos(a); n.y = 50 + 26 * Math.sin(a); });
+      const K = 24;
+      for (let it = 0; it < 300; it++){
         for (let i = 0; i < N; i++) for (let j = i + 1; j < N; j++){
           const a = nodes[i], b = nodes[j];
           let dx = a.x - b.x, dy = a.y - b.y, d = Math.hypot(dx, dy) || 0.01;
@@ -2067,70 +2145,150 @@
           const att = (d - K) * 0.06, ux = dx / d, uy = dy / d;
           a.x += ux * att; a.y += uy * att; b.x -= ux * att; b.y -= uy * att;
         });
-        nodes.forEach((n) => { n.x += (50 - n.x) * 0.014; n.y += (50 - n.y) * 0.014; });
+        nodes.forEach((n) => { n.x += (50 - n.x) * 0.012; n.y += (50 - n.y) * 0.012; });
       }
-      nodes.forEach((n) => { n.x = Math.max(16, Math.min(84, n.x)); n.y = Math.max(14, Math.min(86, n.y)); });
+      nodes.forEach((n) => { n.x = Math.max(15, Math.min(85, n.x)); n.y = Math.max(13, Math.min(87, n.y)); });
+    }
+
+    // place focused-principle's memory nodes in a ring around it
+    function layoutMemNodes(pn, mems){
+      const R = 17, N = mems.length;
+      return mems.map((m, i) => {
+        const a = (2 * Math.PI * i) / Math.max(N, 1) - Math.PI / 2;
+        return { id: m.id, kind: 'memory', m,
+          x: Math.max(8, Math.min(92, pn.x + R * Math.cos(a))),
+          y: Math.max(8, Math.min(92, pn.y + R * 0.92 * Math.sin(a))),
+          px: pn.x, py: pn.y };
+      });
     }
 
     function drawPGraph(){
       if (!pgState) return;
-      const { nodes, edges, byId, focus } = pgState;
+      const { pnodes, edges, byId, focus, mnodes } = pgState;
       const svg = document.getElementById('pgraphEdges');
-      svg.innerHTML = edges.map((e) => {
+      let lines = edges.map((e) => {
         const a = byId[e.src], b = byId[e.dst]; if (!a || !b) return '';
         const lit = focus && (e.src === focus || e.dst === focus);
-        return '<line class="' + e.relation + (lit ? ' lit' : '') +
+        return '<line class="' + e.relation + (lit ? ' lit' : '') + '" data-edge="' + e.id +
           '" x1="' + a.x + '" y1="' + a.y + '" x2="' + b.x + '" y2="' + b.y + '"/>';
-      }).join('');
+      });
+      // spokes from a focused principle to its memory nodes
+      mnodes.forEach((mn) => {
+        lines.push('<line class="spoke lit" x1="' + mn.px + '" y1="' + mn.py + '" x2="' + mn.x + '" y2="' + mn.y + '"/>');
+      });
+      svg.innerHTML = lines.join('');
       svg.classList.toggle('dim', !!focus);
+      // edges are tappable (evidence) — bind after innerHTML
+      svg.querySelectorAll('line[data-edge]').forEach((ln) => {
+        ln.style.pointerEvents = 'stroke';
+        ln.addEventListener('click', (ev) => { ev.stopPropagation(); showEdge(ln.getAttribute('data-edge')); });
+      });
 
       const wrap = document.getElementById('pgraphNodes');
       wrap.innerHTML = '';
-      nodes.forEach((n) => {
-        // node size scales with confidence (0..1 -> 38..62px)
-        const size = Math.round(38 + (n.p.confidence || 0.5) * 24);
+      pnodes.forEach((n) => {
+        const size = Math.round(36 + (n.p.confidence || 0.5) * 26);
         const el = document.createElement('button');
-        el.className = 'pnode';
-        if (focus){
-          if (n.id === focus || byId[focus].conn.has(n.id)) el.classList.add('lit');
-          else el.classList.add('dim');
-        }
+        el.className = 'pnode cluster-' + n.cluster;
+        if (focus){ if (n.id === focus || byId[focus].conn.has(n.id)) el.classList.add('lit'); else el.classList.add('dim'); }
         el.style.left = n.x + '%'; el.style.top = n.y + '%';
-        // a short keyword label from the principle text (first few words)
         const words = (n.p.text || '').replace(/^You\s+/i, '').split(' ').slice(0, 4).join(' ');
         el.innerHTML =
           '<span class="pdot" style="width:' + size + 'px;height:' + size + 'px;font-size:' +
-            Math.round(size * 0.34) + 'px">' + Math.round((n.p.confidence || 0) * 100) + '</span>' +
+            Math.round(size * 0.32) + 'px">' + Math.round((n.p.confidence || 0) * 100) + '</span>' +
           '<span class="plabel">' + escHTML(words) + '…</span>';
         el.addEventListener('click', (ev) => { ev.stopPropagation(); focusPNode(n.id); });
+        wrap.appendChild(el);
+      });
+      // memory nodes (only when a principle is focused)
+      mnodes.forEach((mn) => {
+        const el = document.createElement('button');
+        el.className = 'mnode ' + (mn.m.fact_type === 'world' ? 'world' : 'exp');
+        el.style.left = mn.x + '%'; el.style.top = mn.y + '%';
+        el.title = mn.m.text || '';
+        el.addEventListener('click', (ev) => { ev.stopPropagation(); showMemory(mn.m.id); });
         wrap.appendChild(el);
       });
     }
 
     function focusPNode(id){
       if (!pgState) return;
-      pgState.focus = (pgState.focus === id) ? null : id;
-      drawPGraph();
-      const detail = document.getElementById('pgraphDetail');
-      if (!pgState.focus){
-        detail.innerHTML = '<div class="pd-hint">Tap a principle to see how it connects.</div>';
-        return;
-      }
+      if (pgState.focus === id){ pgState.focus = null; pgState.mnodes = []; drawPGraph(); resetDetail(); return; }
+      pgState.focus = id;
       const n = pgState.byId[id];
-      const rels = pgState.edges
-        .filter((e) => e.src === id || e.dst === id)
-        .map((e) => {
-          const other = e.src === id ? e.dst : e.src;
-          const dir = e.src === id ? '→' : '←';
-          const o = pgState.byId[other];
-          const oShort = (o.p.text || '').replace(/^You\s+/i, '').split(' ').slice(0, 5).join(' ');
-          return e.relation + ' ' + dir + ' ' + escHTML(oShort) + '…';
-        });
+      const mems = (n.p.memory_ids || []).map((mid) => pgState.memById[mid]).filter(Boolean);
+      pgState.mnodes = layoutMemNodes(n, mems);
+      drawPGraph();
+
+      const rels = pgState.edges.filter((e) => e.src === id || e.dst === id).map((e) => {
+        const other = e.src === id ? e.dst : e.src, dir = e.src === id ? '→' : '←';
+        const o = pgState.byId[other];
+        const oShort = (o.p.text || '').replace(/^You\s+/i, '').split(' ').slice(0, 5).join(' ');
+        return '<span class="pd-rel">' + e.relation + ' ' + dir + ' ' + escHTML(oShort) + '…</span>';
+      });
+      const memList = mems.map((m) =>
+        '<button class="pd-mem ' + (m.fact_type === 'world' ? 'world' : 'exp') + '" data-mem="' + m.id + '">' +
+          '<span class="pd-mem-kind">' + (m.fact_type === 'world' ? '🌐' : '✦') + '</span>' +
+          escHTML((m.text || '').slice(0, 64)) + '… <em>(' + m.n_events + ' raw)</em></button>'
+      );
+      const detail = document.getElementById('pgraphDetail');
       detail.innerHTML =
         '<div class="pd-text">' + escHTML(n.p.text) + '</div>' +
         '<div class="pd-meta">confidence ' + Math.round((n.p.confidence || 0) * 100) + '% · ' +
-          n.p.n_memories + ' memories · ' + n.p.n_events + ' raw events' +
-          (rels.length ? '<br>' + rels.join('<br>') : '') + '</div>';
+          n.p.n_memories + ' memories · ' + n.p.n_events + ' raw events</div>' +
+        (rels.length ? '<div class="pd-rels">' + rels.join('') + '</div>' : '') +
+        '<div class="pd-mem-label">memories behind this</div>' +
+        '<div class="pd-mems">' + memList.join('') + '</div>';
+      detail.querySelectorAll('.pd-mem').forEach((b) =>
+        b.addEventListener('click', () => showMemory(b.getAttribute('data-mem'))));
+    }
+
+    function showMemory(mid){
+      const m = pgState && pgState.memById[mid]; if (!m) return;
+      const evs = (m.events || []).map((e) =>
+        '<div class="pd-ev"><div class="pd-ev-meta">' +
+          escHTML(e.source || '') + ' · ' + escHTML((e.t_utc || '').slice(0, 10)) + ' · ' + escHTML(e.author_role || '') +
+        '</div><div class="pd-ev-text">' + escHTML(e.content || '') + '</div></div>'
+      );
+      const detail = document.getElementById('pgraphDetail');
+      detail.innerHTML =
+        '<button class="pd-back" id="pdBack">← principle</button>' +
+        '<div class="pd-text">' + escHTML(m.text || '') + '</div>' +
+        '<div class="pd-meta">' + escHTML(m.fact_type || '') + ' · ' + escHTML(m.source || '') +
+          ' · ' + m.n_events + ' raw events' +
+          (m.entities ? '<br>entities: ' + escHTML(m.entities) : '') + '</div>' +
+        '<div class="pd-mem-label">raw events (showing ' + (m.events || []).length + ' of ' + m.n_events + ')</div>' +
+        '<div class="pd-evs">' + evs.join('') + '</div>';
+      const back = document.getElementById('pdBack');
+      if (back) back.addEventListener('click', () => { if (pgState.focus) focusPNode_reopen(pgState.focus); else resetDetail(); });
+    }
+
+    // re-render a principle's detail without toggling its focus off
+    function focusPNode_reopen(id){ pgState.focus = null; focusPNode(id); }
+
+    function showEdge(eid){
+      const e = pgState && pgState.edges.find((x) => x.id === eid); if (!e) return;
+      const src = pgState.byId[e.src], dst = pgState.byId[e.dst];
+      const mems = (e.memory_ids || []).map((mid) => pgState.memById[mid]).filter(Boolean);
+      const memList = mems.map((m) =>
+        '<button class="pd-mem ' + (m.fact_type === 'world' ? 'world' : 'exp') + '" data-mem="' + m.id + '">' +
+          escHTML((m.text || '').slice(0, 64)) + '… <em>(' + m.n_events + ' raw)</em></button>');
+      const short = (n) => (n.p.text || '').replace(/^You\s+/i, '').split(' ').slice(0, 6).join(' ');
+      const detail = document.getElementById('pgraphDetail');
+      detail.innerHTML =
+        '<div class="pd-text">“' + escHTML(short(src)) + '…”<br>' +
+          '<span class="pd-rel">' + e.relation + ' →</span><br>' +
+          '“' + escHTML(short(dst)) + '…”</div>' +
+        '<div class="pd-meta">connection backed by ' + e.n_memories + ' shared memories · ' +
+          e.n_events + ' raw events</div>' +
+        (memList.length ? '<div class="pd-mem-label">evidence</div><div class="pd-mems">' + memList.join('') + '</div>' : '');
+      detail.querySelectorAll('.pd-mem').forEach((b) =>
+        b.addEventListener('click', () => showMemory(b.getAttribute('data-mem'))));
+    }
+
+    function resetDetail(){
+      const detail = document.getElementById('pgraphDetail');
+      if (detail) detail.innerHTML = '<div class="pd-hint">Tap a principle to open its memories. Tap a link to see the evidence.</div>';
     }
 
     function closePrinciples(){ principles.classList.remove('open'); }
