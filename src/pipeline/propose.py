@@ -26,6 +26,7 @@ import psycopg2
 from loguru import logger
 from openai import OpenAI
 
+from observability.compression import compress_message
 from observability.sentry import capture_exception, gen_ai_span, record_gen_ai_usage
 from pipeline.mint import MemoryCard
 
@@ -367,6 +368,8 @@ class LLMProposer:
         # Metadata only — never the cluster's raw memory text (personal data).
         request_data = {"cluster_size": len(cards), "temperature": 0.3}
         with gen_ai_span(operation="chat", model=self._model, request_data=request_data) as span:
+            # Optional Token Company pre-pass (records savings on this span when on).
+            user_msg = compress_message(user_msg)
             try:
                 resp = self._client.chat.completions.create(
                     model=self._model,
