@@ -136,6 +136,7 @@ conversations, windowing by time, tagging entities — "give memory the data in 
 form it can use." Its one hard rule: the segmented unit must keep refs back to the
 raw rows it was built from, or the provenance chain snaps at exactly the step that
 reshapes the most. See the black boxes in [§6](#6-the-four-black-boxes).
+# TODO: this is the thing i watn to figure out what can we do here
 
 ---
 
@@ -155,6 +156,7 @@ It is a **composite** of two parts with *different provenance behavior*:
   for.
 - **attachment refs** — pointers into raw_data that *already exists* and has its own
   provenance.
+  # TODO: this doesn't already have to exist, if they add anything new, we can add it to our raw data (but then that means that users can only add the things we already give them passive ingestion for, which is okay) + raw text of course
 
 So a principle built from a capsule traces cleanly to the user's own words
 (terminal) plus the linked artifacts (each tracing to its origin). Fully grounded.
@@ -166,6 +168,8 @@ carries intent / moment / priority / `parent_contradiction`. The text is the
 grouping that lets the swarm treat "these 5 photos + my reflection on them" as a
 single unit of meaning.
 
+# TODO: again prior todo may change this
+
 ---
 
 ## 4. The core invariant: the swarm never writes principles
@@ -176,6 +180,9 @@ channels**, and neither creates structure:
 1. **`confidence_delta`** — a metadata write on an *existing* principle.
 2. **enqueue** — a `Contradiction` / candidate onto `ui_queue` (a question for the
    user).
+
+   # TODO: need some sort of pruning figured out which actually uses this confidence delta right?
+   # TODO: also can use confidence delta to color edges/nodes in UI to show how confident we are
 
 That's it. New principles are minted **only** by consolidation, **only** from
 raw_data. The reason is the provenance fact from [§2](#2-the-synthesis-ladder-raw-sources--principles):
