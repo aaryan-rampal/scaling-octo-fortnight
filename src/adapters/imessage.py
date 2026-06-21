@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import argparse
 import glob
+import logging
 import os
 import sqlite3
 import struct
@@ -35,6 +36,8 @@ from models.imessage import IMessageRecord
 from storage.persist import persist_events
 
 #: Apple's Core Data epoch (2001-01-01 UTC) as seconds past the Unix epoch.
+_logger = logging.getLogger(__name__)
+
 APPLE_EPOCH_OFFSET = 978_307_200
 
 #: Glob for every per-account macOS Contacts database. Each Sources/<uuid>/ dir
@@ -213,7 +216,12 @@ def build_contact_map(contacts_glob: str = DEFAULT_CONTACTS_GLOB) -> dict[str, s
     for db_path in sorted(glob.glob(contacts_glob)):
         try:
             _scan_contacts_db(db_path, mapping)
-        except sqlite3.Error:
+        except sqlite3.Error as exc:
+            _logger.warning(
+                "Skipping unreadable Contacts DB %s (%s); handles from it stay unresolved",
+                db_path,
+                exc,
+            )
             continue
     return mapping
 

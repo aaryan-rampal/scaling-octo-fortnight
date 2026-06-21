@@ -330,20 +330,33 @@ def _encode_image_data_url(path: Path) -> str:
     return f"data:{mime};base64,{encoded}"
 
 
-def _parse_vision_response(content: str) -> dict[str, Any]:
-    """Parse the model's JSON reply into ``{description, tags}``, tolerating fences."""
-    text = content.strip()
-    if text.startswith("```"):
-        text = text.strip("`")
-        text = text[text.find("{") : text.rfind("}") + 1]
-    parsed = json.loads(text)
+def _parse_vision_response(content: str | None) -> dict[str, Any] | None:
+    """Parse the model's JSON reply into ``{description, tags}``, or ``None``.
+
+    Returns ``None`` when the reply is empty, has no JSON object, or is not valid
+    JSON — a single malformed reply degrades that one photo to no enrichment
+    rather than aborting the whole slice. Tolerates ```` ``` ```` code fences and
+    prose around the object.
+    """
+    if not content:
+        return None
+    text = content.strip().strip("`")
+    start, end = text.find("{"), text.rfind("}")
+    if start == -1 or end <= start:
+        return None
+    try:
+        parsed = json.loads(text[start : end + 1])
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(parsed, dict):
+        return None
     description = str(parsed.get("description", "")).strip()
-    raw_tags = parsed.get("tags", [])
+    raw_tags = parsed.get("tags", []) if isinstance(parsed.get("tags"), list) else []
     tags = [str(t).strip().lower() for t in raw_tags if str(t).strip()]
     return {"description": description, "tags": tags}
 
 
-def _call_vision_model(data_url: str, api_key: str, model: str) -> dict[str, Any]:
+def _call_vision_model(data_url: str, api_key: str, model: str) -> dict[str, Any] | None:
     """Call the OpenRouter chat-completions API on one image; return description/tags.
 
     Args:
@@ -352,10 +365,13 @@ def _call_vision_model(data_url: str, api_key: str, model: str) -> dict[str, Any
         model: OpenRouter vision-capable model id.
 
     Returns:
-        A ``{"description": str, "tags": list[str]}`` dict.
+        A ``{"description": str, "tags": list[str]}`` dict, or ``None`` when the
+        response carries no usable content (error body, empty choices, null
+        content, or an unparseable reply) — one bad photo is skipped rather than
+        aborting the whole enrichment pass.
 
     Raises:
-        httpx.HTTPError: If the request fails.
+        httpx.HTTPError: If the HTTP request itself fails.
     """
     payload = {
         "model": model,
@@ -376,8 +392,11 @@ def _call_vision_model(data_url: str, api_key: str, model: str) -> dict[str, Any
         timeout=_VISION_TIMEOUT_S,
     )
     resp.raise_for_status()
-    content = resp.json()["choices"][0]["message"]["content"]
-    return _parse_vision_response(content)
+    choices = resp.json().get("choices") or []
+    if not choices:
+        return None
+    content = (choices[0].get("message") or {}).get("content")
+    return _parse_vision_response(content if isinstance(content, str) else None)
 
 
 def enrich_photos(
@@ -449,6 +468,8 @@ def _enrich_one(
     with _sendable_image(path) as sendable:
         data_url = _encode_image_data_url(sendable)
         result = _call_vision_model(data_url, api_key, model)
+    if result is None:
+        return None
     cache[record.id] = result
     return result
 

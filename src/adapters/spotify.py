@@ -68,12 +68,22 @@ VibeResolver = Callable[[str], str]
 
 
 def load_vibe_cache(path: str | Path = DEFAULT_VIBE_CACHE) -> dict[str, str]:
-    """Load the cached ``artist -> vibe`` map, or ``{}`` if none exists yet."""
+    """Load the cached ``artist -> vibe`` map, or ``{}`` if absent or corrupt.
+
+    A truncated or hand-edited cache file (invalid JSON, or a JSON value that is
+    not an object) degrades to an empty cache rather than aborting the ingest;
+    the run simply re-resolves and rewrites it. Matches the photo cache's
+    corruption tolerance.
+    """
     cache_path = Path(path)
     if not cache_path.exists():
         return {}
-    with open(cache_path, encoding="utf-8") as fh:
-        return json.load(fh)
+    try:
+        with open(cache_path, encoding="utf-8") as fh:
+            data = json.load(fh)
+    except (OSError, json.JSONDecodeError):
+        return {}
+    return data if isinstance(data, dict) else {}
 
 
 def save_vibe_cache(cache: dict[str, str], path: str | Path = DEFAULT_VIBE_CACHE) -> None:

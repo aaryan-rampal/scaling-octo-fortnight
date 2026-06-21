@@ -5,6 +5,7 @@ requires-python = ">=3.13"
 dependencies = [
     "hindsight-api-slim[embedded-db]",
     "hindsight-client",
+    "httpx==0.28.1",
     "pydantic>=2",
     "python-dotenv",
 ]

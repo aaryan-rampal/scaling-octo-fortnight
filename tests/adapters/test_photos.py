@@ -240,11 +240,22 @@ def _write_image(library_root: Path, rel: str) -> None:
 
 def test_parse_vision_response_handles_plain_and_fenced_json() -> None:
     plain = _parse_vision_response('{"description": "A dog on a beach", "tags": ["Dog", "Beach"]}')
+    assert plain is not None
     assert plain["description"] == "A dog on a beach"
     assert plain["tags"] == ["dog", "beach"]  # lowercased
     fenced = _parse_vision_response('```json\n{"description": "x", "tags": []}\n```')
+    assert fenced is not None
     assert fenced["description"] == "x"
     assert fenced["tags"] == []
+
+
+def test_parse_vision_response_returns_none_on_malformed_reply() -> None:
+    # A single bad model reply must degrade to None (skip the photo), not crash.
+    assert _parse_vision_response(None) is None
+    assert _parse_vision_response("") is None
+    assert _parse_vision_response("Sorry, I cannot help with that.") is None
+    assert _parse_vision_response('{"description": "x", "tags": [') is None  # truncated JSON
+    assert _parse_vision_response("[1, 2, 3]") is None  # JSON but not an object
 
 
 def test_enrich_photos_calls_model_once_and_sets_fields(tmp_path: Path, monkeypatch) -> None:

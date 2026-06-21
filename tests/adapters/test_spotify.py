@@ -169,6 +169,16 @@ def test_enrich_records_stamps_vibe_and_persists_cache(tmp_path: Path) -> None:
     assert calls == []
 
 
+def test_load_vibe_cache_tolerates_corrupt_file(tmp_path: Path) -> None:
+    # A truncated/invalid cache must degrade to {}, not crash the ingest.
+    truncated = tmp_path / "truncated.json"
+    truncated.write_text('{"Artist": "vibe",')  # invalid JSON
+    assert load_vibe_cache(truncated) == {}
+    not_a_dict = tmp_path / "list.json"
+    not_a_dict.write_text("[1, 2, 3]")  # valid JSON, wrong shape
+    assert load_vibe_cache(not_a_dict) == {}
+
+
 def test_enrich_records_ignores_non_music(tmp_path: Path) -> None:
     calls: list[str] = []
     records = [SpotifyStreamRecord.model_validate(_PODCAST)]
