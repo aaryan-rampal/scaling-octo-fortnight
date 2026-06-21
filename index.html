@@ -985,6 +985,23 @@
   .pd-mem em { color: #9c7d5a; font-style: italic; }
   .pd-mem-kind { margin-right: 5px; }
   .pd-mem:active { transform: scale(.99); }
+
+  /* "time capsules like this" — suggested capsules with a view button */
+  .pgraph-detail .pd-caps { display: flex; flex-direction: column; gap: 6px; margin-bottom: 4px; }
+  .pd-cap {
+    display: flex; align-items: center; gap: 7px;
+    background: #fbf3e0; border: 1.4px solid #d8c28a; border-left: 4px solid #9c4a2a;
+    border-radius: 10px; padding: 7px 9px;
+  }
+  .pd-cap-pin { font-size: 14px; }
+  .pd-cap-name { flex: 1; min-width: 0; font-family: 'Caveat', cursive; font-weight: 700; font-size: 17px; color: #4f3924;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .pd-cap-view {
+    flex: none; cursor: pointer; border: none; border-radius: 999px;
+    background: #9c4a2a; color: #fff; font-family: 'Caveat', cursive; font-weight: 700; font-size: 15px;
+    padding: 4px 13px; box-shadow: 0 2px 5px rgba(40,22,10,.3);
+  }
+  .pd-cap-view:active { transform: scale(.95); }
   .pd-back {
     background: none; border: none; cursor: pointer; padding: 0 0 6px;
     font-family: 'Caveat', cursive; font-weight: 700; font-size: 17px; color: #9c4a2a;
@@ -2109,6 +2126,35 @@
     // principles connect). Two thematic clusters are colored by community.
     let pgState = null;
 
+    // Hardcoded "this principle resonates with these time capsules" map
+    // (aaryan's set → the demo Cal Hacks capsules). Keyed by principle short-id,
+    // values are capsule PLACE NAMES (stable; capsule ids regenerate). Tapping a
+    // suggested capsule opens it in the dig-up flow.
+    const PRINCIPLE_CAPSULES = {
+      // tools / data cluster — building, making, shipping
+      'edcf033d9e0e': ['The build', 'Opening ceremony'],          // build personalized tools
+      '4254b82ae9a0': ['The build'],                              // centralize personal data
+      'af4e61789bb1': ['The build'],                              // expressive adequacy in design
+      'a011511d2e2d': ['The build'],                              // composable primitives
+      '7fdd5fd0a40b': ['The build', 'Opening ceremony'],          // interactive, personalized self
+      'bf944ac154e9': ['The build', 'Quargo Coffee'],             // share authentic work
+      // self / growth cluster — showing up, reflecting, dreaming
+      '1fa831c28bc6': ['Opening ceremony', 'The room on Durant'], // existential clarity / alignment
+      '46b9192d0f61': ['The room on Durant', 'Quargo Coffee'],    // deep self-awareness
+      'c54fff10157c': ['Quargo Coffee', 'The room on Durant'],    // process via raw writing
+      '54632700e9fe': ['The room on Durant'],                     // changing ingrained habits
+      'aa309584e561': ['The room on Durant'],                     // being understood accurately
+      '52b56926ec88': ['Opening ceremony'],                       // intellectual honesty / pushback
+      'd3215eaea6a2': ['The room on Durant'],                     // self-worth, reject minimizing
+      'abf2e0a45659': ['Opening ceremony', 'Quargo Coffee'],      // preserve human experience
+    };
+    // Capsules suggested for a principle, resolved to live capsule objects (loaded
+    // for the dig-up map). Matched by place_name; returns [] if none loaded yet.
+    function capsulesForPrinciple(p){
+      const names = PRINCIPLE_CAPSULES[p && p.short] || [];
+      return (cachedCapsules || []).filter((c) => names.includes(c.place_name));
+    }
+
     // Which principle set to load, by login user. Each maps to a JSON file the
     // export wrote; unknown/blank users fall back to the default principles.json.
     const PRINCIPLE_FILES = { aaryan: 'principles.aaryan.json', selin: 'principles.selin.json' };
@@ -2130,6 +2176,8 @@
         if (!resp.ok && file !== 'principles.json') resp = await fetch('principles.json', { cache: 'no-store' });
         if (!resp.ok) throw new Error('fetch failed');
         const data = await resp.json();
+        // load capsules in the background so "time capsules like this" can match
+        if (!cachedCapsules.length) loadCapsules().then((c) => { cachedCapsules = c; });
         renderPrincipleGraph(scroll, data);
       } catch {
         scroll.innerHTML = '<div class="prin-empty">Could not load principles.<br>Run the export, then reload.</div>';
@@ -2454,16 +2502,39 @@
           '<span class="pd-mem-kind">' + (m.fact_type === 'world' ? '🌐' : '✦') + '</span>' +
           escHTML((m.text || '').slice(0, 64)) + '… <em>(' + m.n_events + ' raw)</em></button>'
       );
+      // time capsules whose moment resonates with this principle (hardcoded map)
+      const caps = capsulesForPrinciple(n.p);
+      const capList = caps.map((c) =>
+        '<div class="pd-cap" data-cap="' + escHTML(c.id) + '">' +
+          '<span class="pd-cap-pin">📍</span>' +
+          '<span class="pd-cap-name">' + escHTML(c.place_name) + '</span>' +
+          '<button class="pd-cap-view" data-cap="' + escHTML(c.id) + '">view →</button>' +
+        '</div>');
+
       const detail = document.getElementById('pgraphDetail');
       detail.innerHTML =
         '<div class="pd-text">' + escHTML(n.p.text) + '</div>' +
         '<div class="pd-meta">confidence ' + Math.round((n.p.confidence || 0) * 100) + '% · ' +
           n.p.n_memories + ' memories · ' + n.p.n_events + ' raw events</div>' +
         (rels.length ? '<div class="pd-rels">' + rels.join('') + '</div>' : '') +
+        (capList.length ? '<div class="pd-mem-label">time capsules like this</div>' +
+          '<div class="pd-caps">' + capList.join('') + '</div>' : '') +
         '<div class="pd-mem-label">memories behind this</div>' +
         '<div class="pd-mems">' + memList.join('') + '</div>';
       detail.querySelectorAll('.pd-mem').forEach((b) =>
         b.addEventListener('click', () => showMemory(b.getAttribute('data-mem'))));
+      detail.querySelectorAll('.pd-cap-view').forEach((b) =>
+        b.addEventListener('click', (e) => { e.stopPropagation(); openCapsuleById(b.getAttribute('data-cap')); }));
+    }
+
+    // Open a suggested capsule: close the principles overlay, jump into the
+    // dig-up flow, and open that capsule directly.
+    function openCapsuleById(capId){
+      const cap = (cachedCapsules || []).find((c) => c.id === capId);
+      if (!cap) return;
+      closePrinciples();
+      openDigup();                 // shows the dig-up map + ensures capsules loaded
+      setTimeout(() => selectCapsule(cap), 600);   // then open the chosen one
     }
 
     function showMemory(mid){
