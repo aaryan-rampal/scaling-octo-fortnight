@@ -1,0 +1,53 @@
+<svg viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="recapsule">
+  <defs>
+    <filter id="lw" x="-8%" y="-8%" width="116%" height="116%">
+      <feTurbulence type="fractalNoise" baseFrequency="0.018 0.02" numOctaves="2" seed="6" result="n"/>
+      <feDisplacementMap in="SourceGraphic" in2="n" scale="3.4" xChannelSelector="R" yChannelSelector="G"/>
+    </filter>
+  </defs>
+
+  <!-- coin -->
+  <g filter="url(#lw)">
+    <circle cx="100" cy="100" r="92" fill="#c8b4a6"/>
+    <circle cx="100" cy="100" r="92" fill="none" stroke="#6f5c50" stroke-width="4.5"/>
+    <circle cx="100" cy="100" r="84" fill="none" stroke="#6f5c50" stroke-width="2" opacity=".7"/>
+    <!-- speckles -->
+    <g fill="#9c8576" opacity=".85">
+      <circle cx="62" cy="48" r="2.1"/><circle cx="118" cy="40" r="1.7"/><circle cx="150" cy="70" r="2"/>
+      <circle cx="48" cy="96" r="1.8"/><circle cx="158" cy="120" r="1.9"/><circle cx="70" cy="150" r="2"/>
+      <circle cx="120" cy="158" r="1.7"/><circle cx="100" cy="62" r="1.5"/><circle cx="42" cy="128" r="1.6"/>
+    </g>
+  </g>
+
+  <!-- dashed return arc (top-left) -->
+  <path d="M52 70 q24 -26 56 -16" fill="none" stroke="#4f463f" stroke-width="3.4"
+        stroke-linecap="round" stroke-dasharray="2 11" opacity=".8" filter="url(#lw)"/>
+  <path d="M104 52 l8 2 -3 8" fill="none" stroke="#4f463f" stroke-width="3.4"
+        stroke-linecap="round" stroke-linejoin="round" opacity=".8" filter="url(#lw)"/>
+
+  <!-- dashed return arc (bottom) -->
+  <path d="M96 150 q22 14 44 -2" fill="none" stroke="#4f463f" stroke-width="3.4"
+        stroke-linecap="round" stroke-dasharray="2 11" opacity=".75" filter="url(#lw)"/>
+
+  <!-- little red x -->
+  <g stroke="#cf6a64" stroke-width="3.4" stroke-linecap="round" filter="url(#lw)">
+    <path d="M150 138 l14 14"/><path d="M164 138 l-14 14"/>
+  </g>
+
+  <!-- capsule -->
+  <g filter="url(#lw)" transform="rotate(-22 100 100)">
+    <!-- body -->
+    <rect x="48" y="84" width="104" height="34" rx="17" fill="#f0e4b8" stroke="#7a6a3f" stroke-width="2.6"/>
+    <!-- end caps -->
+    <ellipse cx="58" cy="101" rx="11" ry="18" fill="#e4d59e" stroke="#7a6a3f" stroke-width="2.6"/>
+    <ellipse cx="142" cy="101" rx="11" ry="18" fill="#e4d59e" stroke="#7a6a3f" stroke-width="2.6"/>
+    <!-- bands -->
+    <rect x="70" y="83" width="9" height="36" rx="4" fill="#e0cf90" stroke="#7a6a3f" stroke-width="2.2"/>
+    <rect x="121" y="83" width="9" height="36" rx="4" fill="#e0cf90" stroke="#7a6a3f" stroke-width="2.2"/>
+  </g>
+
+  <!-- handwritten label -->
+  <text x="100" y="108" text-anchor="middle"
+        font-family="'Caveat','Patrick Hand',cursive" font-size="30" fill="#5a4d44"
+        transform="rotate(-22 100 100)">recapsule</text>
+</svg>

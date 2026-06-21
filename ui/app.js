@@ -1,9 +1,9 @@
 /* RETURN — frontend controller.
- * Loop: MAP (explore) → visit a fogged spot to discover it → seal a capsule
- * (or open one) → reconstruct → reveal → talk to past you.
+ * Loop: HOME → DISCOVER → (dig old: places / drop new: camera → drag → create)
+ *        HOME → MAP → open capsule → reconstruct → reveal → talk to past you
+ *        MAP → compass → PRINCIPLES MAP
  * All data access goes through getPlaces()/getPlace() so a real backend is a
- * one-function swap. Visual language follows ui-ux-pro-max "Modern Dark
- * (Cinema Mobile)": frosted nav, ambient glow, Expo.out easing, 0.97 press.
+ * one-function swap.
  */
 
 const getPlaces = () => SEED.places;
@@ -53,6 +53,7 @@ const SoundFX = (() => {
     unlock() { try { tone(523, 0, .1, "sine", .16); tone(659, .08, .1, "sine", .16); tone(784, .16, .22, "sine", .18); } catch {} },
     open() { try { tone(659, 0, .2, "sine", .2); tone(988, .1, .3, "sine", .17); tone(1319, .22, .45, "sine", .12); } catch {} },
     shimmer() { try { tone(880, 0, .28, "sine", .12); tone(1175, .07, .32, "sine", .1); tone(1568, .15, .3, "sine", .07); } catch {} },
+    tap() { try { tone(440, 0, .08, "sine", .1); } catch {} },
   };
 })();
 
@@ -62,23 +63,30 @@ let highlightTimer;
 
 // --- view routing ---
 const views = {
+  home: document.getElementById("view-home"),
+  discover: document.getElementById("view-discover"),
   map: document.getElementById("view-map"),
   graph: document.getElementById("view-graph"),
   places: document.getElementById("view-places"),
   create: document.getElementById("view-create"),
   reconstruct: document.getElementById("view-reconstruct"),
   reveal: document.getElementById("view-reveal"),
+  camera: document.getElementById("view-camera"),
+  drag: document.getElementById("view-drag"),
 };
-const FLOW = ["create", "reconstruct", "reveal"]; // hide tab bar in these
+
+// hide tab bar in these flow views
+const FLOW = ["create", "reconstruct", "reveal", "camera", "drag", "discover"];
 const TAB_FOR_VIEW = { map: "map", graph: "graph", places: "capsules" };
+
 function show(name) {
   Object.values(views).forEach((v) => v.classList.remove("active"));
   views[name].classList.add("active");
-  document.getElementById("tabbar").classList.toggle("hidden", FLOW.includes(name));
+  const hideTab = FLOW.includes(name) || name === "home";
+  document.getElementById("tabbar").classList.toggle("hidden", hideTab);
   document.querySelectorAll(".tab").forEach((t) =>
     t.classList.toggle("active", TAB_FOR_VIEW[name] === t.dataset.tab));
   document.querySelector(".screen").scrollTo({ top: 0, behavior: reduceMotion ? "auto" : "smooth" });
-  if (name === "map" && map) setTimeout(() => map.resize(), 60); // MapLibre needs a resize when re-shown
 }
 const switchTab = (tab) => show(tab === "capsules" ? "places" : tab);
 
@@ -94,80 +102,138 @@ function toast(msg) {
   toastTimer = setTimeout(() => t.classList.remove("show"), 2600);
 }
 
-// --- 1. LIVE SATELLITE MAP (MapLibre + Esri World Imagery) ---
-const MAP_CENTER = [-122.2588, 37.8698]; // Berkeley Southside (real photo cluster)
-const MAP_ZOOM = 15.4;
-let map = null, markerObjs = [], spinning = false, spinReq = null;
+// --- 1. ILLUSTRATED SVG MAP ---
+let svgVB = { x: 0, y: 0, w: 360, h: 400 };
+
+function latLngToXY(lat, lng) {
+  return {
+    x: (lng - (-122.263)) / 0.011 * 360,
+    y: (37.876 - lat) / 0.012 * 400,
+  };
+}
+
+function setVB() {
+  const svg = document.getElementById("map-svg");
+  if (svg) svg.setAttribute("viewBox", `${svgVB.x} ${svgVB.y} ${svgVB.w} ${svgVB.h}`);
+}
+
+function initMapPanZoom() {
+  const svg = document.getElementById("map-svg");
+  if (!svg || svg._pzInited) return;
+  svg._pzInited = true;
+  let dragging = false, lx = 0, ly = 0, ld = 0;
+  const MIN_W = 80, MAX_W = 720;
+
+  svg.addEventListener("mousedown", (e) => { dragging = true; lx = e.clientX; ly = e.clientY; svg.style.cursor = "grabbing"; });
+  document.addEventListener("mousemove", (e) => {
+    if (!dragging) return;
+    const sx = svg.clientWidth, sy = svg.clientHeight;
+    svgVB.x -= (e.clientX - lx) / sx * svgVB.w;
+    svgVB.y -= (e.clientY - ly) / sy * svgVB.h;
+    lx = e.clientX; ly = e.clientY;
+    setVB();
+  });
+  document.addEventListener("mouseup", () => { dragging = false; svg.style.cursor = ""; });
+
+  svg.addEventListener("touchstart", (e) => {
+    if (e.touches.length === 1) { dragging = true; lx = e.touches[0].clientX; ly = e.touches[0].clientY; }
+    else if (e.touches.length === 2) { ld = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY); }
+  }, { passive: true });
+  svg.addEventListener("touchmove", (e) => {
+    if (e.touches.length === 1 && dragging) {
+      const sx = svg.clientWidth, sy = svg.clientHeight;
+      svgVB.x -= (e.touches[0].clientX - lx) / sx * svgVB.w;
+      svgVB.y -= (e.touches[0].clientY - ly) / sy * svgVB.h;
+      lx = e.touches[0].clientX; ly = e.touches[0].clientY;
+      setVB();
+    } else if (e.touches.length === 2) {
+      const d = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+      const scale = ld / d;
+      const cx = svgVB.w * 0.5 + svgVB.x, cy = svgVB.h * 0.5 + svgVB.y;
+      const nw = Math.max(MIN_W, Math.min(MAX_W, svgVB.w * scale));
+      const nh = nw * (400 / 360);
+      svgVB.x = cx - nw / 2; svgVB.y = cy - nh / 2; svgVB.w = nw; svgVB.h = nh;
+      ld = d;
+      setVB();
+    }
+  }, { passive: true });
+  svg.addEventListener("touchend", () => { dragging = false; });
+
+  svg.addEventListener("wheel", (e) => {
+    e.preventDefault();
+    const scale = e.deltaY > 0 ? 1.12 : 0.9;
+    const rect = svg.getBoundingClientRect();
+    const px = (e.clientX - rect.left) / rect.width * svgVB.w + svgVB.x;
+    const py = (e.clientY - rect.top) / rect.height * svgVB.h + svgVB.y;
+    const nw = Math.max(MIN_W, Math.min(MAX_W, svgVB.w * scale));
+    const nh = nw * (400 / 360);
+    svgVB.x = px - (px - svgVB.x) * (nw / svgVB.w);
+    svgVB.y = py - (py - svgVB.y) * (nh / svgVB.h);
+    svgVB.w = nw; svgVB.h = nh;
+    setVB();
+  }, { passive: false });
+}
 
 function ensureMap() {
-  if (map || typeof maplibregl === "undefined") return;
-  map = new maplibregl.Map({
-    container: "map",
-    attributionControl: false,
-    center: MAP_CENTER, zoom: MAP_ZOOM, pitch: 0, bearing: 0,
-    style: {
-      version: 8,
-      sources: {
-        sat: {
-          type: "raster", tileSize: 256,
-          tiles: ["https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"],
-          attribution: "Imagery © Esri",
-        },
-      },
-      layers: [{ id: "sat", type: "raster", source: "sat" }],
-    },
-  });
-  map.addControl(new maplibregl.AttributionControl({ compact: true }));
-  map.on("load", () => {
-    // STATIC: no auto-rotation, no pitch, no fly-in. It just sits there.
-    drawMarkers();
-    map.resize();
-    document.getElementById("map").classList.add("ready"); // one-time fade-in (no map movement)
-  });
+  const svg = document.getElementById("map-svg");
+  if (!svg) return;
+  initMapPanZoom();
 }
-function stopSpin() {} // map no longer auto-moves
 
 function drawMarkers() {
-  if (!map) return;
-  markerObjs.forEach((m) => m.remove());
-  markerObjs = [];
+  const group = document.getElementById("map-markers");
+  if (!group) return;
+  group.innerHTML = "";
   let found = 0;
   SEED.map.forEach((poi) => {
     const disc = isDiscovered(poi);
     if (disc) found++;
     const cap = poi.capsuleId ? getPlace(poi.capsuleId) : null;
+    const locked = cap && isLocked(cap);
+    const { x, y } = latLngToXY(poi.lat, poi.lng);
+    const shortName = poi.name.split(" ").slice(0, 2).join(" ");
 
-    const el = document.createElement("button");
-    el.className = "mk";
-    let inner;
+    const g = document.createElementNS("http://www.w3.org/2000/svg", "g");
+    g.setAttribute("class", `map-poi ${disc ? (cap ? (locked ? "cap sealed" : "cap open") : "empty") : "fog"}`);
+    g.setAttribute("transform", `translate(${x.toFixed(1)}, ${y.toFixed(1)})`);
+    g.setAttribute("data-id", poi.id);
+
     if (!disc) {
-      el.classList.add("fog");
-      el.setAttribute("aria-label", `Locked — travel to ${poi.name} to discover it`);
-      inner = `<span class="mk-dot">${ICON.lock}</span><span class="mk-label">${poi.name}</span>`;
+      g.innerHTML = `
+        <circle cx="0" cy="0" r="14" fill="rgba(154,120,96,0.3)" stroke="#7a6050" stroke-width="1.5" stroke-dasharray="3 2"/>
+        <text y="5" text-anchor="middle" font-family="Caveat,cursive" font-size="15" fill="#9a7860" opacity=".7">?</text>`;
     } else if (cap) {
-      el.classList.add("cap");
-      const locked = isLocked(cap);
-      if (locked) el.classList.add("sealed");
-      el.setAttribute("aria-label", `${locked ? "Sealed" : "Open"} capsule — ${poi.name}`);
-      inner = `<span class="mk-dot"><span class="mk-seam"></span>${locked ? `<span class="mk-lock">${ICON.lock}</span>` : ""}</span><span class="mk-label">${poi.name}</span>`;
+      const fillColor = locked ? "#d4aa3a" : "#edd878";
+      g.innerHTML = `
+        <circle class="poi-ring" cx="0" cy="0" r="22" fill="none" stroke="${locked ? "#9a7860" : "#c8902a"}" stroke-width="1.5" style="animation-delay:${Math.random() * 2}s"/>
+        <g transform="rotate(-12)">
+          <rect x="-15" y="-7" width="30" height="14" rx="7" fill="${fillColor}" stroke="#2a1c08" stroke-width="1.8"/>
+          <ellipse cx="-15" cy="0" rx="7" ry="9" fill="${locked ? "#b08020" : "#d4aa3a"}" stroke="#2a1c08" stroke-width="1.8"/>
+          <ellipse cx="15" cy="0" rx="7" ry="9" fill="${locked ? "#b08020" : "#d4aa3a"}" stroke="#2a1c08" stroke-width="1.8"/>
+          <rect x="-4" y="-8" width="3.5" height="16" rx="1.75" fill="#c49820" stroke="#2a1c08" stroke-width="1"/>
+          <rect x="8" y="-8" width="3.5" height="16" rx="1.75" fill="#c49820" stroke="#2a1c08" stroke-width="1"/>
+          ${locked ? '<path d="M-3 -1 a3 3 0 0 1 6 0" fill="none" stroke="#2a1c08" stroke-width="1.2"/><rect x="-2" y="-1" width="4" height="3" rx="0.5" fill="#2a1c08"/>' : ""}
+        </g>
+        <text class="poi-label" y="26" text-anchor="middle" font-family="Caveat,cursive" font-size="11" fill="#2a1c10" font-weight="600">${shortName}</text>`;
     } else {
-      el.classList.add("empty");
-      el.setAttribute("aria-label", `Seal a capsule at ${poi.name}`);
-      inner = `<span class="mk-dot">${ICON.plus}</span><span class="mk-label">${poi.name}</span>`;
+      g.innerHTML = `
+        <circle cx="0" cy="0" r="12" fill="rgba(200,144,42,0.2)" stroke="#c8902a" stroke-width="1.5" stroke-dasharray="4 2"/>
+        <text y="5" text-anchor="middle" font-family="Caveat,cursive" font-size="16" fill="#c8902a">+</text>
+        <text class="poi-label" y="22" text-anchor="middle" font-family="Caveat,cursive" font-size="10" fill="#9a7860">${shortName}</text>`;
     }
-    if (highlight.has(poi.id)) el.classList.add("highlight");
-    el.innerHTML = inner;
-    el.addEventListener("click", (e) => { e.stopPropagation(); onPoiClick(poi); });
-    markerObjs.push(new maplibregl.Marker({ element: el, anchor: "center" }).setLngLat([poi.lng, poi.lat]).addTo(map));
+
+    g.addEventListener("click", (e) => { e.stopPropagation(); onPoiClick(poi); });
+    if (highlight.has(poi.id)) g.classList.add("highlight");
+    group.appendChild(g);
   });
+
   const mp = document.getElementById("map-progress");
-  if (mp) mp.textContent = `${found}/${SEED.map.length} discovered`;
+  if (mp) mp.textContent = `${found} / ${SEED.map.length} discovered`;
 }
 
-// renderMap() keeps the old name so the rest of the app calls it unchanged
 function renderMap() {
   ensureMap();
-  if (map && map.isStyleLoaded && map.isStyleLoaded()) drawMarkers();
+  drawMarkers();
 }
 
 function onPoiClick(poi) {
@@ -177,16 +243,13 @@ function onPoiClick(poi) {
   else startCreate(poi);
 }
 
-// travel to a locked spot, then discover it
 function visit(poi) {
-  stopSpin();
-  if (map) map.easeTo({ center: [poi.lng, poi.lat], zoom: 16.6, duration: 700, essential: true });
   setTimeout(() => {
     discovered.add(poi.id);
     SoundFX.discover();
     drawMarkers();
     toast(poi.capsuleId ? `Back at ${poi.name}` : `Discovered ${poi.name} — seal a memory here`);
-  }, 1500);
+  }, 400);
 }
 
 // --- 2. CREATE a capsule ---
@@ -224,7 +287,6 @@ document.getElementById("cover-row").addEventListener("click", (e) => {
   b.classList.add("sel");
 });
 
-// real photo/video attach — first image becomes the cover; all files upload to recall
 document.getElementById("create-files").addEventListener("change", (e) => {
   selFiles = [...e.target.files];
   const prev = document.getElementById("file-preview");
@@ -268,8 +330,6 @@ document.getElementById("create-form").addEventListener("submit", async (e) => {
   renderPlaces();
   switchTab("map");
 
-  // send to the recall backend if one is configured (the capsule-ingest path).
-  // the journal note rides along as a `text` media file = new raw_data (flywheel §3).
   if (Recall.on()) {
     toast(`Sealing to recall…`);
     const files = [...selFiles];
@@ -322,8 +382,6 @@ function renderPlaces() {
   });
 }
 
-// open a capsule — big unearth/open animation (~80% screen) + sound, then the
-// same reveal page you'd see right after finishing/sealing it.
 function openCapsule(cap) {
   const wasLocked = isLocked(cap);
   if (wasLocked) {
@@ -336,7 +394,6 @@ function openCapsule(cap) {
   openingSequence(wasLocked, proceed);
 }
 
-// the big capsule graphic + dig/open sound, then the page
 function openingSequence(wasLocked, after) {
   const ov = document.getElementById("opening");
   document.getElementById("opening-text").textContent = wasLocked ? "unearthing…" : "opening…";
@@ -344,19 +401,15 @@ function openingSequence(wasLocked, after) {
   if (reduceMotion) { SoundFX.open(); after(); return; }
 
   ov.classList.add("show");
-  // restart the capsule open animations
-  ov.querySelectorAll(".cap3d, .cap-top, .cap-bottom, .cap-burst, .cap-rays, .dust").forEach((el) => {
+  ov.querySelectorAll(".cap3d, .cap-body-wrap, .cap-ground-layer, .cap-top, .cap-bottom, .cap-seam, .cap-burst, .cap-rays, .dust, .wisp").forEach((el) => {
     el.style.animation = "none"; void el.offsetWidth; el.style.animation = "";
   });
-  // sound: dig as it rises, (unlock if sealed), then the "pop" as the lid opens (~1s in)
   SoundFX.dig();
   if (wasLocked) setTimeout(() => SoundFX.unlock(), 450);
   setTimeout(() => SoundFX.open(), 1000);
-
   setTimeout(() => { ov.classList.remove("show"); after(); }, 2050);
 }
 
-// principle → light up the capsule(s) it was formed from, on the map
 function tracePrinciple(cap) {
   const ids = SEED.map
     .filter((poi) => poi.capsuleId && getPlace(poi.capsuleId) &&
@@ -366,11 +419,8 @@ function tracePrinciple(cap) {
   highlight.clear();
   ids.forEach((id) => highlight.add(id));
   switchTab("map");
-  stopSpin();
   drawMarkers();
   SoundFX.shimmer();
-  const target = SEED.map.find((p) => ids.includes(p.id));
-  if (map && target) map.easeTo({ center: [target.lng, target.lat], zoom: 16, duration: 700, essential: true });
   const names = SEED.map.filter((p) => ids.includes(p.id)).map((p) => p.name).join(", ");
   toast(`This principle was formed at: ${names || cap.name}`);
   clearTimeout(highlightTimer);
@@ -426,7 +476,6 @@ function reveal() {
   document.querySelector("#view-reveal .section-label").textContent =
     active.userCreated ? "Your note, sealed" : "The night, reconstructed";
 
-  // --- capsule data model: place · coordinates · time · mood (agent-read) · music
   const poi = SEED.map.find((m) => m.capsuleId === active.id);
   const coords = poi ? `${poi.lat.toFixed(5)}, ${poi.lng.toFixed(5)}` : "";
   document.getElementById("reveal-meta").innerHTML = `
@@ -436,7 +485,6 @@ function reveal() {
     <span class="rm-mood" style="--h:${active.mood.hue}">${active.mood.label} · read by recapsule</span>
     ${active.music ? `<span class="rm-music">♪ ${active.music}</span>` : ""}`;
 
-  // --- media: photos + video (text lives in the storyline below)
   const media = active.media && active.media.length
     ? active.media
     : [{ type: "photo", src: (active.anchor.photo.match(/url\(['"]?([^'")]+)/) || [])[1] }];
@@ -463,7 +511,7 @@ function reveal() {
     const cap = active;
     prinEl.style.display = "";
     prinEl.classList.add("clickable");
-    prinEl.innerHTML = `<span class="plabel">Principle</span><span class="ptext">“${active.principle}”</span><span class="ptrace">tap to light up where this came from →</span>`;
+    prinEl.innerHTML = `<span class="plabel">Principle</span><span class="ptext">"${active.principle}"</span><span class="ptrace">tap to light up where this came from →</span>`;
     prinEl.onclick = () => tracePrinciple(cap);
   } else {
     prinEl.style.display = "none";
@@ -471,7 +519,6 @@ function reveal() {
     prinEl.onclick = null;
   }
 
-  // forward-looking reflection — never "go back to how it was" (wellbeing guardrail)
   document.getElementById("reflection").innerHTML =
     `<div class="rlabel">${ICON.compass} Carry forward</div><div class="rtext">${active.reflection}</div>`;
 
@@ -482,7 +529,7 @@ function reveal() {
   show("reveal");
 }
 
-// --- persona chat (rule-based stand-in for seal-time-conditioned LLM) ---
+// --- persona chat ---
 function addBubble(who, text) {
   const chat = document.getElementById("chat");
   const el = document.createElement("div");
@@ -535,7 +582,6 @@ function buildGraph() {
   graphNodes = nodes; graphEdges = edges;
 }
 
-// tiny force-directed layout in 0..100 space
 function layoutGraph(nodes, edges, byId) {
   nodes.forEach((n, i) => {
     const a = (2 * Math.PI * i) / nodes.length;
@@ -582,7 +628,7 @@ function renderGraph() {
     }
     el.style.left = n.x + "%"; el.style.top = n.y + "%";
     el.style.animationDelay = (-i * 0.7) + "s";
-    const dot = n.kind === "memory" ? `<span class="gdot" style="background:${n.cover}"></span>` : `<span class="gdot"></span>`;
+    const dot = n.kind === "memory" ? `<span class="gdot"></span>` : `<span class="gdot"></span>`;
     el.innerHTML = `${dot}<span class="glabel">${n.label}</span>`;
     el.setAttribute("aria-label", n.kind === "memory" ? `Open ${n.label}` : `Principle: ${n.text}`);
     el.addEventListener("click", (ev) => { ev.stopPropagation(); onGraphNode(n); });
@@ -596,7 +642,7 @@ function onGraphNode(n) {
   SoundFX.shimmer();
   renderGraph();
   document.getElementById("graph-info").textContent = graphFocus
-    ? `“${n.text}” — tap a lit memory to open it.`
+    ? `"${n.text}" — tap a lit memory to open it.`
     : "Tap a principle to see the moments behind it. Tap a memory to open it.";
 }
 document.getElementById("graph").addEventListener("click", () => {
@@ -607,10 +653,183 @@ document.getElementById("graph").addEventListener("click", () => {
 document.querySelectorAll(".tab").forEach((t) => t.addEventListener("click", () => switchTab(t.dataset.tab)));
 document.querySelectorAll("[data-back-map]").forEach((b) => b.addEventListener("click", () => show("map")));
 
-// --- pull any capsules already ingested by the recall backend (capsule-ingest) ---
+// --- home screen logo goes home ---
+document.getElementById("logo-home").addEventListener("click", () => show("home"));
+
+// --- HOME: capsule choice buttons ---
+document.getElementById("btn-viewmap").addEventListener("click", () => {
+  SoundFX.tap();
+  show("map");
+  renderMap();
+});
+
+document.getElementById("btn-digdrop").addEventListener("click", () => {
+  SoundFX.tap();
+  show("discover");
+});
+
+// --- DISCOVER screen buttons ---
+document.getElementById("btn-dig-old").addEventListener("click", () => {
+  show("places");
+  renderPlaces();
+});
+document.getElementById("btn-drop-new").addEventListener("click", () => {
+  openCameraScreen();
+});
+
+// --- all [data-goto-home] elements → home ---
+document.querySelectorAll("[data-goto-home]").forEach((b) =>
+  b.addEventListener("click", () => { closeCameraStream(); show("home"); })
+);
+
+// --- COMPASS on map view: spin needle then go to graph ---
+const compassEl = document.getElementById("compass");
+const compassNeedle = document.getElementById("compass-needle");
+
+compassEl.addEventListener("click", () => {
+  SoundFX.shimmer();
+  // remove class first to allow re-triggering
+  compassNeedle.classList.remove("spin-once");
+  // force reflow so re-add triggers animation
+  void compassNeedle.offsetWidth;
+  compassNeedle.classList.add("spin-once");
+
+  // after spin completes (1.2s) go to graph
+  compassNeedle.addEventListener("animationend", function onSpinEnd() {
+    compassNeedle.removeEventListener("animationend", onSpinEnd);
+    compassNeedle.classList.remove("spin-once");
+    switchTab("graph");
+    renderGraph();
+  }, { once: true });
+});
+
+// --- camera / drag screen logic ---
+document.getElementById("btn-start-dig").addEventListener("click", openDragScreen);
+
+let cameraStream = null;
+async function openCameraScreen() {
+  show("camera");
+  const video = document.getElementById("camera-feed");
+  const cameraWrap = document.getElementById("camera-wrap-el");
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" }, audio: false });
+    if (video) { video.srcObject = stream; cameraStream = stream; }
+    if (cameraWrap) cameraWrap.classList.add("has-camera");
+  } catch {
+    if (cameraWrap) cameraWrap.classList.remove("has-camera");
+  }
+  // setup swipe gesture
+  initCameraSwipe();
+}
+
+function closeCameraStream() {
+  if (cameraStream) { cameraStream.getTracks().forEach((t) => t.stop()); cameraStream = null; }
+}
+
+// --- swipe gesture detection on camera screen ---
+function initCameraSwipe() {
+  const wrap = document.getElementById("camera-wrap-el");
+  if (!wrap || wrap._swipeInited) return;
+  wrap._swipeInited = true;
+
+  let touchStartX = 0;
+  wrap.addEventListener("touchstart", (e) => {
+    touchStartX = e.touches[0].clientX;
+  }, { passive: true });
+  wrap.addEventListener("touchend", (e) => {
+    const delta = e.changedTouches[0].clientX - touchStartX;
+    if (Math.abs(delta) > 60) {
+      openDragScreen();
+    }
+  }, { passive: true });
+}
+
+// --- drag screen ---
+function openDragScreen() {
+  closeCameraStream();
+  show("drag");
+  initDrag();
+}
+
+function initDrag() {
+  const capsuleOrig = document.getElementById("drag-capsule");
+  const stumpScene = document.querySelector(".stump-scene");
+  const scene = document.getElementById("drag-scene");
+  if (!capsuleOrig || !stumpScene || !scene) return;
+
+  // reset
+  capsuleOrig.style.transition = "";
+  capsuleOrig.style.top = "20px";
+  stumpScene.classList.remove("receiving");
+
+  let dragging = false, startY = 0, curY = 0;
+  const GROUND_THRESH = scene.offsetHeight - 200;
+
+  const onStart = (e) => {
+    dragging = true;
+    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+    const rect = capsuleOrig.getBoundingClientRect();
+    startY = clientY - rect.top;
+    capsuleOrig.style.transition = "none";
+    e.preventDefault();
+  };
+  const onMove = (e) => {
+    if (!dragging) return;
+    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+    const sceneRect = scene.getBoundingClientRect();
+    curY = Math.min(GROUND_THRESH, Math.max(0, clientY - sceneRect.top - startY));
+    capsuleOrig.style.top = curY + "px";
+    if (curY >= GROUND_THRESH - 20) stumpScene.classList.add("receiving");
+    else stumpScene.classList.remove("receiving");
+    e.preventDefault();
+  };
+  const onEnd = () => {
+    if (!dragging) return;
+    dragging = false;
+    if (curY >= GROUND_THRESH - 30) {
+      // burial animation: sink + scale down
+      capsuleOrig.style.transition = "top .35s ease-in, transform .35s ease-in, opacity .3s .15s ease";
+      capsuleOrig.style.top = (GROUND_THRESH + 80) + "px";
+      capsuleOrig.style.transform = "translateX(-50%) scale(0.5)";
+      capsuleOrig.style.opacity = "0";
+
+      // soil particles burst
+      capsuleOrig.querySelectorAll(".soil-particle").forEach((p) => {
+        p.classList.add("burst");
+      });
+
+      setTimeout(() => {
+        capsuleOrig.style.transition = "";
+        capsuleOrig.style.top = "20px";
+        capsuleOrig.style.transform = "translateX(-50%)";
+        capsuleOrig.style.opacity = "1";
+        capsuleOrig.querySelectorAll(".soil-particle").forEach((p) => p.classList.remove("burst"));
+        stumpScene.classList.remove("receiving");
+        const poi = SEED.map.find((p) => !p.capsuleId) || SEED.map[0];
+        startCreate(poi);
+      }, 600);
+    } else {
+      capsuleOrig.style.transition = "top .3s var(--easing)";
+      capsuleOrig.style.top = "20px";
+    }
+  };
+
+  // clean up old listeners by cloning
+  const newCapsule = capsuleOrig.cloneNode(true);
+  capsuleOrig.parentNode.replaceChild(newCapsule, capsuleOrig);
+
+  newCapsule.addEventListener("mousedown", onStart);
+  newCapsule.addEventListener("touchstart", onStart, { passive: false });
+  document.addEventListener("mousemove", onMove);
+  document.addEventListener("touchmove", onMove, { passive: false });
+  document.addEventListener("mouseup", onEnd);
+  document.addEventListener("touchend", onEnd);
+}
+
+// --- pull any capsules already ingested by the recall backend ---
 async function hydrateFromBackend() {
   if (!Recall.on()) return;
-  const list = await Recall.listCapsules(); // null = unreachable, [] = connected but empty
+  const list = await Recall.listCapsules();
   setBackendChip(list !== null);
   if (!list) return;
   let added = 0;
@@ -634,7 +853,11 @@ function setBackendChip(live) {
 renderMap();
 renderPlaces();
 renderGraph();
-show("map");
+show("home");
 hydrateFromBackend();
 
-if(location.search.includes("demo=venue")){active=getPlace("venue");reveal();}
+if (location.search.includes("demo=venue")) { active = getPlace("venue"); reveal(); }
+if (location.search.includes("demo=map")) { show("map"); renderMap(); }
+if (location.search.includes("demo=principles")) { show("graph"); renderGraph(); }
+if (location.search.includes("demo=discover")) { show("discover"); }
+if (location.search.includes("demo=places")) { show("places"); }

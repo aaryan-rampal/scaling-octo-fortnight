@@ -3,38 +3,31 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover" />
-  <title>recapsule — photo in, grounded memory out</title>
+  <title>recapsule — your memories, grounded</title>
 
-  <!-- installable / "looks like a native app" on phones -->
   <link rel="manifest" href="manifest.json" />
-  <meta name="theme-color" content="#14100c" />
+  <meta name="theme-color" content="#faf6ee" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="mobile-web-app-capable" content="yes" />
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
   <meta name="apple-mobile-web-app-title" content="recapsule" />
   <link rel="apple-touch-icon" href="icon.svg" />
 
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Caveat:wght@400;500;600;700&family=Playfair+Display:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
 
-  <!-- live satellite map -->
-  <link href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet" />
-  <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
-
-  <link rel="stylesheet" href="styles.css?v=7" />
+  <link rel="stylesheet" href="styles.css?v=10" />
 </head>
 <body>
-  <!-- hand-painted / "drawn" map filter (static wobble — no continuous motion) -->
   <svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
-    <filter id="watercolor" x="-5%" y="-5%" width="110%" height="110%">
-      <feTurbulence type="fractalNoise" baseFrequency="0.011 0.013" numOctaves="2" seed="7" result="n"/>
-      <feDisplacementMap in="SourceGraphic" in2="n" scale="11" xChannelSelector="R" yChannelSelector="G"/>
+    <filter id="lw" x="-8%" y="-8%" width="116%" height="116%">
+      <feTurbulence type="fractalNoise" baseFrequency="0.018 0.02" numOctaves="2" seed="6" result="n"/>
+      <feDisplacementMap in="SourceGraphic" in2="n" scale="3.4" xChannelSelector="R" yChannelSelector="G"/>
     </filter>
   </defs></svg>
 
   <div class="phone">
-    <!-- ambient golden-hour glow + film grain (nostalgia atmosphere) -->
     <div class="ambient" aria-hidden="true"></div>
     <div class="grain" aria-hidden="true"></div>
 
@@ -48,69 +41,303 @@
       </span>
     </div>
 
-    <header class="topbar">
-      <h1 class="brand">recapsule<span class="dot">.</span></h1>
-      <p class="tagline">return to a moment, not just a place</p>
-    </header>
-
-    <!-- VIEW: map -->
-    <section id="view-map" class="view active">
-      <div class="map-head">
-        <p class="section-label">Your world</p>
-        <span id="map-progress" class="map-progress"></span>
+    <!-- VIEW: home -->
+    <section id="view-home" class="view active">
+      <div class="home-topbar">
+        <img src="logo.svg?v=10" alt="recapsule" class="home-logo" id="logo-home" />
+        <span class="home-brand">recapsule</span>
       </div>
-      <div id="map" class="map"></div>
-      <p id="map-info" class="map-info">Tap a glowing capsule to open it. Tap a dim pin to travel there and seal a memory.</p>
+      <p class="home-sub">your memories, grounded</p>
+      <div class="home-wrap">
+
+        <!-- view map button -->
+        <button class="capsule-choice-wrap" id="btn-viewmap" aria-label="View map">
+          <div class="cap-pill-wrap" style="transform:rotate(-8deg)" filter="url(#lw)">
+            <svg viewBox="0 0 300 86" fill="none" class="capsule-btn-svg" style="filter:url(#lw)">
+              <rect x="40" y="14" width="220" height="56" rx="28" fill="#edd878" stroke="#2a1c08" stroke-width="3.5"/>
+              <ellipse cx="48" cy="42" rx="22" ry="30" fill="#d4aa3a" stroke="#2a1c08" stroke-width="3.5"/>
+              <ellipse cx="252" cy="42" rx="22" ry="30" fill="#d4aa3a" stroke="#2a1c08" stroke-width="3.5"/>
+              <rect x="105" y="13" width="14" height="58" rx="7" fill="#c49820" stroke="#2a1c08" stroke-width="2.5"/>
+              <rect x="175" y="13" width="14" height="58" rx="7" fill="#c49820" stroke="#2a1c08" stroke-width="2.5"/>
+            </svg>
+            <span class="cap-pill-label">view map</span>
+          </div>
+          <svg viewBox="0 0 300 40" fill="none" class="ground-grass">
+            <path d="M0 35 Q75 28 150 33 Q225 38 300 30 L300 40 L0 40 Z" fill="#a08060"/>
+            <path d="M15 34 Q17 24 13 16 Q20 26 22 34" fill="#4a7230"/>
+            <path d="M35 34 Q38 22 33 12 Q40 24 43 34" fill="#5a8040"/>
+            <path d="M55 35 Q58 23 52 14 Q60 25 62 35" fill="#4a7230"/>
+            <path d="M80 34 Q83 21 78 13 Q86 24 88 34" fill="#5a8040"/>
+            <path d="M105 35 Q108 22 103 12 Q111 24 113 35" fill="#4a7230"/>
+            <path d="M130 34 Q133 23 128 14 Q136 25 138 34" fill="#5a8040"/>
+            <path d="M160 35 Q163 21 158 13 Q166 24 168 35" fill="#4a7230"/>
+            <path d="M190 34 Q193 22 188 13 Q196 25 198 34" fill="#5a8040"/>
+            <path d="M220 35 Q223 23 218 14 Q226 25 228 35" fill="#4a7230"/>
+            <path d="M250 34 Q253 21 248 12 Q256 24 258 34" fill="#5a8040"/>
+            <path d="M275 35 Q278 23 273 14 Q281 25 283 35" fill="#4a7230"/>
+          </svg>
+        </button>
+
+        <!-- dig/drop button -->
+        <button class="capsule-choice-wrap" id="btn-digdrop" aria-label="Dig or drop capsule">
+          <div class="cap-pill-wrap" style="transform:rotate(-5deg)" filter="url(#lw)">
+            <svg viewBox="0 0 300 86" fill="none" class="capsule-btn-svg" style="filter:url(#lw)">
+              <rect x="40" y="14" width="220" height="56" rx="28" fill="#edd878" stroke="#2a1c08" stroke-width="3.5"/>
+              <ellipse cx="48" cy="42" rx="22" ry="30" fill="#d4aa3a" stroke="#2a1c08" stroke-width="3.5"/>
+              <ellipse cx="252" cy="42" rx="22" ry="30" fill="#d4aa3a" stroke="#2a1c08" stroke-width="3.5"/>
+              <rect x="105" y="13" width="14" height="58" rx="7" fill="#c49820" stroke="#2a1c08" stroke-width="2.5"/>
+              <rect x="175" y="13" width="14" height="58" rx="7" fill="#c49820" stroke="#2a1c08" stroke-width="2.5"/>
+            </svg>
+            <span class="cap-pill-label">dig / drop capsule</span>
+          </div>
+          <svg viewBox="0 0 300 40" fill="none" class="ground-grass ground-dirt">
+            <path d="M0 32 Q75 25 150 30 Q225 35 300 28 L300 40 L0 40 Z" fill="#8c6848"/>
+            <circle cx="30" cy="37" r="2.5" fill="#6a4828" opacity=".6"/>
+            <circle cx="70" cy="38" r="2" fill="#6a4828" opacity=".5"/>
+            <circle cx="110" cy="36" r="3" fill="#6a4828" opacity=".6"/>
+            <circle cx="155" cy="38" r="2" fill="#6a4828" opacity=".5"/>
+            <circle cx="200" cy="37" r="2.5" fill="#6a4828" opacity=".6"/>
+            <circle cx="240" cy="39" r="2" fill="#6a4828" opacity=".5"/>
+            <circle cx="275" cy="36" r="3" fill="#6a4828" opacity=".6"/>
+          </svg>
+        </button>
+
+      </div>
     </section>
 
-    <!-- VIEW: principle graph (Obsidian-style) -->
-    <section id="view-graph" class="view">
-      <div class="map-head">
-        <p class="section-label">Principle graph</p>
-        <span class="graph-legend"><i class="lg align"></i>aligns<i class="lg contra"></i>contradicts</span>
+    <!-- VIEW: discover -->
+    <section id="view-discover" class="view">
+      <div class="screen-nav">
+        <img src="logo.svg?v=10" alt="recapsule home" class="screen-logo-sm" data-goto-home />
       </div>
-      <div id="graph" class="graph-canvas">
+      <div class="discover-wrap">
+        <div class="telescope-area">
+          <svg class="telescope-svg" viewBox="0 0 220 130" fill="none">
+            <rect x="8" y="54" width="35" height="18" rx="9" fill="#d4aa3a" stroke="#2a1c08" stroke-width="3"/>
+            <rect x="40" y="40" width="85" height="46" rx="8" fill="#e0bc4a" stroke="#2a1c08" stroke-width="3"/>
+            <rect x="122" y="28" width="60" height="70" rx="10" fill="#d4aa3a" stroke="#2a1c08" stroke-width="3"/>
+            <rect x="64" y="39" width="12" height="48" rx="6" fill="#c49820" stroke="#2a1c08" stroke-width="2.5"/>
+            <rect x="94" y="39" width="12" height="48" rx="6" fill="#c49820" stroke="#2a1c08" stroke-width="2.5"/>
+            <ellipse cx="183" cy="63" rx="10" ry="14" fill="#b8cce4" stroke="#2a1c08" stroke-width="2"/>
+            <line x1="92" y1="86" x2="68" y2="125" stroke="#2a1c08" stroke-width="3" stroke-linecap="round"/>
+            <line x1="92" y1="86" x2="116" y2="125" stroke="#2a1c08" stroke-width="3" stroke-linecap="round"/>
+            <line x1="66" y1="118" x2="118" y2="118" stroke="#2a1c08" stroke-width="2.5" stroke-linecap="round"/>
+          </svg>
+          <p class="discover-question">what do you want to do?</p>
+        </div>
+
+        <div class="discover-actions">
+          <button class="discover-action-btn" id="btn-dig-old" aria-label="Dig up old capsule">
+            <div class="discover-btn-card">
+              <svg viewBox="0 0 56 56" fill="none" width="48" height="48">
+                <circle cx="28" cy="24" r="16" fill="none" stroke="#c84030" stroke-width="3.5"/>
+                <circle cx="28" cy="24" r="7" fill="none" stroke="#c84030" stroke-width="2.5"/>
+                <path d="M12 38 Q28 56 28 56 Q28 56 44 38" fill="none" stroke="#c84030" stroke-width="3.5" stroke-linejoin="round"/>
+              </svg>
+              <span class="discover-action-label">dig up old<br>capsule</span>
+            </div>
+          </button>
+
+          <button class="discover-action-btn" id="btn-drop-new" aria-label="Drop new capsule">
+            <div class="discover-btn-card">
+              <svg viewBox="0 0 56 70" fill="none" width="48" height="60">
+                <path d="M28 6 Q44 6 46 22 Q48 36 28 50 Q8 36 10 22 Q12 6 28 6 Z" fill="none" stroke="#c84030" stroke-width="3.5"/>
+                <line x1="28" y1="48" x2="28" y2="68" stroke="#c84030" stroke-width="3.5" stroke-linecap="round"/>
+                <line x1="16" y1="62" x2="40" y2="62" stroke="#c84030" stroke-width="3" stroke-linecap="round"/>
+              </svg>
+              <span class="discover-action-label">drop new<br>capsule</span>
+            </div>
+          </button>
+        </div>
+
+        <div class="discover-soil" aria-hidden="true">
+          <svg viewBox="0 0 300 30" fill="none" width="100%" height="30">
+            <circle cx="20" cy="15" r="3" fill="#8c6848" opacity=".5"/>
+            <circle cx="55" cy="20" r="2" fill="#8c6848" opacity=".4"/>
+            <circle cx="95" cy="12" r="2.5" fill="#8c6848" opacity=".5"/>
+            <circle cx="140" cy="22" r="2" fill="#8c6848" opacity=".4"/>
+            <circle cx="175" cy="10" r="3" fill="#8c6848" opacity=".5"/>
+            <circle cx="215" cy="18" r="2" fill="#8c6848" opacity=".4"/>
+            <circle cx="255" cy="14" r="2.5" fill="#8c6848" opacity=".5"/>
+            <circle cx="285" cy="24" r="2" fill="#8c6848" opacity=".4"/>
+          </svg>
+        </div>
+      </div>
+    </section>
+
+    <!-- VIEW: map -->
+    <section id="view-map" class="view">
+      <div class="screen-nav">
+        <img src="logo.svg?v=10" alt="recapsule home" class="screen-logo-sm" data-goto-home />
+      </div>
+      <div class="map-head">
+        <p class="map-title-green">map</p>
+        <span id="map-progress" class="map-progress"></span>
+      </div>
+
+      <div class="scroll-frame">
+        <div class="map-frame" id="map-frame">
+          <svg id="map-svg" class="map-svg" viewBox="0 0 360 400" preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg">
+            <defs>
+              <filter id="map-lw" x="-5%" y="-5%" width="110%" height="110%">
+                <feTurbulence type="fractalNoise" baseFrequency="0.02 0.025" numOctaves="1" result="n"/>
+                <feDisplacementMap in="SourceGraphic" in2="n" scale="1.8" xChannelSelector="R" yChannelSelector="G"/>
+              </filter>
+            </defs>
+
+            <rect width="360" height="400" fill="#f0e6d0"/>
+
+            <path d="M 152 30 Q 200 26 280 34 L 348 34 L 348 232 Q 260 238 178 233 L 148 202 Q 143 170 146 100 Z"
+                  fill="#e8d46a" stroke="#c8a430" stroke-width="1.5" opacity=".35" filter="url(#map-lw)"/>
+
+            <ellipse cx="136" cy="80" rx="26" ry="17" fill="#a0c870" stroke="#5a8830" stroke-width="1.5" opacity=".6" filter="url(#map-lw)"/>
+
+            <rect x="108" y="198" width="46" height="36" rx="5" fill="#d8c070" stroke="#b89830" stroke-width="1" opacity=".4" filter="url(#map-lw)"/>
+
+            <path d="M 130 400 Q 127 360 130 300 Q 133 230 130 160 Q 127 90 130 30"
+                  stroke="#c8aa70" stroke-width="8" fill="none" stroke-linecap="round" filter="url(#map-lw)"/>
+            <text transform="rotate(-90, 112, 350)" x="112" y="350" font-family="Caveat,cursive" font-size="9" fill="#8c6040" opacity=".7">Telegraph</text>
+
+            <path d="M 222 400 Q 220 360 222 300 Q 224 230 222 160 Q 220 90 222 30"
+                  stroke="#c8aa70" stroke-width="8" fill="none" stroke-linecap="round" filter="url(#map-lw)"/>
+            <text transform="rotate(-90, 205, 350)" x="205" y="350" font-family="Caveat,cursive" font-size="9" fill="#8c6040" opacity=".7">College</text>
+
+            <path d="M 55 268 Q 100 265 155 268 Q 200 271 265 268 Q 310 266 348 268"
+                  stroke="#c8aa70" stroke-width="8" fill="none" stroke-linecap="round" filter="url(#map-lw)"/>
+            <text x="58" y="262" font-family="Caveat,cursive" font-size="9" fill="#8c6040" opacity=".7">Durant</text>
+
+            <path d="M 55 224 Q 100 221 155 224 Q 200 227 265 224 Q 310 222 348 224"
+                  stroke="#c8aa70" stroke-width="8" fill="none" stroke-linecap="round" filter="url(#map-lw)"/>
+            <text x="58" y="218" font-family="Caveat,cursive" font-size="9" fill="#8c6040" opacity=".7">Bancroft</text>
+
+            <path d="M 55 296 Q 100 294 155 296 Q 185 298 215 296"
+                  stroke="#c8aa70" stroke-width="5" fill="none" opacity=".7" filter="url(#map-lw)"/>
+
+            <path d="M 55 320 Q 100 318 155 320 Q 185 322 215 320"
+                  stroke="#c8aa70" stroke-width="5" fill="none" opacity=".7" filter="url(#map-lw)"/>
+
+            <path d="M 55 350 Q 100 348 155 350 Q 200 352 270 350 Q 310 349 348 350"
+                  stroke="#c8aa70" stroke-width="5" fill="none" opacity=".6" filter="url(#map-lw)"/>
+
+            <path d="M 165 128 Q 155 165 148 200" stroke="#d4a830" stroke-width="4" fill="none" stroke-dasharray="7 4" opacity=".6" filter="url(#map-lw)"/>
+
+            <rect x="182" y="75" width="28" height="20" rx="3" fill="#d4b850" stroke="#b09030" stroke-width="1" opacity=".45" filter="url(#map-lw)"/>
+            <rect x="220" y="95" width="34" height="24" rx="3" fill="#d4b850" stroke="#b09030" stroke-width="1" opacity=".45" filter="url(#map-lw)"/>
+            <rect x="258" y="65" width="26" height="19" rx="3" fill="#d4b850" stroke="#b09030" stroke-width="1" opacity=".45" filter="url(#map-lw)"/>
+            <rect x="240" y="148" width="38" height="26" rx="3" fill="#d4b850" stroke="#b09030" stroke-width="1" opacity=".45" filter="url(#map-lw)"/>
+            <rect x="188" y="152" width="30" height="21" rx="3" fill="#d4b850" stroke="#b09030" stroke-width="1" opacity=".45" filter="url(#map-lw)"/>
+            <rect x="285" y="105" width="32" height="22" rx="3" fill="#d4b850" stroke="#b09030" stroke-width="1" opacity=".4" filter="url(#map-lw)"/>
+
+            <rect x="72" y="278" width="18" height="13" rx="2" fill="#d0bca0" stroke="#b0986a" stroke-width="1" opacity=".4"/>
+            <rect x="70" y="302" width="16" height="11" rx="2" fill="#d0bca0" stroke="#b0986a" stroke-width="1" opacity=".4"/>
+            <rect x="158" y="282" width="20" height="13" rx="2" fill="#d0bca0" stroke="#b0986a" stroke-width="1" opacity=".4"/>
+            <rect x="238" y="286" width="18" height="14" rx="2" fill="#d0bca0" stroke="#b0986a" stroke-width="1" opacity=".4"/>
+            <rect x="72" y="332" width="22" height="13" rx="2" fill="#d0bca0" stroke="#b0986a" stroke-width="1" opacity=".4"/>
+            <rect x="168" y="338" width="18" height="11" rx="2" fill="#d0bca0" stroke="#b0986a" stroke-width="1" opacity=".4"/>
+            <rect x="250" y="332" width="20" height="13" rx="2" fill="#d0bca0" stroke="#b0986a" stroke-width="1" opacity=".4"/>
+
+            <g transform="translate(330, 44)" opacity=".5">
+              <circle r="18" fill="none" stroke="#8c6040" stroke-width="1.5"/>
+              <path d="M0 -14 L-2.5 -5 L0 -1.5 L2.5 -5 Z" fill="#c84030"/>
+              <path d="M0 14 L-2.5 5 L0 1.5 L2.5 5 Z" fill="#8c6040"/>
+              <path d="M-14 0 L-5 -2.5 L-1.5 0 L-5 2.5 Z" fill="#8c6040"/>
+              <path d="M14 0 L5 -2.5 L1.5 0 L5 2.5 Z" fill="#8c6040"/>
+              <circle r="3" fill="#2a1c08"/>
+              <text y="-18" text-anchor="middle" font-family="Caveat,cursive" font-size="8" fill="#8c6040">N</text>
+            </g>
+
+            <rect x="4" y="4" width="352" height="392" rx="8" fill="none" stroke="#8c6040" stroke-width="1.5" stroke-dasharray="8 5" opacity=".4"/>
+
+            <g id="map-markers"></g>
+          </svg>
+        </div>
+      </div>
+
+      <p class="zoom-annotation">pinch to zoom <svg viewBox="0 0 30 20" fill="none" width="28" height="18" class="annot-arrow"><path d="M2 10 Q12 4 22 10" stroke="#2a1c08" stroke-width="1.5" fill="none" opacity=".5"/><path d="M18 7 L22 10 L18 13" stroke="#2a1c08" stroke-width="1.5" fill="none" opacity=".5" stroke-linecap="round" stroke-linejoin="round"/></svg></p>
+      <p id="map-info" class="map-info">Tap a glowing capsule to open it. Tap a dim marker to discover it.</p>
+
+      <div class="compass-area">
+        <p class="compass-label">find your direction</p>
+        <div class="compass" id="compass">
+          <svg id="compass-svg" viewBox="0 0 120 120" width="130" height="130">
+            <circle cx="60" cy="60" r="55" fill="white" stroke="#4a7ab0" stroke-width="5"/>
+            <circle cx="60" cy="60" r="48" fill="none" stroke="#4a7ab0" stroke-width="2" opacity=".4"/>
+            <text x="60" y="20" text-anchor="middle" font-family="'Caveat',cursive" font-size="18" fill="#2a1c10" font-weight="700">N</text>
+            <text x="60" y="110" text-anchor="middle" font-family="'Caveat',cursive" font-size="15" fill="#6b4e34">S</text>
+            <text x="14" y="65" text-anchor="middle" font-family="'Caveat',cursive" font-size="15" fill="#6b4e34">W</text>
+            <text x="106" y="65" text-anchor="middle" font-family="'Caveat',cursive" font-size="15" fill="#6b4e34">E</text>
+            <g id="compass-needle" style="transform-origin: 60px 60px">
+              <path d="M60 18 L55 62 L60 66 L65 62 Z" fill="#c84030"/>
+              <path d="M60 102 L55 58 L60 66 L65 58 Z" fill="#7a6050"/>
+            </g>
+            <circle cx="60" cy="60" r="6" fill="#2a1c10"/>
+          </svg>
+        </div>
+        <p class="compass-spin-hint">spin the principles wheel <svg viewBox="0 0 30 20" fill="none" width="28" height="18" class="annot-arrow"><path d="M2 10 Q12 4 22 10" stroke="#2a1c08" stroke-width="1.5" fill="none" opacity=".5"/><path d="M18 7 L22 10 L18 13" stroke="#2a1c08" stroke-width="1.5" fill="none" opacity=".5" stroke-linecap="round" stroke-linejoin="round"/></svg></p>
+      </div>
+    </section>
+
+    <!-- VIEW: principle graph -->
+    <section id="view-graph" class="view">
+      <div class="screen-nav">
+        <img src="logo.svg?v=10" alt="recapsule home" class="screen-logo-sm" data-goto-home />
+        <svg class="compass-rose-sm" viewBox="0 0 50 50" width="40" height="40">
+          <circle cx="25" cy="25" r="22" fill="none" stroke="#4a7ab0" stroke-width="2"/>
+          <text x="25" y="12" text-anchor="middle" font-family="'Caveat',cursive" font-size="10" fill="#2a1c10">N</text>
+          <text x="25" y="44" text-anchor="middle" font-family="'Caveat',cursive" font-size="9" fill="#6b4e34">S</text>
+          <text x="8" y="29" text-anchor="middle" font-family="'Caveat',cursive" font-size="9" fill="#6b4e34">W</text>
+          <text x="42" y="29" text-anchor="middle" font-family="'Caveat',cursive" font-size="9" fill="#6b4e34">E</text>
+          <path d="M25 15 L23 25 L25 27 L27 25 Z" fill="#c84030"/>
+          <path d="M25 35 L23 25 L25 27 L27 25 Z" fill="#7a6050"/>
+          <circle cx="25" cy="25" r="3" fill="#2a1c10"/>
+        </svg>
+      </div>
+      <div class="principles-header">
+        <p class="principles-title">Principles</p>
+        <p class="principles-subtitle">Map</p>
+      </div>
+      <div id="graph" class="graph-canvas principles-canvas">
         <svg id="graph-edges" class="graph-edges" viewBox="0 0 100 100" preserveAspectRatio="none"></svg>
         <div id="graph-nodes" class="graph-nodes"></div>
       </div>
       <p class="map-info" id="graph-info">Tap a principle to see the moments behind it. Tap a memory to open it.</p>
     </section>
 
-    <!-- VIEW: capsules -->
+    <!-- VIEW: capsules list -->
     <section id="view-places" class="view">
       <p class="section-label">Your capsules</p>
-      <div id="place-list" class="place-list"><!-- injected --></div>
+      <div id="place-list" class="place-list"></div>
       <p class="hint">Sealed capsules unlock when you come back. The <em>I'm back</em>
         button stands in for real geofencing in this build.</p>
     </section>
 
-    <!-- VIEW: create a capsule -->
+    <!-- VIEW: create -->
     <section id="view-create" class="view">
       <button class="back" data-back-map>← map</button>
       <p class="section-label">Seal a capsule</p>
       <div class="create-loc"><span id="create-loc-icon"></span><span id="create-place"></span></div>
       <form id="create-form">
         <label class="field-label">How are you feeling right now?</label>
-        <div id="mood-row" class="chip-row"><!-- injected --></div>
+        <div id="mood-row" class="chip-row"></div>
 
         <label class="field-label" for="create-note">Leave a note for future you</label>
         <textarea id="create-note" rows="3" placeholder="what's true today that you might forget…"></textarea>
 
         <label class="field-label">Attach media (photo / video)</label>
         <label class="filedrop" for="create-files">
-          <span id="filedrop-label">＋ add a photo or video — recall reads its EXIF location & time</span>
+          <span id="filedrop-label">＋ add a photo or video — recall reads its EXIF location &amp; time</span>
           <input id="create-files" type="file" accept="image/*,video/*" multiple hidden />
         </label>
         <div id="file-preview" class="file-preview"></div>
 
         <label class="field-label">Or pick a cover</label>
-        <div id="cover-row" class="cover-row"><!-- injected --></div>
+        <div id="cover-row" class="cover-row"></div>
 
         <button type="submit" class="primary">Seal until I return ↩</button>
       </form>
     </section>
 
-    <!-- VIEW: reconstruct-before-reveal -->
+    <!-- VIEW: reconstruct -->
     <section id="view-reconstruct" class="view">
       <button class="back" data-back-map>← map</button>
       <div class="anchor-card">
@@ -123,29 +350,28 @@
       </div>
 
       <p class="section-label">Reconstructing the moment</p>
-      <div id="reconstruct-feed" class="feed"><!-- injected, staged --></div>
+      <div id="reconstruct-feed" class="feed"></div>
 
       <button id="reveal-btn" class="primary hidden">Reveal what happened →</button>
     </section>
 
-    <!-- VIEW: the grounded storyline -->
+    <!-- VIEW: reveal -->
     <section id="view-reveal" class="view">
       <button class="back" data-back-map>← map</button>
-      <div id="reveal-meta" class="rmeta"><!-- place · coords · time · mood · music --></div>
-      <div id="reveal-media" class="rmedia"><!-- photos + video --></div>
+      <div id="reveal-meta" class="rmeta"></div>
+      <div id="reveal-media" class="rmedia"></div>
       <div class="storyline-wrap">
         <p class="section-label">The night, reconstructed</p>
         <p id="storyline" class="storyline"></p>
-        <div id="citations" class="citations"><!-- injected --></div>
-        <div id="principle" class="principle"><!-- injected --></div>
+        <div id="citations" class="citations"></div>
+        <div id="principle" class="principle"></div>
       </div>
 
-      <!-- forward-looking reflection (wellbeing guardrail) -->
-      <div id="reflection" class="reflection"><!-- injected --></div>
+      <div id="reflection" class="reflection"></div>
 
       <div class="persona">
         <p class="section-label">Talk to past you <span class="seal" id="seal-date"></span></p>
-        <div id="chat" class="chat"><!-- injected --></div>
+        <div id="chat" class="chat"></div>
         <form id="chat-form" class="chat-form">
           <input id="chat-input" type="text" autocomplete="off"
                  placeholder="ask the version of you from that moment…" />
@@ -154,32 +380,138 @@
       </div>
     </section>
 
+    <!-- VIEW: camera -->
+    <section id="view-camera" class="view">
+      <div class="screen-nav">
+        <img src="logo.svg?v=10" alt="recapsule home" class="screen-logo-sm" data-goto-home />
+      </div>
+      <div class="camera-title-cloud">
+        <p class="camera-title-text">Point the<br>camera to<br>the ground</p>
+      </div>
+      <div class="camera-wrap" id="camera-wrap-el">
+        <video id="camera-feed" class="camera-feed" autoplay muted playsinline></video>
+
+        <svg class="camera-scene" viewBox="0 0 280 320" fill="none">
+          <rect x="0" y="0" width="280" height="200" fill="#deeef8"/>
+          <rect x="0" y="200" width="280" height="120" fill="#5a7840"/>
+          <path d="M10 200 Q12 182 8 168 Q16 184 18 200" fill="#3a6020"/>
+          <path d="M30 200 Q34 178 28 162 Q36 180 40 200" fill="#4a7030"/>
+          <path d="M55 200 Q58 180 52 166 Q60 182 63 200" fill="#3a6020"/>
+          <path d="M80 200 Q84 176 78 162 Q86 180 90 200" fill="#4a7030"/>
+          <path d="M108 200 Q112 180 106 164 Q114 182 118 200" fill="#3a6020"/>
+          <path d="M135 200 Q138 178 133 164 Q141 180 144 200" fill="#4a7030"/>
+          <path d="M162 200 Q166 176 160 162 Q168 180 172 200" fill="#3a6020"/>
+          <path d="M190 200 Q194 178 188 164 Q196 182 200 200" fill="#4a7030"/>
+          <path d="M218 200 Q222 178 216 164 Q224 180 228 200" fill="#3a6020"/>
+          <path d="M248 200 Q252 180 246 164 Q254 182 258 200" fill="#4a7030"/>
+          <circle cx="140" cy="128" r="18" fill="#3a2c1a" stroke="#2a1c08" stroke-width="2"/>
+          <path d="M140 146 L140 190" stroke="#3a2c1a" stroke-width="8" stroke-linecap="round"/>
+          <path d="M110 162 L140 152 L170 162" stroke="#3a2c1a" stroke-width="7" stroke-linecap="round"/>
+          <path d="M140 190 L120 220" stroke="#3a2c1a" stroke-width="7" stroke-linecap="round"/>
+          <path d="M140 190 L160 220" stroke="#3a2c1a" stroke-width="7" stroke-linecap="round"/>
+          <rect x="100" y="100" width="80" height="140" fill="none" stroke="#c84030" stroke-width="3" stroke-dasharray="8 5" rx="4"/>
+        </svg>
+
+        <div class="swipe-hint-label">Swipe side<br>to side<br>to start<br>digging</div>
+
+        <div class="swipe-arrow-anim" id="swipe-arrow" aria-hidden="true">
+          <svg viewBox="0 0 80 24" fill="none" width="80" height="24">
+            <path d="M4 12 L60 12" stroke="#c84030" stroke-width="3" stroke-linecap="round"/>
+            <path d="M50 5 L60 12 L50 19" stroke="#c84030" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </div>
+      </div>
+      <button class="primary" id="btn-start-dig">start digging →</button>
+    </section>
+
+    <!-- VIEW: drag to bury -->
+    <section id="view-drag" class="view">
+      <div class="screen-nav">
+        <img src="logo.svg?v=10" alt="recapsule home" class="screen-logo-sm" data-goto-home />
+      </div>
+      <p class="drag-label">Drag capsule</p>
+      <div class="drag-scene" id="drag-scene">
+        <div class="drag-capsule" id="drag-capsule">
+          <svg viewBox="0 0 260 70" fill="none" width="240" height="65">
+            <g transform="rotate(-10 130 35)">
+              <rect x="30" y="8" width="200" height="50" rx="25" fill="#edd878" stroke="#2a1c08" stroke-width="3"/>
+              <ellipse cx="38" cy="33" rx="20" ry="27" fill="#d4aa3a" stroke="#2a1c08" stroke-width="3"/>
+              <ellipse cx="230" cy="33" rx="20" ry="27" fill="#d4aa3a" stroke="#2a1c08" stroke-width="3"/>
+              <rect x="92" y="7" width="12" height="52" rx="6" fill="#c49820" stroke="#2a1c08" stroke-width="2.5"/>
+              <rect x="154" y="7" width="12" height="52" rx="6" fill="#c49820" stroke="#2a1c08" stroke-width="2.5"/>
+              <text x="130" y="40" text-anchor="middle" font-family="'Caveat',cursive" font-size="20" fill="#2a1c08" font-weight="600">recapsule</text>
+            </g>
+          </svg>
+          <span class="soil-particle sp1"></span>
+          <span class="soil-particle sp2"></span>
+          <span class="soil-particle sp3"></span>
+          <span class="soil-particle sp4"></span>
+        </div>
+        <div class="drag-zone" id="drag-zone"></div>
+
+        <svg class="stump-scene" viewBox="0 0 300 200" fill="none">
+          <path d="M0 60 Q50 48 100 54 Q150 60 200 48 Q250 36 300 52 L300 200 L0 200 Z" fill="#8c6848"/>
+          <path d="M0 60 Q50 48 100 54 Q150 60 200 48 Q250 36 300 52" fill="none" stroke="#4a7230" stroke-width="4"/>
+          <path d="M20 58 Q22 44 18 34 Q26 46 28 58" fill="#4a7230"/>
+          <path d="M50 52 Q53 38 48 28 Q56 40 58 52" fill="#5a8040"/>
+          <path d="M240 50 Q243 36 238 26 Q246 38 248 50" fill="#4a7230"/>
+          <path d="M270 54 Q273 40 268 30 Q276 42 278 54" fill="#5a8040"/>
+          <path d="M108 58 Q98 62 92 90 L92 160 L208 160 L208 90 Q202 62 192 58 Z" fill="#8c5c2a" stroke="#2a1c08" stroke-width="3"/>
+          <ellipse cx="150" cy="58" rx="50" ry="18" fill="#a06c3a" stroke="#2a1c08" stroke-width="3"/>
+          <ellipse cx="150" cy="58" rx="38" ry="12" fill="none" stroke="#7a4a1a" stroke-width="2" opacity=".6"/>
+          <ellipse cx="150" cy="58" rx="24" ry="7" fill="none" stroke="#7a4a1a" stroke-width="1.5" opacity=".5"/>
+          <circle cx="40" cy="100" r="3.5" fill="#6a4828" opacity=".7"/>
+          <circle cx="250" cy="120" r="3" fill="#6a4828" opacity=".6"/>
+          <circle cx="60" cy="150" r="2.5" fill="#6a4828" opacity=".6"/>
+          <circle cx="270" cy="160" r="2" fill="#6a4828" opacity=".5"/>
+          <circle cx="30" cy="140" r="2" fill="#6a4828" opacity=".5"/>
+        </svg>
+      </div>
+    </section>
+
     <!-- bottom tab bar -->
     <nav class="tabbar" id="tabbar">
       <button class="tab" data-tab="map" aria-label="Map">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><polygon points="3 6 9 3 15 6 21 3 21 18 15 21 9 18 3 21 3 6"/><line x1="9" y1="3" x2="9" y2="18"/><line x1="15" y1="6" x2="15" y2="21"/></svg>
-        <span>Map</span>
+        <span>map</span>
       </button>
-      <button class="tab" data-tab="graph" aria-label="Principle graph">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="5" cy="6" r="2.4"/><circle cx="19" cy="7" r="2.4"/><circle cx="12" cy="18" r="2.4"/><path d="M7 7.2 10 16M17 8.6 13.4 16.4M7.2 6.4 16.7 6.7"/></svg>
-        <span>Graph</span>
+      <button class="tab" data-tab="graph" aria-label="Principles map">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/>
+        </svg>
+        <span>principles</span>
       </button>
       <button class="tab" data-tab="capsules" aria-label="Capsules">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="m7.5 4.27 9 5.15"/><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg>
-        <span>Capsules</span>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="8" width="18" height="10" rx="5"/><ellipse cx="7" cy="13" rx="4" ry="5" fill="none"/><rect x="10" y="7.5" width="4" height="11" rx="2"/></svg>
+        <span>capsules</span>
       </button>
     </nav>
     </div>
 
-    <!-- capsule physically opening -->
+    <!-- capsule opening animation -->
     <div id="opening" class="opening" aria-hidden="true">
       <div class="cap3d">
+        <div class="cap-ground-layer">
+          <svg viewBox="0 0 200 60" class="cap-dirt-svg">
+            <path d="M 10 30 Q 50 20 100 28 Q 150 36 190 24 L 200 60 L 0 60 Z" fill="#6a4020"/>
+            <circle cx="30" cy="48" r="4" fill="#4a2810" opacity=".6"/>
+            <circle cx="70" cy="52" r="3" fill="#4a2810" opacity=".5"/>
+            <circle cx="120" cy="46" r="3.5" fill="#4a2810" opacity=".6"/>
+            <circle cx="160" cy="50" r="3" fill="#4a2810" opacity=".5"/>
+          </svg>
+        </div>
+        <div class="cap-body-wrap">
+          <span class="cap-half cap-top"></span>
+          <span class="cap-seam"></span>
+          <span class="cap-half cap-bottom"></span>
+        </div>
         <span class="cap-burst"></span>
         <span class="cap-rays"></span>
-        <span class="cap-half cap-bottom"></span>
-        <span class="cap-half cap-top"></span>
         <span class="cap-shadow"></span>
         <span class="dust d1"></span><span class="dust d2"></span><span class="dust d3"></span><span class="dust d4"></span>
+        <span class="wisp wisp1"></span>
+        <span class="wisp wisp2"></span>
+        <span class="wisp wisp3"></span>
       </div>
       <p class="opening-text" id="opening-text">unearthing…</p>
     </div>
@@ -188,8 +520,8 @@
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
   </div>
 
-  <script src="seed.js?v=7"></script>
-  <script src="api.js?v=7"></script>
-  <script src="app.js?v=7"></script>
+  <script src="seed.js?v=10"></script>
+  <script src="api.js?v=10"></script>
+  <script src="app.js?v=10"></script>
 </body>
 </html>
