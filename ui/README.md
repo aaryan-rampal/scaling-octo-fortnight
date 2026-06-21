@@ -1,4 +1,4 @@
-# RETURN — UI
+# recapsule — UI
 
 The **mobile web app** for the live demo: the reconstruct-before-reveal loop
 from `context/RETURN-architecture.pdf`. Zero build, no dependencies, no

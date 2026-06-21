@@ -125,4 +125,16 @@ const SEED = {
     "linear-gradient(150deg,#2a2140 0%,#4a3a5e 55%,#cf7f86 130%)",
     "linear-gradient(150deg,#1f3329 0%,#3a5e4a 55%,#e8c188 135%)",
   ],
+
+  // principle graph (architecture stage 06): principle nodes, the capsules that
+  // formed them, and typed alignment/contradiction edges between principles.
+  principles: [
+    { id: "p1", label: "Out-wait the panic", text: "I out-wait my own panic by about a week.", capsules: ["moffitt"] },
+    { id: "p2", label: "Say it only alone", text: "I say the hard things only when I'm alone.", capsules: ["marina"] },
+    { id: "p3", label: "Achieve, even at a cost", text: "I chase achievement even when it costs me peace.", capsules: ["moffitt", "marina"] },
+  ],
+  principleEdges: [
+    { a: "p1", b: "p3", type: "align" },      // out-waiting panic serves achievement
+    { a: "p2", b: "p3", type: "contradict" }, // needing solitude vs. always pushing
+  ],
 };

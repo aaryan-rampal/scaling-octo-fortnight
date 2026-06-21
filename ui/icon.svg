@@ -2,5 +2,5 @@
   <rect width="512" height="512" rx="112" fill="#1a1714"/>
   <text x="50%" y="52%" text-anchor="middle" dominant-baseline="middle"
         font-family="Georgia, 'Times New Roman', serif" font-size="150"
-        font-weight="600" fill="#f3ece1">R<tspan fill="#c8643c">.</tspan></text>
+        font-weight="600" fill="#f3ece1">r<tspan fill="#c8643c">.</tspan></text>
 </svg>

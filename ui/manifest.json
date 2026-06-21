@@ -1,6 +1,6 @@
 {
-  "name": "RETURN",
-  "short_name": "RETURN",
+  "name": "recapsule",
+  "short_name": "recapsule",
   "description": "Photo in, grounded memory out.",
   "start_url": "./index.html",
   "display": "standalone",

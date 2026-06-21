@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover" />
-  <title>RETURN — photo in, grounded memory out</title>
+  <title>recapsule — photo in, grounded memory out</title>
 
   <!-- installable / "looks like a native app" on phones -->
   <link rel="manifest" href="manifest.json" />
@@ -11,7 +11,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-  <meta name="apple-mobile-web-app-title" content="RETURN" />
+  <meta name="apple-mobile-web-app-title" content="recapsule" />
   <link rel="apple-touch-icon" href="icon.svg" />
 
   <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -36,7 +36,7 @@
     </div>
 
     <header class="topbar">
-      <h1 class="brand">RETURN<span class="dot">.</span></h1>
+      <h1 class="brand">recapsule<span class="dot">.</span></h1>
       <p class="tagline">return to a moment, not just a place</p>
     </header>
 
@@ -52,6 +52,19 @@
         <div class="map-vignette" aria-hidden="true"></div>
       </div>
       <p id="map-info" class="map-info">Tap a glowing capsule to open it. Visit a fogged spot to discover it and seal a memory.</p>
+    </section>
+
+    <!-- VIEW: principle graph (Obsidian-style) -->
+    <section id="view-graph" class="view">
+      <div class="map-head">
+        <p class="section-label">Principle graph</p>
+        <span class="graph-legend"><i class="lg align"></i>aligns<i class="lg contra"></i>contradicts</span>
+      </div>
+      <div id="graph" class="graph-canvas">
+        <svg id="graph-edges" class="graph-edges" viewBox="0 0 100 100" preserveAspectRatio="none"></svg>
+        <div id="graph-nodes" class="graph-nodes"></div>
+      </div>
+      <p class="map-info" id="graph-info">Tap a principle to see the moments behind it. Tap a memory to open it.</p>
     </section>
 
     <!-- VIEW: capsules -->
@@ -128,6 +141,10 @@
       <button class="tab" data-tab="map" aria-label="Map">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><polygon points="3 6 9 3 15 6 21 3 21 18 15 21 9 18 3 21 3 6"/><line x1="9" y1="3" x2="9" y2="18"/><line x1="15" y1="6" x2="15" y2="21"/></svg>
         <span>Map</span>
+      </button>
+      <button class="tab" data-tab="graph" aria-label="Principle graph">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="5" cy="6" r="2.4"/><circle cx="19" cy="7" r="2.4"/><circle cx="12" cy="18" r="2.4"/><path d="M7 7.2 10 16M17 8.6 13.4 16.4M7.2 6.4 16.7 6.7"/></svg>
+        <span>Graph</span>
       </button>
       <button class="tab" data-tab="capsules" aria-label="Capsules">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="m7.5 4.27 9 5.15"/><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg>

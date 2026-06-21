@@ -63,23 +63,23 @@ let highlightTimer;
 // --- view routing ---
 const views = {
   map: document.getElementById("view-map"),
+  graph: document.getElementById("view-graph"),
   places: document.getElementById("view-places"),
   create: document.getElementById("view-create"),
   reconstruct: document.getElementById("view-reconstruct"),
   reveal: document.getElementById("view-reveal"),
 };
 const FLOW = ["create", "reconstruct", "reveal"]; // hide tab bar in these
+const TAB_FOR_VIEW = { map: "map", graph: "graph", places: "capsules" };
 function show(name) {
   Object.values(views).forEach((v) => v.classList.remove("active"));
   views[name].classList.add("active");
   document.getElementById("tabbar").classList.toggle("hidden", FLOW.includes(name));
   document.querySelectorAll(".tab").forEach((t) =>
-    t.classList.toggle("active",
-      (name === "map" && t.dataset.tab === "map") ||
-      (name === "places" && t.dataset.tab === "capsules")));
+    t.classList.toggle("active", TAB_FOR_VIEW[name] === t.dataset.tab));
   document.querySelector(".screen").scrollTo({ top: 0, behavior: reduceMotion ? "auto" : "smooth" });
 }
-const switchTab = (tab) => show(tab === "map" ? "map" : "places");
+const switchTab = (tab) => show(tab === "capsules" ? "places" : tab);
 
 let active = null;
 
@@ -413,6 +413,103 @@ document.getElementById("chat-form").addEventListener("submit", (e) => {
   setTimeout(() => addBubble("past", pastReply(q)), 550);
 });
 
+// --- PRINCIPLE GRAPH (Obsidian-style) ---
+let graphNodes = [], graphEdges = [], graphFocus = null;
+
+function buildGraph() {
+  const nodes = [];
+  const byId = {};
+  SEED.principles.forEach((p) => {
+    const n = { id: p.id, kind: "principle", label: p.label, text: p.text, conn: new Set() };
+    nodes.push(n); byId[p.id] = n;
+  });
+  SEED.principles.forEach((p) => p.capsules.forEach((cid) => {
+    if (!byId[cid]) {
+      const cap = getPlace(cid);
+      if (!cap) return;
+      byId[cid] = { id: cid, kind: "memory", label: cap.name, cover: cap.cover, conn: new Set() };
+      nodes.push(byId[cid]);
+    }
+  }));
+  const edges = [];
+  SEED.principles.forEach((p) => p.capsules.forEach((cid) => {
+    if (byId[cid]) { edges.push({ a: cid, b: p.id, type: "evidence" }); byId[cid].conn.add(p.id); byId[p.id].conn.add(cid); }
+  }));
+  SEED.principleEdges.forEach((e) => {
+    if (byId[e.a] && byId[e.b]) { edges.push({ a: e.a, b: e.b, type: e.type }); byId[e.a].conn.add(e.b); byId[e.b].conn.add(e.a); }
+  });
+  layoutGraph(nodes, edges, byId);
+  graphNodes = nodes; graphEdges = edges;
+}
+
+// tiny force-directed layout in 0..100 space
+function layoutGraph(nodes, edges, byId) {
+  nodes.forEach((n, i) => {
+    const a = (2 * Math.PI * i) / nodes.length;
+    n.x = 50 + 26 * Math.cos(a); n.y = 50 + 26 * Math.sin(a);
+  });
+  const K = 22;
+  for (let it = 0; it < 240; it++) {
+    for (let i = 0; i < nodes.length; i++) for (let j = i + 1; j < nodes.length; j++) {
+      const a = nodes[i], b = nodes[j];
+      let dx = a.x - b.x, dy = a.y - b.y, d = Math.hypot(dx, dy) || 0.01;
+      const rep = ((K * K) / (d * d)) * 5, ux = dx / d, uy = dy / d;
+      a.x += ux * rep; a.y += uy * rep; b.x -= ux * rep; b.y -= uy * rep;
+    }
+    edges.forEach((e) => {
+      const a = byId[e.a], b = byId[e.b];
+      let dx = b.x - a.x, dy = b.y - a.y, d = Math.hypot(dx, dy) || 0.01;
+      const att = (d - K) * 0.06, ux = dx / d, uy = dy / d;
+      a.x += ux * att; a.y += uy * att; b.x -= ux * att; b.y -= uy * att;
+    });
+    nodes.forEach((n) => { n.x += (50 - n.x) * 0.012; n.y += (50 - n.y) * 0.012; });
+  }
+  nodes.forEach((n) => { n.x = Math.max(14, Math.min(86, n.x)); n.y = Math.max(13, Math.min(87, n.y)); });
+}
+
+function renderGraph() {
+  if (!graphNodes.length) buildGraph();
+  const byId = {}; graphNodes.forEach((n) => (byId[n.id] = n));
+  const svg = document.getElementById("graph-edges");
+  svg.innerHTML = graphEdges.map((e) => {
+    const a = byId[e.a], b = byId[e.b];
+    const lit = graphFocus && (e.a === graphFocus || e.b === graphFocus);
+    return `<line class="${e.type}${lit ? " lit" : ""}" x1="${a.x}" y1="${a.y}" x2="${b.x}" y2="${b.y}"/>`;
+  }).join("");
+  svg.classList.toggle("dim", !!graphFocus);
+
+  const wrap = document.getElementById("graph-nodes");
+  wrap.innerHTML = "";
+  graphNodes.forEach((n, i) => {
+    const el = document.createElement("button");
+    el.className = `gnode ${n.kind}`;
+    if (graphFocus) {
+      if (n.id === graphFocus || byId[graphFocus].conn.has(n.id)) el.classList.add("lit");
+      else el.classList.add("dim");
+    }
+    el.style.left = n.x + "%"; el.style.top = n.y + "%";
+    el.style.animationDelay = (-i * 0.7) + "s";
+    const dot = n.kind === "memory" ? `<span class="gdot" style="background:${n.cover}"></span>` : `<span class="gdot"></span>`;
+    el.innerHTML = `${dot}<span class="glabel">${n.label}</span>`;
+    el.setAttribute("aria-label", n.kind === "memory" ? `Open ${n.label}` : `Principle: ${n.text}`);
+    el.addEventListener("click", (ev) => { ev.stopPropagation(); onGraphNode(n); });
+    wrap.appendChild(el);
+  });
+}
+
+function onGraphNode(n) {
+  if (n.kind === "memory") { openCapsule(getPlace(n.id)); return; }
+  graphFocus = (graphFocus === n.id) ? null : n.id;
+  SoundFX.shimmer();
+  renderGraph();
+  document.getElementById("graph-info").textContent = graphFocus
+    ? `“${n.text}” — tap a lit memory to open it.`
+    : "Tap a principle to see the moments behind it. Tap a memory to open it.";
+}
+document.getElementById("graph").addEventListener("click", () => {
+  if (graphFocus) { graphFocus = null; renderGraph(); document.getElementById("graph-info").textContent = "Tap a principle to see the moments behind it. Tap a memory to open it."; }
+});
+
 // --- tabs + back nav ---
 document.querySelectorAll(".tab").forEach((t) => t.addEventListener("click", () => switchTab(t.dataset.tab)));
 document.querySelectorAll("[data-back-map]").forEach((b) => b.addEventListener("click", () => show("map")));
@@ -420,4 +517,5 @@ document.querySelectorAll("[data-back-map]").forEach((b) => b.addEventListener("
 // --- boot ---
 renderMap();
 renderPlaces();
+renderGraph();
 show("map");
