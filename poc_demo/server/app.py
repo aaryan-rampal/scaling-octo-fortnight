@@ -19,12 +19,14 @@ import asyncio
 import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from hindsight_client import Hindsight
 
+from pipeline.explain import LLMWhyExplainer, explain_principle
 from poc_demo.server import data
 from poc_demo.server.capsules import (
     DEFAULT_MEDIA_ROOT,
@@ -33,8 +35,13 @@ from poc_demo.server.capsules import (
 )
 from runtime.hindsight import embedded_hindsight
 from storage.store import CapsuleStore
+from storage.trace import open_db
 
 DEFAULT_BANK = os.environ.get("RECALL_BANK", "imessage-v0")
+
+#: SQLite provenance DB the principle trace-back / explain endpoints read.
+#: Read-only; defaults to the sample slice. Override with RECALL_TRACE_DB.
+TRACE_DB = os.environ.get("RECALL_TRACE_DB", "data/derek_handoff/derek_sample.db")
 
 _state: dict[str, Any] = {}
 
@@ -59,7 +66,7 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
 app = FastAPI(title="Recall demo API", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],
+    allow_origins=["http://localhost:5173", "http://localhost:4321"],
     allow_methods=["GET", "POST"],
     allow_headers=["*"],
 )
@@ -89,6 +96,61 @@ async def networks(bank: str = DEFAULT_BANK) -> dict[str, Any]:
     """
     base_url = _state["base_url"]
     return await asyncio.to_thread(_fetch_networks, base_url, bank)
+
+
+# ---- principle trace-back + "why" --------------------------------------
+#
+# Reads the materialised provenance graph in SQLite (read-only) and explains a
+# principle from its own evidence. The trace is deterministic; only the "why"
+# text costs an LLM call, so run under Doppler for the explain route.
+
+
+def _list_principles() -> list[dict[str, Any]]:
+    """Return the principles in TRACE_DB, highest confidence first (blocking)."""
+    conn = open_db(TRACE_DB)
+    try:
+        rows = conn.execute(
+            "SELECT id, text, confidence FROM principles ORDER BY confidence DESC"
+        ).fetchall()
+        return [{"id": r["id"], "text": r["text"], "confidence": r["confidence"]} for r in rows]
+    finally:
+        conn.close()
+
+
+def _explain_principle(principle_id: str) -> dict[str, Any] | None:
+    """Trace + explain one principle (blocking). ``None`` if no such id."""
+    conn = open_db(TRACE_DB)
+    try:
+        return explain_principle(conn, principle_id, LLMWhyExplainer())
+    finally:
+        conn.close()
+
+
+@app.get("/api/principles")
+async def list_principles() -> dict[str, Any]:
+    """List principle ids + text for the demo to render (no LLM call)."""
+    if not Path(TRACE_DB).exists():
+        raise HTTPException(status_code=503, detail=f"trace DB not found: {TRACE_DB}")
+    return {"principles": await asyncio.to_thread(_list_principles)}
+
+
+@app.get("/api/principles/{principle_id}/why")
+async def principle_why(principle_id: str) -> dict[str, Any]:
+    """Trace a principle to its evidence and return an LLM explanation of why.
+
+    Returns the principle, its backing memories with their raw events, and a
+    ``why`` string. 404 when the id is unknown; 503 when the DB or API key is
+    missing. Blocking work runs in a worker thread.
+    """
+    if not Path(TRACE_DB).exists():
+        raise HTTPException(status_code=503, detail=f"trace DB not found: {TRACE_DB}")
+    try:
+        result = await asyncio.to_thread(_explain_principle, principle_id)
+    except RuntimeError as exc:  # OPENROUTER_API_KEY not set (run under Doppler)
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    if result is None:
+        raise HTTPException(status_code=404, detail="principle not found")
+    return result
 
 
 # ---- capsule write-path (active raw_data) --------------------------------
