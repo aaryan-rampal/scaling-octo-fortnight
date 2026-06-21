@@ -32,11 +32,25 @@ STRICTLY read-only on durable state we don't own:
 - pg0: SELECT only.
 - ``data/recall.db`` and ``data/backups/``: never written (only read/copied once).
 
+A second LIVE pass (``--link``) runs rung-④ over the minted principles: it MERGEs
+near-duplicates (cosine >= 0.80, union of derived_from) and LINKs related ones
+(0.60-0.80 band) into typed edges, then rewrites only the principle layer of
+recall_expansive.db (memory layer untouched). The intermediate merge groups +
+considered link pairs (the "temporary joins") are captured to
+``data/expansive_link_trace.json``; the DB stores only the FINAL merged
+principles + edges.
+
 Run (LIVE, paid — background it)::
 
+    # 1. build (mint + materialise)
     doppler run --project berkeley-hackathon --config dev -- \\
         env PYTHONPATH=src .venv/bin/python scripts/build_expansive_db.py \\
         > /tmp/expansive_build.log 2>&1 &
+
+    # 2. link (merge + typed edges; needs the build's checkpoint + DB)
+    doppler run --project berkeley-hackathon --config dev -- \\
+        env PYTHONPATH=src .venv/bin/python scripts/build_expansive_db.py --link \\
+        > /tmp/expansive_link.log 2>&1 &
 """
 
 from __future__ import annotations
@@ -54,7 +68,9 @@ import psycopg2
 from loguru import logger
 
 from core.logging import configure_logging
+from core.principle import Edge, Principle
 from core.schema import Event
+from pipeline.link import LLMEdgeProposer, PipelineTrace, run_linking, run_merge
 from pipeline.mint import (
     MemoryCard,
     build_ledger,
@@ -71,6 +87,7 @@ PG_DSN = "postgresql://hindsight:hindsight@127.0.0.1:5432/hindsight"
 BANK = "slice-7d"
 SOURCE_DB = Path("data/recall.db")
 EXPANSIVE_DB = Path("data/recall_expansive.db")
+LINK_TRACE = Path("data/expansive_link_trace.json")
 CHECKPOINT = Path("data/expansive_principles.jsonl")
 
 
@@ -402,6 +419,131 @@ def _materialise_db(principles: list[dict], window_days: int) -> dict[str, int]:
     return {**mem_counts, **p_counts}
 
 
+def _pull_cards_by_id(memory_ids: list[str]) -> dict[str, MemoryCard]:
+    """Pull MemoryCards (with embeddings) for specific memory_ids from pg0.
+
+    The merge/link passes need cards (text/source/ts/embedding) to rebuild
+    ledgers and embed for pair similarity. Only the ids actually cited by the
+    principles are fetched — a small set.
+
+    Args:
+        memory_ids: The distinct memory_ids to fetch.
+
+    Returns:
+        Mapping memory_id -> MemoryCard for every id pg0 has.
+    """
+    if not memory_ids:
+        return {}
+    conn = psycopg2.connect(PG_DSN, connect_timeout=5)
+    conn.autocommit = True
+    known = {"imessage", "spotify", "photos", "claude"}
+    cards: dict[str, MemoryCard] = {}
+    try:
+        with conn.cursor() as cur:
+            cur.execute("SET statement_timeout = 60000")
+            cur.execute(
+                "SELECT id::text, text, tags, embedding, occurred_start "
+                "FROM memory_units WHERE id = ANY(%s::uuid[])",
+                (memory_ids,),
+            )
+            for mid, text, tags, emb, occurred in cur.fetchall():
+                source = next((t for t in (tags or []) if t in known), "")
+                cards[mid] = MemoryCard(
+                    memory_id=mid,
+                    text=text or "",
+                    source=source,
+                    ts=occurred.isoformat() if occurred else "",
+                    embedding=_parse_raw_vector(emb) if emb is not None else None,
+                )
+    finally:
+        conn.close()
+    logger.info("pulled {} cards for {} cited ids", len(cards), len(memory_ids))
+    return cards
+
+
+def _dict_to_principle(d: dict) -> Principle:
+    """Convert a minted principle dict to a Principle dataclass."""
+    return Principle(
+        principle_id=d["id"],
+        text=d["text"],
+        confidence=float(d["confidence"]),
+        derived_from=list(d["derived_from"]),
+    )
+
+
+def _principle_to_dict(p: Principle) -> dict:
+    """Serialize a Principle to the dict shape PrincipleStore expects."""
+    return {
+        "id": p.principle_id,
+        "text": p.text,
+        "confidence": p.confidence,
+        "derived_from": p.derived_from,
+    }
+
+
+def _edge_to_dict(e: Edge) -> dict:
+    """Serialize an Edge to the dict shape PrincipleStore expects."""
+    return {"src": e.src, "dst": e.dst, "relation": e.relation, "derived_from": e.derived_from}
+
+
+def _link_db(principles: list[dict], limit: int) -> dict[str, int]:
+    """Merge near-dup principles, link related ones, and rewrite the principle layer.
+
+    The memory layer in recall_expansive.db is left intact;
+    ``write_principle_layer`` resets and rewrites only principles/edges and their
+    memory links, validating every derived_from id against the existing memories.
+    The intermediate merge groups + considered link pairs (the "temporary joins")
+    are captured to ``data/expansive_link_trace.json``; the DB stores only the
+    FINAL merged principles + edges.
+
+    Args:
+        principles: The minted principle dicts (rung-③ output).
+        limit: Max edge-link pairs to send to the LLM (0 = all).
+
+    Returns:
+        Row counts from the principle-layer rewrite.
+    """
+    objs = [_dict_to_principle(d) for d in principles]
+    cited_ids = sorted({mid for p in objs for mid in p.derived_from})
+
+    with embedded_hindsight():
+        cards_by_id = _pull_cards_by_id(cited_ids)
+
+    embedder = QwenEmbedder()
+    trace = PipelineTrace()
+
+    t0 = time.perf_counter()
+    merged = run_merge(objs, embedder, cards_by_id, trace=trace)
+    logger.info(
+        "merge: {} -> {} principles ({:.1f}s)", len(objs), len(merged), time.perf_counter() - t0
+    )
+
+    proposer = LLMEdgeProposer()
+    t0 = time.perf_counter()
+    edges = run_linking(merged, embedder, proposer, limit=limit, trace=trace)
+    logger.info("link: {} edges ({:.1f}s)", len(edges), time.perf_counter() - t0)
+
+    LINK_TRACE.parent.mkdir(parents=True, exist_ok=True)
+    LINK_TRACE.write_text(
+        json.dumps(trace.to_dict(), ensure_ascii=False, indent=2), encoding="utf-8"
+    )
+    logger.info(
+        "wrote link trace: {} merges, {} link pairs -> {}",
+        len(trace.merges),
+        len(trace.link_pairs),
+        LINK_TRACE,
+    )
+
+    principle_dicts = [_principle_to_dict(p) for p in merged]
+    edge_dicts = [_edge_to_dict(e) for e in edges]
+    store = PrincipleStore.open(EXPANSIVE_DB)
+    try:
+        counts = store.write_principle_layer(principle_dicts, edge_dicts)
+    finally:
+        store.close()
+    return counts
+
+
 def _verify() -> None:
     """Open recall_expansive.db, run integrity_check, and report trace coverage."""
     import sqlite3
@@ -423,6 +565,7 @@ def _verify() -> None:
             n("principle_memories"),
             n("events"),
         )
+        logger.info("edges={} edge_memories={}", n("edges"), n("edge_memories"))
         reach = conn.execute(
             "SELECT count(distinct pm.principle_id) FROM principle_memories pm "
             "JOIN memory_events me ON me.memory_id = pm.memory_id"
@@ -461,7 +604,37 @@ def main() -> None:
         action="store_true",
         help="Skip minting; build the DB from the existing checkpoint.",
     )
+    ap.add_argument(
+        "--link",
+        action="store_true",
+        help="Run the merge+link pass on the existing checkpoint principles and "
+        "rewrite recall_expansive.db's principle layer with merged principles + edges "
+        "(memory layer left intact). Emits data/expansive_link_trace.json.",
+    )
+    ap.add_argument(
+        "--limit",
+        type=int,
+        default=0,
+        help="Max edge-link pairs sent to the LLM in --link mode (0 = all).",
+    )
     args = ap.parse_args()
+
+    if args.link:
+        principles, _ = _load_checkpoint()
+        principles = [p for p in principles if "id" in p]
+        if not principles:
+            logger.error("no principles in checkpoint — nothing to link")
+            sys.exit(1)
+        if not EXPANSIVE_DB.exists():
+            logger.error(
+                "{} not found — run the build first so the memory layer exists", EXPANSIVE_DB
+            )
+            sys.exit(1)
+        counts = _link_db(principles, args.limit)
+        logger.info("linked: {}", counts)
+        _verify()
+        logger.info("DONE (link) -> {}", EXPANSIVE_DB)
+        return
 
     if args.materialise_only:
         principles, _ = _load_checkpoint()
