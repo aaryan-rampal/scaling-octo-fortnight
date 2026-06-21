@@ -185,10 +185,11 @@ benchmarked against control — hits their "creative approaches" language.
 ## 4. REDIS — credits $50 (`CALHACKER2026`) — **prize TBC, confirm at booth**
 
 **Status:** **No named prize/criteria announced** in #spons-redis (only credits + workshop) —
-re-checked Slack 2026-06-20: Simran's kickoff post lists credits + workshop, nothing about a
-"Best Use of Redis" track. **Confirm at the booth.** $50/participant credits, code
-`CALHACKER2026`; free tier at redis.io/try-free. Workshop **4–5pm, 5th Floor Tilden**
-(confirmed today). Reps: Simran Regmi, Justin Cechmanek.
+re-checked Slack 2026-06-20: Simran's kickoff post lists $50 credits, a setup slide deck, and
+the workshop; a channel search for "prize"/"track"/"criteria"/"Best Use of Redis" returns
+nothing. **Confirm at the booth.** $50/participant credits, code `CALHACKER2026`; free tier at
+redis.io/try-free. Workshop **4–5pm, 5th Floor Tilden** (confirmed in the kickoff post). Reps:
+Simran Regmi, Justin (both signed the kickoff post as "Simran and Justin from Redis").
 
 **Architecture verdict (from `docs/raw-to-principles-research.md` §4): Redis is OUT of v1.**
 The vertical (raw → memory → principles) runs on SQLite + Postgres/pgvector via Hindsight.
