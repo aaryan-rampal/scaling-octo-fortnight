@@ -30,25 +30,35 @@ def _parse_utc(value: str) -> datetime:
 class Event:
     """A single message-level event.
 
+    Conversational sources (iMessage, Claude) fill ``author_role``, ``content``,
+    and ``thread_id``; non-conversational sources (photos) leave them ``None``
+    and carry their source-specific fields in ``additional_data`` instead.
+
     Attributes:
         id: Stable hash identifying this event.
-        t_utc: Timezone-aware UTC timestamp of the message.
-        author_role: ``"self"`` if sent by the account owner, else ``"other"``.
-        content: Plain-text message body.
-        thread_id: Identifier of the conversation the event belongs to.
+        t_utc: Timezone-aware UTC timestamp of the event.
+        author_role: ``"self"`` if sent by the account owner, ``"other"`` for a
+            counterpart, or ``None`` for non-conversational sources.
+        content: Plain-text body, or ``None`` for non-conversational sources.
+        thread_id: Conversation the event belongs to, or ``None`` for
+            non-conversational sources.
         reply_to: ``id`` of the event this one replies to, if any.
         raw_ref: Reference back to the source row (e.g. ``"chat.db#ROWID"``).
         source: Originating system; defaults to ``"imessage"``.
+        additional_data: Source-specific fields that are not shared by all
+            sources (e.g. a photo's geo / dimensions / people). Empty for
+            sources that fit the canonical fields exactly.
     """
 
     id: str
     t_utc: datetime
-    author_role: str
-    content: str
-    thread_id: str
+    author_role: str | None
+    content: str | None
+    thread_id: str | None
     reply_to: str | None
     raw_ref: str
     source: str = "imessage"
+    additional_data: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize to a JSON-ready dict with an ISO timestamp."""
@@ -61,6 +71,7 @@ class Event:
             "reply_to": self.reply_to,
             "raw_ref": self.raw_ref,
             "source": self.source,
+            "additional_data": dict(self.additional_data),
         }
 
     @classmethod
@@ -69,12 +80,13 @@ class Event:
         return cls(
             id=data["id"],
             t_utc=_parse_utc(data["t_utc"]),
-            author_role=data["author_role"],
-            content=data["content"],
-            thread_id=data["thread_id"],
+            author_role=data.get("author_role"),
+            content=data.get("content"),
+            thread_id=data.get("thread_id"),
             reply_to=data.get("reply_to"),
             raw_ref=data["raw_ref"],
             source=data.get("source", "imessage"),
+            additional_data=data.get("additional_data") or {},
         )
 
 
