@@ -86,6 +86,13 @@ class SpotifyStreamRecord(BaseModel):
     offline_timestamp: int | None = None
     incognito_mode: bool | None = None
 
+    # ---- enrichment ---------------------------------------------------------
+    #: Short taste descriptor for :attr:`artist_name` ("high-energy EDM/pop"),
+    #: filled by the adapter's cached vibe lookup (see ``adapters.spotify``). Not
+    #: part of the export; it rides along so ``content_line`` and the event's
+    #: ``additional_data`` can carry taste signal instead of a bare artist name.
+    artist_vibe: str | None = Field(default=None, exclude=True)
+
     @property
     def kind(self) -> StreamKind:
         """Classify the record by which content fields are populated."""
@@ -142,6 +149,8 @@ class SpotifyStreamRecord(BaseModel):
         if self.kind == "music":
             title = self.track_name or "unknown track"
             artist = self.artist_name or "unknown artist"
+            if self.artist_vibe:
+                artist = f"{artist} ({self.artist_vibe})"
             line = f"Listened to '{title}' by {artist}"
             if self.album_name:
                 line += f" (album {self.album_name})"
@@ -165,7 +174,13 @@ class SpotifyStreamRecord(BaseModel):
         ``build_episodes`` windowing, and Hindsight ``retain`` unchanged.
 
         ``author_role`` is always ``"self"`` — a play is the user's own action.
+        When :attr:`artist_vibe` is set, it rides along in ``additional_data``
+        (``artist_vibe``) so the renderer can surface taste signal without
+        re-parsing ``content``.
         """
+        additional: dict[str, str] = {}
+        if self.artist_vibe:
+            additional["artist_vibe"] = self.artist_vibe
         return Event(
             id=self.event_id(),
             t_utc=self.ts,
@@ -175,4 +190,5 @@ class SpotifyStreamRecord(BaseModel):
             reply_to=None,
             raw_ref=self.raw_ref,
             source="spotify",
+            additional_data=additional,
         )

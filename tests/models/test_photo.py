@@ -73,3 +73,25 @@ def test_photo_event_round_trips_through_dict() -> None:
     event = _photo_record().to_event()
     restored = type(event).from_dict(event.to_dict())
     assert restored == event
+
+
+def test_vision_fields_default_empty_and_are_omitted() -> None:
+    record = _photo_record()
+    assert record.vision_description is None
+    assert record.vision_tags == []
+    # Un-enriched records carry no vision keys (additive only when present).
+    ad = record.to_event().additional_data
+    assert "vision_description" not in ad
+    assert "vision_tags" not in ad
+
+
+def test_enriched_vision_fields_ride_in_additional_data() -> None:
+    record = _photo_record().model_copy(
+        update={"vision_description": "Two friends at a cafe", "vision_tags": ["cafe", "friends"]}
+    )
+    ad = record.to_event().additional_data
+    assert ad["vision_description"] == "Two friends at a cafe"
+    assert ad["vision_tags"] == ["cafe", "friends"]
+    # coords/people stay intact — vision is additive.
+    assert ad["lat"] == 37.4
+    assert ad["people"] == ["Alice", "Bob"]

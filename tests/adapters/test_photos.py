@@ -11,10 +11,13 @@ import sqlite3
 from datetime import UTC, datetime
 from pathlib import Path
 
+from adapters import photos as photos_mod
 from adapters.photos import (
     APPLE_EPOCH_OFFSET,
     GPS_SENTINEL,
+    _parse_vision_response,
     apple_date_to_utc,
+    enrich_photos,
     ingest_photos,
 )
 from models.photo import PhotoRecord
@@ -176,8 +179,7 @@ def test_ingest_skips_null_date_created(tmp_path: Path) -> None:
         (6, "uuid-null-date", None, 1.0, 2.0, "D6", "IMG_6.heic", 10, 20, 0, 0, 0, 0),
     )
     conn.execute(
-        "INSERT INTO ZADDITIONALASSETATTRIBUTES (Z_PK, ZASSET, ZORIGINALFILENAME) "
-        "VALUES (?, ?, ?)",
+        "INSERT INTO ZADDITIONALASSETATTRIBUTES (Z_PK, ZASSET, ZORIGINALFILENAME) VALUES (?, ?, ?)",
         (6, 6, "original_6.HEIC"),
     )
     conn.commit()
@@ -207,3 +209,194 @@ def test_photo_record_is_pydantic_model() -> None:
     )
     assert r.kind == "photo"
     assert r.people == []
+
+
+def _photo(uuid: str, *, kind: str = "photo", rel: str = "originals/D/o.jpg") -> PhotoRecord:
+    """Build a minimal record for the vision-enrichment tests."""
+    return PhotoRecord(
+        id=uuid,
+        captured_at=datetime(2024, 1, 1, tzinfo=UTC),
+        lat=49.0,
+        lng=-123.0,
+        original_filename="o.jpg",
+        original_path=rel,
+        width=10,
+        height=10,
+        is_favorite=False,
+        is_hidden=False,
+        is_trashed=False,
+        kind=kind,  # type: ignore[arg-type]
+        people=[],
+        raw_ref="photos.sqlite#1",
+    )
+
+
+def _write_image(library_root: Path, rel: str) -> None:
+    """Write a tiny non-empty binary at the record's resolved on-disk path."""
+    target = library_root / rel
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_bytes(b"\xff\xd8\xff\xe0fake-jpeg")
+
+
+def test_parse_vision_response_handles_plain_and_fenced_json() -> None:
+    plain = _parse_vision_response('{"description": "A dog on a beach", "tags": ["Dog", "Beach"]}')
+    assert plain["description"] == "A dog on a beach"
+    assert plain["tags"] == ["dog", "beach"]  # lowercased
+    fenced = _parse_vision_response('```json\n{"description": "x", "tags": []}\n```')
+    assert fenced["description"] == "x"
+    assert fenced["tags"] == []
+
+
+def test_enrich_photos_calls_model_once_and_sets_fields(tmp_path: Path, monkeypatch) -> None:
+    library = tmp_path / "lib"
+    _write_image(library, "originals/D/o.jpg")
+    calls: list[str] = []
+
+    def fake_call(data_url: str, api_key: str, model: str) -> dict[str, object]:
+        calls.append(data_url)
+        assert data_url.startswith("data:")  # binary was read + encoded
+        return {"description": "Friends at a cafe", "tags": ["cafe", "friends"]}
+
+    monkeypatch.setattr(photos_mod, "_call_vision_model", fake_call)
+    cache = tmp_path / "cache.json"
+    out = enrich_photos(
+        [_photo("p1")],
+        library_root=str(library),
+        cache_path=cache,
+        api_key="sk-test",
+    )
+    assert out[0].vision_description == "Friends at a cafe"
+    assert out[0].vision_tags == ["cafe", "friends"]
+    assert len(calls) == 1
+    # vision fields surface in the canonical event's additional_data.
+    ad = out[0].to_event().additional_data
+    assert ad["vision_description"] == "Friends at a cafe"
+    assert ad["vision_tags"] == ["cafe", "friends"]
+
+
+def test_enrich_photos_caches_by_id_no_recall(tmp_path: Path, monkeypatch) -> None:
+    library = tmp_path / "lib"
+    _write_image(library, "originals/D/o.jpg")
+    cache = tmp_path / "cache.json"
+    calls = {"n": 0}
+
+    def fake_call(data_url: str, api_key: str, model: str) -> dict[str, object]:
+        calls["n"] += 1
+        return {"description": "d", "tags": ["t"]}
+
+    monkeypatch.setattr(photos_mod, "_call_vision_model", fake_call)
+    enrich_photos([_photo("p1")], library_root=str(library), cache_path=cache, api_key="sk")
+    assert cache.exists()
+    # Second run on the same id must not call the model again.
+    out2 = enrich_photos([_photo("p1")], library_root=str(library), cache_path=cache, api_key="sk")
+    assert calls["n"] == 1
+    assert out2[0].vision_description == "d"
+
+
+def test_enrich_photos_skips_videos_and_missing_binaries(tmp_path: Path, monkeypatch) -> None:
+    library = tmp_path / "lib"  # no files written -> binary missing
+
+    def boom(*_a, **_k):  # pragma: no cover - must never be called
+        raise AssertionError("model must not be called")
+
+    monkeypatch.setattr(photos_mod, "_call_vision_model", boom)
+    out = enrich_photos(
+        [_photo("vid", kind="video"), _photo("missing", rel="originals/D/gone.jpg")],
+        library_root=str(library),
+        cache_path=tmp_path / "cache.json",
+        api_key="sk",
+    )
+    assert out[0].vision_description is None  # video skipped
+    assert out[1].vision_description is None  # missing binary skipped
+
+
+def test_enrich_photos_requires_key_for_uncached(tmp_path: Path, monkeypatch) -> None:
+    library = tmp_path / "lib"
+    _write_image(library, "originals/D/o.jpg")
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    try:
+        enrich_photos([_photo("p1")], library_root=str(library), cache_path=tmp_path / "c.json")
+        raise AssertionError("expected RuntimeError when no key is available")
+    except RuntimeError as exc:
+        assert "OPENROUTER_API_KEY" in str(exc)
+
+
+def test_enrich_photos_heic_routes_through_transcode(tmp_path: Path, monkeypatch) -> None:
+    # 19/27 slice photos are HEIC; the vision model rejects HEIC, so the binary
+    # must be transcoded to a temp JPEG (via sips) before the call.
+    library = tmp_path / "lib"
+    _write_image(library, "originals/D/o.heic")
+    transcoded: list[tuple[str, str]] = []
+
+    def fake_transcode(src: Path, dest: Path) -> None:
+        transcoded.append((src.suffix.lower(), dest.suffix.lower()))
+        dest.write_bytes(b"\xff\xd8\xff\xe0jpeg-from-heic")  # stand-in JPEG
+
+    sent: list[str] = []
+
+    def fake_call(data_url: str, api_key: str, model: str) -> dict[str, object]:
+        sent.append(data_url)
+        return {"description": "A beach at sunset", "tags": ["beach"]}
+
+    monkeypatch.setattr(photos_mod, "_transcode_to_jpeg", fake_transcode)
+    monkeypatch.setattr(photos_mod, "_call_vision_model", fake_call)
+    out = enrich_photos(
+        [_photo("h1", rel="originals/D/o.heic")],
+        library_root=str(library),
+        cache_path=tmp_path / "cache.json",
+        api_key="sk",
+    )
+    # HEIC was transcoded to JPEG, and the JPEG (not the HEIC) was sent.
+    assert transcoded == [(".heic", ".jpg")]
+    assert len(sent) == 1 and sent[0].startswith("data:image/jpeg")
+    assert out[0].vision_description == "A beach at sunset"
+
+
+def test_enrich_photos_jpeg_sent_without_transcode(tmp_path: Path, monkeypatch) -> None:
+    library = tmp_path / "lib"
+    _write_image(library, "originals/D/o.jpg")
+
+    def boom_transcode(src: Path, dest: Path) -> None:  # pragma: no cover
+        raise AssertionError("non-HEIC must not be transcoded")
+
+    def fake_call(data_url: str, api_key: str, model: str) -> dict[str, object]:
+        return {"description": "d", "tags": []}
+
+    monkeypatch.setattr(photos_mod, "_transcode_to_jpeg", boom_transcode)
+    monkeypatch.setattr(photos_mod, "_call_vision_model", fake_call)
+    out = enrich_photos(
+        [_photo("p1", rel="originals/D/o.jpg")],
+        library_root=str(library),
+        cache_path=tmp_path / "cache.json",
+        api_key="sk",
+    )
+    assert out[0].vision_description == "d"
+
+
+def test_sendable_image_passes_through_non_heic_and_cleans_heic_temp(tmp_path: Path) -> None:
+    from adapters.photos import _sendable_image
+
+    jpg = tmp_path / "a.jpg"
+    jpg.write_bytes(b"x")
+    with _sendable_image(jpg) as sendable:
+        assert sendable == jpg  # original passed through unchanged
+
+    heic = tmp_path / "b.heic"
+    heic.write_bytes(b"x")
+
+    def stub(src: Path, dest: Path) -> None:
+        dest.write_bytes(b"jpeg")
+
+    import adapters.photos as mod
+
+    original = mod._transcode_to_jpeg
+    mod._transcode_to_jpeg = stub  # type: ignore[assignment]
+    try:
+        with _sendable_image(heic) as sendable:
+            assert sendable.suffix == ".jpg"
+            assert sendable != heic  # a temp copy, not the original
+            temp_path = sendable
+        assert not temp_path.exists()  # temp deleted on exit
+        assert heic.exists()  # original untouched
+    finally:
+        mod._transcode_to_jpeg = original  # type: ignore[assignment]

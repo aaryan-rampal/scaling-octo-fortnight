@@ -56,6 +56,11 @@ class PhotoRecord(BaseModel):
             clusters are excluded. Empty when no named person is present.
         raw_ref: Exact source reference, ``photos.sqlite#<ZASSET.Z_PK>`` — the
             provenance link that must survive even if the library is rebuilt.
+        vision_description: One-line description of the image from a cheap vision
+            model, or ``None`` when the photo has not been enriched. Additive: a
+            record is usable without it (the bare coordinates/people still flow).
+        vision_tags: A few short tags from the same vision pass; empty when the
+            photo has not been enriched.
     """
 
     id: str
@@ -72,6 +77,8 @@ class PhotoRecord(BaseModel):
     kind: Literal["photo", "video"]
     people: list[str]
     raw_ref: str
+    vision_description: str | None = None
+    vision_tags: list[str] = []
 
     def to_event(self) -> Event:
         """Project this photo onto the canonical :class:`~core.schema.Event`.
@@ -80,8 +87,26 @@ class PhotoRecord(BaseModel):
         conversational, so ``author_role`` / ``content`` / ``thread_id`` /
         ``reply_to`` are left ``None`` and the photo-only metadata (geo,
         dimensions, flags, people, on-disk path) rides in ``additional_data``.
-        ``captured_at`` becomes the event's ``t_utc``.
+        ``captured_at`` becomes the event's ``t_utc``. When the record has been
+        vision-enriched, ``vision_description`` / ``vision_tags`` ride along too
+        so the renderer can surface them instead of bare coordinates.
         """
+        additional_data: dict[str, object] = {
+            "lat": self.lat,
+            "lng": self.lng,
+            "original_filename": self.original_filename,
+            "original_path": self.original_path,
+            "width": self.width,
+            "height": self.height,
+            "is_favorite": self.is_favorite,
+            "is_hidden": self.is_hidden,
+            "is_trashed": self.is_trashed,
+            "kind": self.kind,
+            "people": self.people,
+        }
+        if self.vision_description is not None:
+            additional_data["vision_description"] = self.vision_description
+            additional_data["vision_tags"] = self.vision_tags
         return Event(
             id=self.id,
             t_utc=self.captured_at,
@@ -91,17 +116,5 @@ class PhotoRecord(BaseModel):
             reply_to=None,
             raw_ref=self.raw_ref,
             source=PHOTO_SOURCE,
-            additional_data={
-                "lat": self.lat,
-                "lng": self.lng,
-                "original_filename": self.original_filename,
-                "original_path": self.original_path,
-                "width": self.width,
-                "height": self.height,
-                "is_favorite": self.is_favorite,
-                "is_hidden": self.is_hidden,
-                "is_trashed": self.is_trashed,
-                "kind": self.kind,
-                "people": self.people,
-            },
+            additional_data=additional_data,
         )

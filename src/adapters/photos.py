@@ -16,14 +16,21 @@ are internal ML enum ids with no human-readable label table.
 
 from __future__ import annotations
 
+import base64
+import json
+import mimetypes
+import os
 import shutil
 import sqlite3
+import subprocess
 import tempfile
 from collections.abc import Iterator
 from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
+
+import httpx
 
 from models.photo import PhotoRecord
 
@@ -196,3 +203,263 @@ def ingest_photos(db_path: str) -> list[PhotoRecord]:
         rows = conn.execute(_QUERY).fetchall()
     records = (_row_to_record(row) for row in rows)
     return [r for r in records if r is not None]
+
+
+# --- Vision enrichment -------------------------------------------------------
+#
+# Raw photo rows are just ``{lat, lng, filename}``, so a photo memory reads "took
+# a photo at coordinates X". A cheap vision model turns the image into a one-line
+# description plus a few tags, written additively into the record's vision fields
+# (the renderer surfaces them). The call is lazy and cached by photo id so a huge
+# library (thousands of assets) never re-pays for an already-enriched photo; only
+# the photos handed in (i.e. the retained slice, ~18) are ever sent to the model.
+
+OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
+
+#: Cheap vision-capable OpenRouter model; overridable via env for tuning/cost.
+#: Defaults to the same Gemini Flash family the embedded runtime already uses.
+DEFAULT_VISION_MODEL = os.environ.get("RECALL_VISION_MODEL", "google/gemini-3.5-flash")
+
+#: Library-relative ``original_path`` is resolved against this root to find the
+#: on-disk binary. Defaults to the standard macOS Photos library; override for a
+#: relocated library or a test fixture. The binary is read only to send to the
+#: model — never copied or persisted.
+DEFAULT_LIBRARY_ROOT = os.environ.get(
+    "RECALL_PHOTO_LIBRARY",
+    str(Path.home() / "Pictures" / "Photos Library.photoslibrary"),
+)
+
+#: Where enriched (description, tags) results are cached, keyed by photo id.
+DEFAULT_VISION_CACHE = Path("data/photo_vision_cache.json")
+
+_VISION_PROMPT = (
+    "Describe this personal photo in one short, concrete sentence (what is "
+    "happening, where, the mood). Then give 3-6 short lowercase tags. "
+    'Respond ONLY as JSON: {"description": str, "tags": [str, ...]}.'
+)
+_VISION_TIMEOUT_S = 60.0
+
+#: ``sips`` binary used to transcode HEIC/HEIF (which most OpenRouter vision
+#: models reject) into JPEG. Ships with macOS; no third-party dependency.
+SIPS_BINARY = "/usr/bin/sips"
+
+#: Suffixes (lowercased) the vision model cannot ingest directly, so the binary
+#: is transcoded to a temp JPEG before sending. Other still formats go as-is.
+_TRANSCODE_SUFFIXES = frozenset({".heic", ".heif"})
+_SIPS_TIMEOUT_S = 30.0
+
+
+def _load_vision_cache(cache_path: Path) -> dict[str, dict[str, Any]]:
+    """Load the photo-id → {description, tags} cache, or empty if absent/corrupt."""
+    if not cache_path.exists():
+        return {}
+    try:
+        data = json.loads(cache_path.read_text())
+    except (OSError, json.JSONDecodeError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def _save_vision_cache(cache_path: Path, cache: dict[str, dict[str, Any]]) -> None:
+    """Write the cache back to disk, creating the parent directory if needed."""
+    cache_path.parent.mkdir(parents=True, exist_ok=True)
+    cache_path.write_text(json.dumps(cache, indent=2, sort_keys=True))
+
+
+def _resolve_image_path(record: PhotoRecord, library_root: str) -> Path:
+    """Resolve a record's library-relative ``original_path`` to an on-disk path."""
+    return Path(library_root) / record.original_path
+
+
+def _transcode_to_jpeg(src: Path, dest: Path) -> None:
+    """Transcode an image to JPEG at ``dest`` via macOS ``sips``.
+
+    Reads ``src`` and writes only the temp ``dest``; the original is never
+    modified. Used for HEIC/HEIF, which most vision models reject.
+
+    Args:
+        src: The on-disk original to read.
+        dest: Temp path the JPEG is written to.
+
+    Raises:
+        RuntimeError: If ``sips`` fails or is unavailable.
+    """
+    try:
+        subprocess.run(
+            [SIPS_BINARY, "-s", "format", "jpeg", str(src), "--out", str(dest)],
+            check=True,
+            capture_output=True,
+            timeout=_SIPS_TIMEOUT_S,
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        raise RuntimeError(f"sips failed to transcode {src.name} to JPEG: {exc}") from exc
+
+
+@contextmanager
+def _sendable_image(path: Path) -> Iterator[Path]:
+    """Yield a path safe to send to the vision model, transcoding HEIC/HEIF.
+
+    HEIC/HEIF originals are transcoded to a temp JPEG (deleted on exit); every
+    other still format yields the original path unchanged. The original binary
+    is never modified or persisted — only a throwaway temp copy is created for
+    the formats that need it.
+
+    Args:
+        path: The on-disk original.
+
+    Yields:
+        A path to send (the original, or a temp JPEG for HEIC/HEIF).
+    """
+    if path.suffix.lower() not in _TRANSCODE_SUFFIXES:
+        yield path
+        return
+    with tempfile.TemporaryDirectory() as tmp:
+        jpeg = Path(tmp) / f"{path.stem}.jpg"
+        _transcode_to_jpeg(path, jpeg)
+        yield jpeg
+
+
+def _encode_image_data_url(path: Path) -> str:
+    """Read an image binary and return it as a base64 ``data:`` URL for the API.
+
+    The binary is read solely to embed in the request payload; it is never copied
+    or persisted (repo rule: photo binaries stay on disk).
+    """
+    mime = mimetypes.guess_type(path.name)[0] or "image/jpeg"
+    encoded = base64.b64encode(path.read_bytes()).decode("ascii")
+    return f"data:{mime};base64,{encoded}"
+
+
+def _parse_vision_response(content: str) -> dict[str, Any]:
+    """Parse the model's JSON reply into ``{description, tags}``, tolerating fences."""
+    text = content.strip()
+    if text.startswith("```"):
+        text = text.strip("`")
+        text = text[text.find("{") : text.rfind("}") + 1]
+    parsed = json.loads(text)
+    description = str(parsed.get("description", "")).strip()
+    raw_tags = parsed.get("tags", [])
+    tags = [str(t).strip().lower() for t in raw_tags if str(t).strip()]
+    return {"description": description, "tags": tags}
+
+
+def _call_vision_model(data_url: str, api_key: str, model: str) -> dict[str, Any]:
+    """Call the OpenRouter chat-completions API on one image; return description/tags.
+
+    Args:
+        data_url: The base64 ``data:`` URL of the image.
+        api_key: OpenRouter API key (from ``OPENROUTER_API_KEY``).
+        model: OpenRouter vision-capable model id.
+
+    Returns:
+        A ``{"description": str, "tags": list[str]}`` dict.
+
+    Raises:
+        httpx.HTTPError: If the request fails.
+    """
+    payload = {
+        "model": model,
+        "messages": [
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": _VISION_PROMPT},
+                    {"type": "image_url", "image_url": {"url": data_url}},
+                ],
+            }
+        ],
+    }
+    resp = httpx.post(
+        f"{OPENROUTER_BASE_URL}/chat/completions",
+        headers={"Authorization": f"Bearer {api_key}"},
+        json=payload,
+        timeout=_VISION_TIMEOUT_S,
+    )
+    resp.raise_for_status()
+    content = resp.json()["choices"][0]["message"]["content"]
+    return _parse_vision_response(content)
+
+
+def enrich_photos(
+    records: list[PhotoRecord],
+    *,
+    library_root: str = DEFAULT_LIBRARY_ROOT,
+    model: str = DEFAULT_VISION_MODEL,
+    cache_path: Path = DEFAULT_VISION_CACHE,
+    api_key: str | None = None,
+) -> list[PhotoRecord]:
+    """Add a vision description + tags to each photo, lazily and cached by id.
+
+    Only the records passed in are ever sent to the model, so callers control
+    cost by enriching just the retained slice (~18) rather than the whole library
+    (thousands). Already-cached photos (and videos, which carry no still frame)
+    are skipped; a missing on-disk binary is skipped rather than fatal. The cache
+    (``photo id → {description, tags}``) is persisted so re-runs cost nothing.
+
+    Args:
+        records: Photo/video records to enrich (typically the retained slice).
+        library_root: Root the library-relative ``original_path`` resolves against.
+        model: OpenRouter vision-capable model id.
+        cache_path: JSON cache keyed by photo id.
+        api_key: OpenRouter key; falls back to ``OPENROUTER_API_KEY`` in the env.
+
+    Returns:
+        The same records, each with ``vision_description`` / ``vision_tags`` set
+        when enrichment succeeded (additive — other fields are untouched).
+
+    Raises:
+        RuntimeError: If a model call is needed but no API key is available.
+    """
+    cache = _load_vision_cache(cache_path)
+    key = api_key or os.environ.get("OPENROUTER_API_KEY")
+    enriched: list[PhotoRecord] = []
+    dirty = False
+    for record in records:
+        result = cache.get(record.id)
+        if result is None and record.kind == "photo":
+            result = _enrich_one(record, library_root, model, key, cache)
+            dirty = dirty or result is not None
+        enriched.append(_apply_vision(record, result))
+    if dirty:
+        _save_vision_cache(cache_path, cache)
+    return enriched
+
+
+def _enrich_one(
+    record: PhotoRecord,
+    library_root: str,
+    model: str,
+    api_key: str | None,
+    cache: dict[str, dict[str, Any]],
+) -> dict[str, Any] | None:
+    """Enrich a single uncached photo, writing the result into ``cache`` in place.
+
+    Returns the ``{description, tags}`` result, or ``None`` when the binary is
+    missing on disk (skipped, not fatal). Raises if a call is needed but no key
+    is set.
+    """
+    path = _resolve_image_path(record, library_root)
+    if not path.exists():
+        return None
+    if not api_key:
+        raise RuntimeError(
+            "OPENROUTER_API_KEY is not set; cannot vision-enrich photos "
+            f"(needed for uncached photo {record.id})"
+        )
+    with _sendable_image(path) as sendable:
+        data_url = _encode_image_data_url(sendable)
+        result = _call_vision_model(data_url, api_key, model)
+    cache[record.id] = result
+    return result
+
+
+def _apply_vision(record: PhotoRecord, result: dict[str, Any] | None) -> PhotoRecord:
+    """Return a copy of ``record`` with vision fields set from ``result`` (or as-is)."""
+    if not result:
+        return record
+    return record.model_copy(
+        update={
+            "vision_description": result.get("description") or None,
+            "vision_tags": list(result.get("tags", [])),
+        }
+    )

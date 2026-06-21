@@ -5,7 +5,14 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from adapters.spotify import ingest, read_records, records_to_events
+from adapters.spotify import (
+    enrich_records,
+    ingest,
+    load_vibe_cache,
+    read_records,
+    records_to_events,
+    resolve_vibes,
+)
 from models.spotify import SPOTIFY_THREAD_ID, SpotifyStreamRecord
 from pipeline.episodes import build_episodes
 from storage.store import CapsuleStore
@@ -109,3 +116,82 @@ def test_ingest_filters_short_plays_and_feeds_pipeline(tmp_path: Path) -> None:
 
     # windowing works on plays (no source-specific handling)
     assert len(build_episodes(events)) >= 1
+
+
+def _stub_resolver(calls: list[str]):
+    """Resolver that records each artist it is asked about (no network)."""
+
+    def resolve(artist: str) -> str:
+        calls.append(artist)
+        return f"vibe-of-{artist}"
+
+    return resolve
+
+
+def test_resolve_vibes_calls_resolver_once_per_unique_artist() -> None:
+    calls: list[str] = []
+    vibes = resolve_vibes(
+        ["Calvin Harris", "Kesha", "Calvin Harris"],
+        cache={},
+        resolver=_stub_resolver(calls),
+    )
+    assert vibes == {"Calvin Harris": "vibe-of-Calvin Harris", "Kesha": "vibe-of-Kesha"}
+    assert sorted(calls) == ["Calvin Harris", "Kesha"]  # dedup: Calvin once
+
+
+def test_resolve_vibes_never_recalls_cached_artist() -> None:
+    calls: list[str] = []
+    cache = {"Calvin Harris": "high-energy EDM/pop"}
+    resolve_vibes(["Calvin Harris"], cache=cache, resolver=_stub_resolver(calls))
+    assert calls == []  # cache hit -> no resolver call
+
+
+def test_enrich_records_stamps_vibe_and_persists_cache(tmp_path: Path) -> None:
+    cache_path = tmp_path / "artist_vibes.json"
+    calls: list[str] = []
+    records = [SpotifyStreamRecord.model_validate(_MUSIC)]
+    enrich_records(records, cache_path=cache_path, resolver=_stub_resolver(calls))
+
+    # vibe lands on the record, the event content, and additional_data
+    assert records[0].artist_vibe == "vibe-of-Shae Gill"
+    event = records[0].to_event()
+    assert event.additional_data["artist_vibe"] == "vibe-of-Shae Gill"
+    assert "(vibe-of-Shae Gill)" in (event.content or "")
+
+    # cache is written and reusable -> a second pass makes no calls
+    assert load_vibe_cache(cache_path) == {"Shae Gill": "vibe-of-Shae Gill"}
+    calls.clear()
+    enrich_records(
+        [SpotifyStreamRecord.model_validate(_MUSIC)],
+        cache_path=cache_path,
+        resolver=_stub_resolver(calls),
+    )
+    assert calls == []
+
+
+def test_enrich_records_ignores_non_music(tmp_path: Path) -> None:
+    calls: list[str] = []
+    records = [SpotifyStreamRecord.model_validate(_PODCAST)]
+    enrich_records(records, cache_path=tmp_path / "c.json", resolver=_stub_resolver(calls))
+    assert records[0].artist_vibe is None
+    assert calls == []
+
+
+def test_ingest_enrich_flag_threads_vibe_into_events(tmp_path: Path) -> None:
+    root = _write_export(tmp_path, [_MUSIC, _PODCAST])
+    calls: list[str] = []
+    events = ingest(
+        root,
+        enrich=True,
+        cache_path=tmp_path / "vibes.json",
+        resolver=_stub_resolver(calls),
+    )
+    music = next(e for e in events if "Pasoori" in (e.content or ""))
+    assert music.additional_data["artist_vibe"] == "vibe-of-Shae Gill"
+    assert calls == ["Shae Gill"]
+
+
+def test_ingest_without_enrich_has_no_vibe(tmp_path: Path) -> None:
+    root = _write_export(tmp_path, [_MUSIC])
+    events = ingest(root)
+    assert "artist_vibe" not in events[0].additional_data

@@ -24,6 +24,7 @@ CLI::
 from __future__ import annotations
 
 import argparse
+import glob
 import os
 import sqlite3
 import struct
@@ -35,6 +36,13 @@ from storage.persist import persist_events
 
 #: Apple's Core Data epoch (2001-01-01 UTC) as seconds past the Unix epoch.
 APPLE_EPOCH_OFFSET = 978_307_200
+
+#: Glob for every per-account macOS Contacts database. Each Sources/<uuid>/ dir
+#: holds one ``AddressBook-v22.abcddb``; a user can have several (iCloud, local,
+#: Exchange…), so all are scanned and merged into one handle→name map.
+DEFAULT_CONTACTS_GLOB = os.path.expanduser(
+    "~/Library/Application Support/AddressBook/Sources/*/AddressBook-v22.abcddb"
+)
 
 # typedstream marker that precedes an NSString payload: the byte sequence is
 # ``\x84\x01`` (a class-version reference) followed by ``+`` (0x2b), the type
@@ -100,6 +108,132 @@ def decode_attributed_body(blob: bytes | None) -> str | None:
     if not payload:
         return None
     return payload.decode("utf-8", "replace")
+
+
+def normalize_handle(handle: str) -> str | None:
+    """Reduce a chat.db handle to a stable key for contact matching.
+
+    Phone handles are stripped to digits and keyed on their trailing 10 (or 7 if
+    shorter), so ``+16046526819`` and ``+1 604 652 6819`` collapse to the same
+    key. Email handles are lowercased and matched exactly. Group-chat ids
+    (``chat<digits>``) and anything unrecognised return ``None`` — they have no
+    single contact to resolve.
+
+    Args:
+        handle: A ``chat.db`` chat identifier (phone number, email, or group id).
+
+    Returns:
+        A normalized lookup key, or ``None`` if the handle is not resolvable to a
+        single contact.
+    """
+    if not handle:
+        return None
+    if handle.startswith("chat") and handle[4:].isdigit():
+        return None
+    if "@" in handle:
+        return handle.strip().lower()
+    digits = "".join(ch for ch in handle if ch.isdigit())
+    if len(digits) >= 10:
+        return digits[-10:]
+    if len(digits) >= 7:
+        return digits[-7:]
+    return None
+
+
+def _record_name(first: str | None, last: str | None, nickname: str | None) -> str | None:
+    """Join a contact's name parts into a display name, preferring real names.
+
+    Args:
+        first: ``ZFIRSTNAME``.
+        last: ``ZLASTNAME``.
+        nickname: ``ZNICKNAME``, used only when no first/last name exists.
+
+    Returns:
+        ``"First Last"`` (trimmed), the nickname as a fallback, or ``None`` when
+        the record carries no usable name.
+    """
+    parts = [p.strip() for p in (first, last) if p and p.strip()]
+    if parts:
+        return " ".join(parts)
+    if nickname and nickname.strip():
+        return nickname.strip()
+    return None
+
+
+def _scan_contacts_db(db_path: str, mapping: dict[str, str]) -> None:
+    """Merge one Contacts database's phone+email→name rows into ``mapping``.
+
+    Opens ``db_path`` read-only (``immutable=1``, like the Photos adapter) and
+    walks ``ZABCDPHONENUMBER`` and ``ZABCDEMAILADDRESS`` joined to their owning
+    ``ZABCDRECORD``. Keys already present win, so the first database scanned
+    takes precedence on conflicts. Records with no usable name are skipped.
+
+    Args:
+        db_path: Path to one ``AddressBook-v22.abcddb``.
+        mapping: Normalized-handle → name dict, mutated in place.
+    """
+    conn = sqlite3.connect(f"file:{db_path}?mode=ro&immutable=1", uri=True)
+    try:
+        phones = conn.execute(
+            "SELECT r.ZFIRSTNAME, r.ZLASTNAME, r.ZNICKNAME, p.ZFULLNUMBER "
+            "FROM ZABCDPHONENUMBER p JOIN ZABCDRECORD r ON r.Z_PK = p.ZOWNER "
+            "WHERE p.ZFULLNUMBER IS NOT NULL"
+        ).fetchall()
+        emails = conn.execute(
+            "SELECT r.ZFIRSTNAME, r.ZLASTNAME, r.ZNICKNAME, e.ZADDRESS "
+            "FROM ZABCDEMAILADDRESS e JOIN ZABCDRECORD r ON r.Z_PK = e.ZOWNER "
+            "WHERE e.ZADDRESS IS NOT NULL"
+        ).fetchall()
+    finally:
+        conn.close()
+    for first, last, nickname, raw in phones + emails:
+        key = normalize_handle(raw)
+        name = _record_name(first, last, nickname)
+        if key and name and key not in mapping:
+            mapping[key] = name
+
+
+def build_contact_map(contacts_glob: str = DEFAULT_CONTACTS_GLOB) -> dict[str, str]:
+    """Build a normalized-handle → contact-name map from the macOS Contacts DBs.
+
+    Every ``AddressBook-v22.abcddb`` matched by ``contacts_glob`` is scanned and
+    merged. Keys are the output of :func:`normalize_handle` (trailing phone
+    digits or a lowercased email), so a ``chat.db`` handle resolves with the same
+    normalization. Missing databases are tolerated (returns an empty/partial map)
+    so the iMessage pipeline still runs on machines without Contacts access.
+
+    Args:
+        contacts_glob: Glob matching the per-account Contacts databases.
+
+    Returns:
+        A dict mapping normalized handles to display names. Empty if no database
+        is found or none yields a usable name.
+    """
+    mapping: dict[str, str] = {}
+    for db_path in sorted(glob.glob(contacts_glob)):
+        try:
+            _scan_contacts_db(db_path, mapping)
+        except sqlite3.Error:
+            continue
+    return mapping
+
+
+def resolve_contact_name(handle: str, contact_map: dict[str, str]) -> str | None:
+    """Resolve a chat.db handle to a contact name, or ``None`` if unknown.
+
+    Args:
+        handle: A ``chat.db`` chat identifier.
+        contact_map: Output of :func:`build_contact_map`.
+
+    Returns:
+        The matched contact name, or ``None`` when the handle does not normalize
+        or has no contact — callers keep the bare handle in that case, never a
+        guessed name.
+    """
+    key = normalize_handle(handle)
+    if key is None:
+        return None
+    return contact_map.get(key)
 
 
 def connect_readonly(db_path: str = DEFAULT_DB_PATH) -> sqlite3.Connection:
@@ -219,28 +353,92 @@ def read_records(
         conn.close()
 
 
-def records_to_events(records: list[IMessageRecord]) -> list[Event]:
-    """Project validated records onto canonical events."""
-    return [r.to_event() for r in records]
+def _event_with_contact(event: Event, contact_name: str | None) -> Event:
+    """Return ``event`` with a resolved contact name in ``additional_data``.
+
+    The name is attached only when known; an unknown handle is left untouched so
+    downstream rendering keeps the bare handle rather than a guessed name. Because
+    :class:`~core.schema.Event` is frozen, a copy is built with the merged data.
+
+    Args:
+        event: The projected iMessage event.
+        contact_name: Resolved name for the event's ``thread_id``, or ``None``.
+
+    Returns:
+        The same event when ``contact_name`` is ``None``, otherwise a copy whose
+        ``additional_data`` carries ``contact_name``.
+    """
+    if contact_name is None:
+        return event
+    merged = dict(event.additional_data)
+    merged["contact_name"] = contact_name
+    return Event(
+        id=event.id,
+        t_utc=event.t_utc,
+        author_role=event.author_role,
+        content=event.content,
+        thread_id=event.thread_id,
+        reply_to=event.reply_to,
+        raw_ref=event.raw_ref,
+        source=event.source,
+        additional_data=merged,
+    )
+
+
+def records_to_events(
+    records: list[IMessageRecord],
+    contact_map: dict[str, str] | None = None,
+) -> list[Event]:
+    """Project validated records onto canonical events, resolving contact names.
+
+    Args:
+        records: Validated iMessage records.
+        contact_map: Optional normalized-handle → name map from
+            :func:`build_contact_map`. When given, each event gains a
+            ``contact_name`` in ``additional_data`` for handles that resolve;
+            unknown handles are left as the bare handle.
+
+    Returns:
+        Canonical events, one per record.
+    """
+    if not contact_map:
+        return [r.to_event() for r in records]
+    resolved: dict[str, str | None] = {}
+    events: list[Event] = []
+    for record in records:
+        handle = record.thread_id
+        if handle not in resolved:
+            resolved[handle] = resolve_contact_name(handle, contact_map)
+        events.append(_event_with_contact(record.to_event(), resolved[handle]))
+    return events
 
 
 def ingest(
     top_n: int,
     since: date | None = None,
     db_path: str = DEFAULT_DB_PATH,
+    contacts_glob: str = DEFAULT_CONTACTS_GLOB,
 ) -> list[Event]:
     """Ingest events from the busiest threads in ``chat.db``.
+
+    Builds the macOS Contacts handle→name map once (best-effort; tolerates a
+    missing Contacts DB) and tags each event's ``additional_data`` with the
+    resolved ``contact_name`` so downstream render/extraction sees a real name
+    instead of a bare phone/email handle.
 
     Args:
         top_n: Number of top threads (by volume) to ingest.
         since: Optional lower bound; only messages on or after this date are kept.
         db_path: Path to the SQLite database.
+        contacts_glob: Glob matching the macOS Contacts databases.
 
     Returns:
         Canonical events from the selected threads, ordered by thread then
         timestamp. Rows whose body cannot be decoded are silently skipped.
     """
-    return records_to_events(read_records(top_n, since=since, db_path=db_path))
+    records = read_records(top_n, since=since, db_path=db_path)
+    contact_map = build_contact_map(contacts_glob)
+    return records_to_events(records, contact_map)
 
 
 def _parse_args(argv: list[str] | None) -> argparse.Namespace:

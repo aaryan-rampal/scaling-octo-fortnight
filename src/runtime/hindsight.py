@@ -30,6 +30,17 @@ DEFAULT_EMBEDDINGS_MODEL = "qwen/qwen3-embedding-8b"
 # so staying <= 2000 is what makes qwen usable here at all.
 EMBEDDINGS_TRUNCATE_DIM = 2000
 
+# Steers fact extraction away from reading casual slang as literal kinship/relationships.
+# Injected via HINDSIGHT_API_RETAIN_MISSION, which prepends a "what to retain" focus to the
+# default concise prompt while keeping its tuned guidelines and few-shot examples intact
+# (unlike retain_extraction_mode="custom", which replaces both).
+RETAIN_MISSION = (
+    "Record only relationships and facts stated literally. Do not infer literal kinship or "
+    "relationships from casual slang or terms of endearment — 'bro', 'brother', 'bestie', "
+    "'fam', 'sis' are not literal family. Only assert a relationship when the text states it "
+    "literally."
+)
+
 _HOST = "127.0.0.1"
 _STARTUP_TIMEOUT_S = 120.0
 _SHUTDOWN_TIMEOUT_S = 30.0
@@ -66,6 +77,8 @@ def _apply_openrouter_env(api_key: str, llm_model: str, embeddings_model: str) -
         "HINDSIGHT_API_EMBEDDINGS_LITELLM_SDK_OUTPUT_DIMENSIONS": str(EMBEDDINGS_TRUNCATE_DIM),
         # No neural reranker: RRF passthrough needs no model or external call.
         "HINDSIGHT_API_RERANKER_PROVIDER": "rrf",
+        # Steer extraction away from reading casual slang as literal kinship (see RETAIN_MISSION).
+        "HINDSIGHT_API_RETAIN_MISSION": RETAIN_MISSION,
     }
     os.environ.update(env)
 
