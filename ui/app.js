@@ -29,6 +29,21 @@ const ICON = {
 const escapeHTML = (s) => s.replace(/[&<>"']/g, (c) =>
   ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
+// --- real listening history (incorporated from the YouTube Music dashboard) ---
+// data/soundtrack.json = { "YYYY-MM-DD": [{t:"HH:MM", track, artist, url}, ...] }
+let SOUNDTRACK = {};
+fetch("data/soundtrack.json").then((r) => (r.ok ? r.json() : {})).then((d) => { SOUNDTRACK = d; }).catch(() => {});
+const _mins = (t) => (+t.slice(0, 2)) * 60 + (+t.slice(3, 5));
+function soundtrackFor(cap) {
+  if (!cap || !cap.day || !cap.clock || !SOUNDTRACK[cap.day]) return null;
+  const day = SOUNDTRACK[cap.day];
+  const target = _mins(cap.clock);
+  const now = [...day].sort((a, b) => Math.abs(_mins(a.t) - target) - Math.abs(_mins(b.t) - target))[0];
+  let around = [...day].sort((a, b) => _mins(a.t) - _mins(b.t)).filter((p) => Math.abs(_mins(p.t) - target) <= 120);
+  if (around.length < 3) around = [...day].sort((a, b) => Math.abs(_mins(a.t) - target) - Math.abs(_mins(b.t) - target)).slice(0, 4).sort((a, b) => _mins(a.t) - _mins(b.t));
+  return { now, around: around.slice(0, 6) };
+}
+
 // --- sound (synthesized, no asset files; runs on user gesture) ---
 const SoundFX = (() => {
   let ctx;
@@ -457,6 +472,10 @@ function reveal() {
   document.querySelector("#view-reveal .section-label").textContent =
     active.userCreated ? "Your note, sealed" : "The night, reconstructed";
 
+  // --- real listening history: what was actually playing at this moment
+  const st = soundtrackFor(active);
+  const musicLabel = st ? `${st.now.artist} — ${st.now.track}` : active.music;
+
   // --- capsule data model: place · coordinates · time · mood (agent-read) · music
   const poi = SEED.map.find((m) => m.capsuleId === active.id);
   const coords = poi ? `${poi.lat.toFixed(5)}, ${poi.lng.toFixed(5)}` : "";
@@ -465,7 +484,20 @@ function reveal() {
     ${coords ? `<span class="rm-coord">${coords}</span>` : ""}
     <span class="rm-time">${active.anchor.time}</span>
     <span class="rm-mood" style="--h:${active.mood.hue}">${active.mood.label} · read by recapsule</span>
-    ${active.music ? `<span class="rm-music">♪ ${active.music}</span>` : ""}`;
+    ${musicLabel ? `<span class="rm-music">♪ ${musicLabel}</span>` : ""}`;
+
+  // --- soundtrack of that day, from your real YouTube Music history
+  const stEl = document.getElementById("reveal-soundtrack");
+  if (st && st.around.length) {
+    stEl.style.display = "";
+    stEl.innerHTML = `<div class="st-head">♪ what you were playing · ${active.day}</div>` +
+      st.around.map((p) => `
+        <a class="st-row${p === st.now ? " now" : ""}" href="${p.url}" target="_blank" rel="noopener">
+          <span class="st-time">${p.t}</span>
+          <span class="st-track">${escapeHTML(p.track)}<span class="st-artist"> — ${escapeHTML(p.artist)}</span></span>
+          ${p === st.now ? '<span class="st-tag">then</span>' : ""}
+        </a>`).join("");
+  } else stEl.style.display = "none";
 
   // --- media: photos + video (text lives in the storyline below)
   const media = active.media && active.media.length
@@ -675,3 +707,5 @@ if (location.search.includes("dbg")) {
   const log = () => { if(map){ const c=map.getCenter(); document.title = `c=${c.lng.toFixed(4)},${c.lat.toFixed(4)} z=${map.getZoom().toFixed(2)} w=${map.getContainer().clientWidth}`; } };
   setTimeout(log, 2500);
 }
+
+if(location.search.includes("demo=venue")){setTimeout(()=>{active=getPlace("venue");reveal();},1600);}

@@ -1,0 +1,555 @@
+{
+  "meta": {
+    "generatedAt": "2026-06-20T23:44:11",
+    "musicPlays": 39098,
+    "totalPlays": 52700,
+    "uniqueArtists": 3032,
+    "uniqueTracks": 8210,
+    "firstPlay": "2024-05-12T15:21:56",
+    "lastPlay": "2026-06-20T18:21:26",
+    "busiestDay": {
+      "date": "2025-12-04",
+      "plays": 348
+    }
+  },
+  "topArtists": [
+    {
+      "name": "Playboi Carti",
+      "plays": 3369
+    },
+    {
+      "name": "Ken Carson",
+      "plays": 3223
+    },
+    {
+      "name": "Lil Uzi Vert",
+      "plays": 1371
+    },
+    {
+      "name": "Drake",
+      "plays": 1081
+    },
+    {
+      "name": "EsDeeKid",
+      "plays": 933
+    },
+    {
+      "name": "Destroy Lonely",
+      "plays": 904
+    },
+    {
+      "name": "Yeat",
+      "plays": 825
+    },
+    {
+      "name": "PARTYNEXTDOOR",
+      "plays": 815
+    },
+    {
+      "name": "Chief Keef",
+      "plays": 757
+    },
+    {
+      "name": "Jhené Aiko",
+      "plays": 744
+    },
+    {
+      "name": "The Weeknd",
+      "plays": 738
+    },
+    {
+      "name": "OsamaSon",
+      "plays": 691
+    },
+    {
+      "name": "LUCKI",
+      "plays": 549
+    },
+    {
+      "name": "Bryson Tiller",
+      "plays": 521
+    },
+    {
+      "name": "Tyler, The Creator",
+      "plays": 411
+    },
+    {
+      "name": "Don Toliver",
+      "plays": 392
+    },
+    {
+      "name": "Future",
+      "plays": 388
+    },
+    {
+      "name": "Glokk40Spaz",
+      "plays": 331
+    },
+    {
+      "name": "Frank Ocean",
+      "plays": 328
+    },
+    {
+      "name": "here",
+      "plays": 316
+    },
+    {
+      "name": "SZA",
+      "plays": 309
+    },
+    {
+      "name": "Travis Scott",
+      "plays": 287
+    },
+    {
+      "name": "Lil Yachty",
+      "plays": 286
+    },
+    {
+      "name": "The Smiths",
+      "plays": 225
+    },
+    {
+      "name": "Rihanna",
+      "plays": 222
+    },
+    {
+      "name": "Release",
+      "plays": 221
+    },
+    {
+      "name": "ian",
+      "plays": 216
+    },
+    {
+      "name": "Cash Cobain",
+      "plays": 195
+    },
+    {
+      "name": "Brent Faiyaz",
+      "plays": 192
+    },
+    {
+      "name": "Deftones",
+      "plays": 182
+    },
+    {
+      "name": "21 Savage",
+      "plays": 180
+    },
+    {
+      "name": "Boston Richey",
+      "plays": 176
+    },
+    {
+      "name": "beabadoobee",
+      "plays": 175
+    },
+    {
+      "name": "jnhygs",
+      "plays": 158
+    },
+    {
+      "name": "Rich Amiri",
+      "plays": 158
+    },
+    {
+      "name": "Trippie Redd",
+      "plays": 147
+    },
+    {
+      "name": "Lil Tecca",
+      "plays": 140
+    },
+    {
+      "name": "Radiohead",
+      "plays": 137
+    },
+    {
+      "name": "Summrs",
+      "plays": 137
+    },
+    {
+      "name": "Daniel Caesar",
+      "plays": 134
+    },
+    {
+      "name": "Cochise",
+      "plays": 134
+    },
+    {
+      "name": "Mac DeMarco",
+      "plays": 133
+    },
+    {
+      "name": "Young Nudy",
+      "plays": 131
+    },
+    {
+      "name": "Arctic Monkeys",
+      "plays": 126
+    },
+    {
+      "name": "Sexyy Red",
+      "plays": 126
+    },
+    {
+      "name": "The Killers",
+      "plays": 122
+    },
+    {
+      "name": "Metro Boomin",
+      "plays": 122
+    },
+    {
+      "name": "Paramore",
+      "plays": 119
+    },
+    {
+      "name": "Kendrick Lamar",
+      "plays": 118
+    },
+    {
+      "name": "Tory Lanez",
+      "plays": 116
+    }
+  ],
+  "topTracks": [
+    {
+      "name": "Ken Carson — ss",
+      "plays": 244
+    },
+    {
+      "name": "Chief Keef — Save Me",
+      "plays": 203
+    },
+    {
+      "name": "Jhené Aiko — stranger",
+      "plays": 192
+    },
+    {
+      "name": "EsDeeKid — 4 Raws",
+      "plays": 188
+    },
+    {
+      "name": "Playboi Carti — Long Time (Intro)",
+      "plays": 168
+    },
+    {
+      "name": "Ken Carson — Freestyle 2",
+      "plays": 167
+    },
+    {
+      "name": "Playboi Carti — Home (KOD)",
+      "plays": 156
+    },
+    {
+      "name": "EsDeeKid — Century",
+      "plays": 155
+    },
+    {
+      "name": "Destroy Lonely — how u feel?",
+      "plays": 139
+    },
+    {
+      "name": "Playboi Carti — Location",
+      "plays": 136
+    },
+    {
+      "name": "Ken Carson — It’s Over",
+      "plays": 135
+    },
+    {
+      "name": "PARTYNEXTDOOR — TBH",
+      "plays": 130
+    },
+    {
+      "name": "Boston Richey — Help Me",
+      "plays": 128
+    },
+    {
+      "name": "Playboi Carti — TOXIC",
+      "plays": 125
+    },
+    {
+      "name": "Playboi Carti — OLYMPIAN",
+      "plays": 123
+    },
+    {
+      "name": "Ken Carson — Rock N Roll",
+      "plays": 121
+    },
+    {
+      "name": "Ken Carson — Green Room",
+      "plays": 120
+    },
+    {
+      "name": "The Killers — Mr. Brightside",
+      "plays": 117
+    },
+    {
+      "name": "Lil Uzi Vert — Spin Again",
+      "plays": 117
+    },
+    {
+      "name": "OsamaSon — Made Sum Plans",
+      "plays": 113
+    },
+    {
+      "name": "Drake — Headlines",
+      "plays": 110
+    },
+    {
+      "name": "Playboi Carti — FOMDJ",
+      "plays": 109
+    },
+    {
+      "name": "Bryson Tiller — Sorrows",
+      "plays": 105
+    },
+    {
+      "name": "Ken Carson — Succubus",
+      "plays": 104
+    },
+    {
+      "name": "Lil Uzi Vert — Do What I Want",
+      "plays": 103
+    },
+    {
+      "name": "EsDeeKid — Phantom",
+      "plays": 99
+    },
+    {
+      "name": "Ken Carson — Fighting My Demons",
+      "plays": 97
+    },
+    {
+      "name": "Playboi Carti — Let It Go",
+      "plays": 93
+    },
+    {
+      "name": "Flo Milli — Never Lose Me",
+      "plays": 92
+    },
+    {
+      "name": "Arctic Monkeys — 505",
+      "plays": 88
+    },
+    {
+      "name": "Barretta — douji feva",
+      "plays": 87
+    },
+    {
+      "name": "Playboi Carti — Over",
+      "plays": 84
+    },
+    {
+      "name": "Chief Keef — Faneto",
+      "plays": 84
+    },
+    {
+      "name": "Chief Keef — She Say She Love Me",
+      "plays": 84
+    },
+    {
+      "name": "Bryson Tiller — Let Em' Know",
+      "plays": 82
+    },
+    {
+      "name": "Lit — My Own Worst Enemy",
+      "plays": 82
+    },
+    {
+      "name": "Bryson Tiller — Right My Wrongs",
+      "plays": 81
+    },
+    {
+      "name": "Jhené Aiko — my mine",
+      "plays": 81
+    },
+    {
+      "name": "Dom Corleo — Penthouse Shordy",
+      "plays": 79
+    },
+    {
+      "name": "Lil Uzi Vert — 20 Min",
+      "plays": 78
+    },
+    {
+      "name": "Jhené Aiko — 2 seconds (Bonus)",
+      "plays": 78
+    },
+    {
+      "name": "Lil Yachty — Pardon Me",
+      "plays": 77
+    },
+    {
+      "name": "OsamaSon — just score it",
+      "plays": 77
+    },
+    {
+      "name": "Playboi Carti — R.I.P.",
+      "plays": 76
+    },
+    {
+      "name": "Bryson Tiller — Don't",
+      "plays": 76
+    },
+    {
+      "name": "Playboi Carti — Lean 4 Real",
+      "plays": 75
+    },
+    {
+      "name": "The Weeknd — Coming Down",
+      "plays": 75
+    },
+    {
+      "name": "Ken Carson — Trap Jump",
+      "plays": 75
+    },
+    {
+      "name": "Destroy Lonely — In The Air",
+      "plays": 75
+    },
+    {
+      "name": "Ne-Yo — She Knows",
+      "plays": 74
+    }
+  ],
+  "playsByYear": {
+    "2024": 7922,
+    "2025": 19005,
+    "2026": 12171
+  },
+  "playsByMonth": {
+    "2024-05": 335,
+    "2024-06": 1094,
+    "2024-07": 791,
+    "2024-08": 842,
+    "2024-09": 505,
+    "2024-10": 896,
+    "2024-11": 1389,
+    "2024-12": 2070,
+    "2025-01": 1507,
+    "2025-02": 894,
+    "2025-03": 612,
+    "2025-04": 669,
+    "2025-05": 1668,
+    "2025-06": 1784,
+    "2025-07": 2367,
+    "2025-08": 1309,
+    "2025-09": 1287,
+    "2025-10": 1555,
+    "2025-11": 2024,
+    "2025-12": 3329,
+    "2026-01": 1946,
+    "2026-02": 2062,
+    "2026-03": 1673,
+    "2026-04": 2459,
+    "2026-05": 2223,
+    "2026-06": 1808
+  },
+  "playsByWeekday": {
+    "Monday": 5940,
+    "Tuesday": 5438,
+    "Wednesday": 5858,
+    "Thursday": 5588,
+    "Friday": 4791,
+    "Saturday": 5041,
+    "Sunday": 6442
+  },
+  "playsByHour": {
+    "0": 257,
+    "1": 71,
+    "2": 132,
+    "3": 276,
+    "4": 848,
+    "5": 1834,
+    "6": 1633,
+    "7": 1691,
+    "8": 1985,
+    "9": 2324,
+    "10": 2198,
+    "11": 2198,
+    "12": 2328,
+    "13": 2532,
+    "14": 2829,
+    "15": 2857,
+    "16": 2554,
+    "17": 2392,
+    "18": 1843,
+    "19": 2177,
+    "20": 1626,
+    "21": 1443,
+    "22": 795,
+    "23": 275
+  },
+  "topArtistByYear": {
+    "2024": [
+      {
+        "name": "Playboi Carti",
+        "plays": 715
+      },
+      {
+        "name": "Ken Carson",
+        "plays": 657
+      },
+      {
+        "name": "Drake",
+        "plays": 300
+      },
+      {
+        "name": "Destroy Lonely",
+        "plays": 250
+      },
+      {
+        "name": "Lil Uzi Vert",
+        "plays": 243
+      }
+    ],
+    "2025": [
+      {
+        "name": "Ken Carson",
+        "plays": 1686
+      },
+      {
+        "name": "Playboi Carti",
+        "plays": 1583
+      },
+      {
+        "name": "Lil Uzi Vert",
+        "plays": 757
+      },
+      {
+        "name": "Drake",
+        "plays": 558
+      },
+      {
+        "name": "OsamaSon",
+        "plays": 517
+      }
+    ],
+    "2026": [
+      {
+        "name": "Playboi Carti",
+        "plays": 1071
+      },
+      {
+        "name": "Ken Carson",
+        "plays": 880
+      },
+      {
+        "name": "EsDeeKid",
+        "plays": 766
+      },
+      {
+        "name": "Lil Uzi Vert",
+        "plays": 371
+      },
+      {
+        "name": "The Weeknd",
+        "plays": 339
+      }
+    ]
+  }
+}

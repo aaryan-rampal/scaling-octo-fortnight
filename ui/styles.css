@@ -947,3 +947,14 @@ body {
   width: 64px; height: 64px; border-radius: 12px; object-fit: cover;
   background-size: cover; background-position: center; border: 1px solid var(--hairline);
 }
+
+/* ---- real soundtrack of the day (from YouTube Music history) ---- */
+.rsound { margin: 4px 0 18px; border: 1px solid var(--hairline); border-radius: var(--radius-card); overflow: hidden; background: rgba(20,16,12,.4); }
+.st-head { font-family: var(--mono); font-size: 9.5px; letter-spacing: 1px; text-transform: uppercase; color: var(--accent-soft); padding: 11px 14px 7px; }
+.st-row { display: flex; align-items: center; gap: 10px; padding: 8px 14px; border-top: 1px solid var(--hairline); color: var(--ink); text-decoration: none; font-size: 13px; }
+.st-row:hover { background: rgba(255,255,255,.04); }
+.st-time { font-family: var(--mono); font-size: 10.5px; color: var(--gold); width: 38px; flex-shrink: 0; font-variant-numeric: tabular-nums; }
+.st-track { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.st-artist { color: var(--ink-faint); }
+.st-row.now { background: rgba(30,215,96,.10); }
+.st-tag { font-family: var(--mono); font-size: 9px; text-transform: uppercase; letter-spacing: .5px; color: #6fe3a0; border: 1px solid rgba(30,215,96,.4); border-radius: 999px; padding: 2px 7px; }
