@@ -33,9 +33,6 @@ from storage.store import CapsuleStore
 #: Default inactivity gap before a run is cut into a new unit.
 DEFAULT_GAP = timedelta(minutes=30)
 
-#: Length of the trailing slice read from the store.
-DEFAULT_SLICE = timedelta(days=7)
-
 #: Sources whose events are grouped by ``thread_id`` before gap-sessionizing.
 CONVERSATIONAL_SOURCES = frozenset({"imessage", "claude"})
 
@@ -167,25 +164,29 @@ def _slice_recent(events: list[Event], window: timedelta) -> list[Event]:
 def segment_recent(
     db_path: str | None = None,
     gap: timedelta = DEFAULT_GAP,
-    window: timedelta = DEFAULT_SLICE,
+    window: timedelta | None = None,
 ) -> list[Unit]:
-    """Read the trailing slice of the store and segment it into units.
+    """Read the store and segment it into units.
 
-    Opens ``data/recall.db`` (read-only intent: only ``list_events`` is called),
-    keeps events within ``window`` of the latest timestamp, and runs
-    :func:`segment_events`.
+    Opens ``data/recall.db`` (read-only intent: only ``list_events`` is called)
+    and runs :func:`segment_events`. By default segments the **whole** store —
+    the ingest step already bounds what lands there, so retain consumes all of it.
+    Pass ``window`` only to retain a narrower sub-slice than was ingested.
 
     Args:
         db_path: Path to the SQLite store; defaults to ``CapsuleStore``'s default.
         gap: Inactivity gap before a run is cut. Defaults to 30 minutes.
-        window: Trailing slice to keep. Defaults to 7 days.
+        window: Optional trailing slice to keep. ``None`` (default) segments
+            every event in the store.
 
     Returns:
-        Units ordered by ``t_start`` for the recent slice.
+        Units ordered by ``t_start``.
     """
     store = CapsuleStore() if db_path is None else CapsuleStore(db_path)
     try:
         events = store.list_events()
     finally:
         store.close()
-    return segment_events(_slice_recent(events, window), gap)
+    if window is not None:
+        events = _slice_recent(events, window)
+    return segment_events(events, gap)

@@ -123,7 +123,7 @@ def test_empty_derived_from_is_rejected() -> None:
         )
 
 
-def test_segment_recent_reads_trailing_slice(tmp_path) -> None:
+def _seed_store(tmp_path):
     from storage.store import CapsuleStore
 
     db = tmp_path / "recall.db"
@@ -136,8 +136,20 @@ def test_segment_recent_reads_trailing_slice(tmp_path) -> None:
         ]
     )
     store.close()
+    return str(db)
 
-    units = segment_recent(str(db))
+
+def test_segment_recent_default_reads_whole_store(tmp_path) -> None:
+    # Default (no window): ingest already bounds the DB, so retain takes all of it.
+    units = segment_recent(_seed_store(tmp_path))
+    ids = [eid for u in units for eid in u.derived_from]
+    assert "old" in ids
+    assert set(ids) == {"old", "recent1", "recent2"}
+
+
+def test_segment_recent_window_keeps_trailing_slice(tmp_path) -> None:
+    # An explicit window retains only a narrower sub-slice than was ingested.
+    units = segment_recent(_seed_store(tmp_path), window=timedelta(days=7))
     ids = [eid for u in units for eid in u.derived_from]
     assert "old" not in ids
     assert ids == ["recent1", "recent2"]

@@ -1,7 +1,9 @@
-"""One-off: retain the 7-day slice into a Hindsight bank (rung ① → ② live).
+"""One-off: retain ``data/recall.db`` into a Hindsight bank (rung ① → ② live).
 
-Segments the trailing 7 days of ``data/recall.db`` into units, renders each to
-text, and retains them into an embedded Hindsight bank in chunks of
+Segments the store into units (the whole DB by default — the ingest step already
+bounds what lands there; pass ``--days N`` only to retain a narrower sub-slice),
+renders each to text, and retains them into an embedded Hindsight bank in chunks
+of
 :data:`CHUNK_SIZE` units per ``retain_batch`` call.  Batching eliminates the
 sequential round-trip overhead of the old per-unit loop (~7 s idle per unit)
 while each chunk boundary gives visible progress and limits the blast radius of
@@ -115,9 +117,15 @@ def main() -> None:
     """Segment + render + retain the slice, reporting live progress and any failures."""
     configure_logging()
 
-    ap = argparse.ArgumentParser(description="Retain the 7-day slice into Hindsight.")
+    ap = argparse.ArgumentParser(description="Retain recall.db into Hindsight.")
     ap.add_argument("--limit", type=int, default=0, help="Max units to retain (0 = all).")
-    ap.add_argument("--days", type=int, default=7, help="Trailing window in days.")
+    ap.add_argument(
+        "--days",
+        type=int,
+        default=0,
+        help="Optional trailing window in days; 0 (default) retains the whole DB "
+        "(ingest already bounds what's there).",
+    )
     ap.add_argument(
         "--chunk-size",
         type=int,
@@ -126,7 +134,8 @@ def main() -> None:
     )
     args = ap.parse_args()
 
-    units = segment_recent(window=timedelta(days=args.days))
+    window = timedelta(days=args.days) if args.days > 0 else None
+    units = segment_recent(window=window)
     by_source = dict(Counter(u.source for u in units))
     logger.info("segmented {} units; by source: {}", len(units), by_source)
     if args.limit:
