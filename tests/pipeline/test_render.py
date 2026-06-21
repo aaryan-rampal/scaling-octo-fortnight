@@ -133,6 +133,121 @@ def test_render_empty_events_raises() -> None:
         render_unit(_unit("imessage", ["a"]), [])
 
 
+# --- render_unit: enrichment keys (allowlist) ------------------------------------
+
+
+def test_render_imessage_uses_contact_name_for_other() -> None:
+    events = [
+        _event(
+            id="a",
+            author_role="other",
+            content="hey",
+            source="imessage",
+            additional_data={"contact_name": "Marleigh"},
+        ),
+    ]
+    text = render_unit(_unit("imessage", ["a"]), events)
+    assert text == "Marleigh: hey"
+
+
+def test_render_imessage_contact_name_never_relabels_self() -> None:
+    # A resolved name on a self-authored row must not overwrite the "self" role.
+    events = [
+        _event(
+            id="a",
+            author_role="self",
+            content="hi",
+            source="imessage",
+            additional_data={"contact_name": "Marleigh"},
+        ),
+    ]
+    assert render_unit(_unit("imessage", ["a"]), events) == "self: hi"
+
+
+def test_render_photo_prefers_vision_description_over_geo() -> None:
+    events = [
+        _event(
+            id="p1",
+            source="photos",
+            t_utc=_ts(15, 5),
+            additional_data={
+                "lat": 49.26,
+                "lng": -123.25,
+                "people": ["Alex"],
+                "vision_description": "a golden sunset over the sea",
+            },
+        ),
+    ]
+    text = render_unit(_unit("photos", ["p1"]), events)
+    assert text == "On 2026-06-14T15:05:00+00:00, a golden sunset over the sea with Alex"
+
+
+def test_render_photo_falls_back_to_geo_without_vision() -> None:
+    events = [
+        _event(
+            id="p2",
+            source="photos",
+            t_utc=_ts(16, 0),
+            additional_data={"lat": 1.0, "lng": 2.0, "people": []},
+        ),
+    ]
+    text = render_unit(_unit("photos", ["p2"]), events)
+    assert text == "On 2026-06-14T16:00:00+00:00, took a photo at 1.0, 2.0"
+
+
+def test_render_spotify_appends_vibe_when_absent_from_content() -> None:
+    events = [
+        _event(
+            id="s1",
+            author_role="self",
+            content="Listened to 'Title' by Calvin Harris",
+            source="spotify",
+            t_utc=_ts(9, 30),
+            additional_data={"artist_vibe": "high-energy EDM dance-pop"},
+        ),
+    ]
+    text = render_unit(_unit("spotify", ["s1"]), events)
+    assert text == (
+        "On 2026-06-14T09:30:00+00:00, listened to 'Title' by Calvin Harris "
+        "(high-energy EDM dance-pop)"
+    )
+
+
+def test_render_spotify_does_not_duplicate_vibe_already_in_content() -> None:
+    events = [
+        _event(
+            id="s2",
+            author_role="self",
+            content="Listened to 'Title' by Calvin Harris (high-energy EDM dance-pop)",
+            source="spotify",
+            t_utc=_ts(9, 30),
+            additional_data={"artist_vibe": "high-energy EDM dance-pop"},
+        ),
+    ]
+    text = render_unit(_unit("spotify", ["s2"]), events)
+    assert text.count("high-energy EDM dance-pop") == 1
+
+
+def test_render_ignores_non_allowlisted_plumbing_keys() -> None:
+    # Storage plumbing (paths, dimensions, flags) must never leak into the text.
+    events = [
+        _event(
+            id="p3",
+            source="photos",
+            t_utc=_ts(16, 0),
+            additional_data={
+                "vision_description": "a quiet room",
+                "original_path": "/Users/me/IMG_1.HEIC",
+                "height": 4032,
+                "is_favorite": True,
+            },
+        ),
+    ]
+    text = render_unit(_unit("photos", ["p3"]), events)
+    assert text == "On 2026-06-14T16:00:00+00:00, a quiet room"
+    assert "IMG_1" not in text and "4032" not in text
+
+
 # --- retain_unit -----------------------------------------------------------------
 
 

@@ -31,6 +31,14 @@ from core.schema import Event
 #: Sources whose events carry a conversational transcript (role + content).
 CONVERSATIONAL_SOURCES = frozenset({"imessage", "claude"})
 
+#: Scalar ``additional_data`` keys that carry render-worthy *meaning* (enrichments),
+#: as opposed to storage plumbing (dimensions, paths, flags) which must never leak
+#: into retained text. Opt-in by design: adding a new enrichment key requires
+#: listing it here. Arrays are intentionally excluded — list-valued enrichments
+#: (e.g. ``vision_tags``, ``people``) are surfaced explicitly by the per-source
+#: renderer that knows how to phrase them, not folded in generically.
+RENDER_KEYS = ("contact_name", "vision_description", "artist_vibe")
+
 #: Default memory bank the retain wrapper writes to (mirrors the iMessage POC).
 DEFAULT_BANK = "imessage-v0"
 
@@ -88,6 +96,30 @@ def _fmt_time(t: datetime) -> str:
     return t.isoformat()
 
 
+def _enrichment(event: Event, key: str) -> str | None:
+    """Return a non-empty allowlisted scalar enrichment from ``additional_data``.
+
+    Only keys in :data:`RENDER_KEYS` are readable here; everything else in
+    ``additional_data`` is storage plumbing and stays out of retained text. A
+    missing key, a non-string value, or a blank string all yield ``None`` so the
+    caller can fall back to its un-enriched template.
+
+    Args:
+        event: The event whose ``additional_data`` is read.
+        key: The enrichment key; must be one of :data:`RENDER_KEYS`.
+
+    Returns:
+        The trimmed string value, or ``None`` when absent/blank/non-string.
+    """
+    if key not in RENDER_KEYS:
+        return None
+    value = (event.additional_data or {}).get(key)
+    if not isinstance(value, str):
+        return None
+    trimmed = value.strip()
+    return trimmed or None
+
+
 def _transcript_line(event: Event) -> str:
     """Render one conversational event as a ``role: content`` line.
 
@@ -97,10 +129,17 @@ def _transcript_line(event: Event) -> str:
     Returns:
         ``"self: hello"`` / ``"other: hi"``; a missing role falls back to
         ``"unknown"`` and missing content to the empty string so a malformed row
-        degrades gracefully rather than crashing the render.
+        degrades gracefully rather than crashing the render. When the event
+        carries a resolved ``contact_name``, a non-self author is labelled by name
+        (``"Marleigh: hi"``) instead of the bare ``"other"`` role, which removes
+        the LLM's incentive to invent a name during extraction.
     """
     role = event.author_role or "unknown"
     content = event.content or ""
+    if role != "self":
+        name = _enrichment(event, "contact_name")
+        if name is not None:
+            role = name
     return f"{role}: {content}"
 
 
@@ -108,29 +147,44 @@ def _spotify_fact(event: Event) -> str:
     """Render one Spotify play as a templated fact.
 
     The canonical Spotify event already carries a human-readable description in
-    ``content`` (e.g. ``"Listened to 'Track' by Artist (album X)"``); its
-    ``additional_data`` is empty. We prefix it with the timestamp to form a
-    self-contained fact: ``"On {t}, listened to 'Track' by Artist ..."``.
+    ``content`` (e.g. ``"Listened to 'Track' by Artist (album X)"``). When the
+    artist has a cached vibe, ``content`` already folds it in, but we also read
+    the ``artist_vibe`` enrichment explicitly and append it when absent from the
+    text — so the taste signal is surfaced by intent, not by accident of the
+    content line. We prefix the timestamp to form a self-contained fact:
+    ``"On {t}, listened to 'Track' by Artist ... [vibe]"``.
     """
     desc = (event.content or "listened to music").strip()
     # Lower-case the leading verb so it reads as one sentence after "On {t}, ".
     if desc[:9] == "Listened ":
         desc = "listened" + desc[8:]
+    vibe = _enrichment(event, "artist_vibe")
+    if vibe is not None and vibe not in desc:
+        desc = f"{desc} ({vibe})"
     return f"On {_fmt_time(event.t_utc)}, {desc}"
 
 
 def _photo_fact(event: Event) -> str:
     """Render one photo as a templated fact from ``additional_data``.
 
-    Uses place (lat/lng when present) and named people; people may be empty and
-    is handled gracefully. ``"On {t}, took a photo at {lat,lng} with {people}"``.
+    When the photo has been vision-enriched, its ``vision_description`` carries the
+    scene ("a golden sunset over the sea from a cozy window sill") and becomes the
+    body of the fact — this is what gives photos real semantic content instead of
+    a bare coordinate. Without it, we fall back to the raw place template. Named
+    people (a list, handled explicitly here rather than via the scalar allowlist)
+    are appended when present.
     """
     data = event.additional_data or {}
-    lat, lng = data.get("lat"), data.get("lng")
-    place = f"{lat}, {lng}" if lat is not None and lng is not None else "an unknown location"
+    description = _enrichment(event, "vision_description")
+    if description is not None:
+        body = description
+    else:
+        lat, lng = data.get("lat"), data.get("lng")
+        place = f"{lat}, {lng}" if lat is not None and lng is not None else "an unknown location"
+        body = f"took a photo at {place}"
     people = [p for p in (data.get("people") or []) if p]
     who = f" with {', '.join(people)}" if people else ""
-    return f"On {_fmt_time(event.t_utc)}, took a photo at {place}{who}"
+    return f"On {_fmt_time(event.t_utc)}, {body}{who}"
 
 
 def render_unit(unit: Any, events: list[Event]) -> str:
