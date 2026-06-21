@@ -110,39 +110,60 @@ $DOPPLER env PYTHONPATH=src "$PY" scripts/mint_principles.py \
   2>&1 | tee /tmp/bootstrap_mint.log
 grep -q "done:" /tmp/bootstrap_mint.log || die "Mint did not finish — see /tmp/bootstrap_mint.log"
 
-# --- 6. link: merge near-dupes + typed edges -> recall.db principle layer -----
-log "Linking principles (merge near-dupes + grounded edges) — writes recall.db"
-$DOPPLER env PYTHONPATH=src "$PY" scripts/link_principles.py \
-  2>&1 | tee /tmp/bootstrap_link.log
-grep -q "edges" /tmp/bootstrap_link.log || die "Link did not finish — see /tmp/bootstrap_link.log"
-
-# --- 7. dump: materialise the memory layer + raw provenance -> recall.db ------
+# --- 6. dump: materialise the memory layer + raw provenance -> recall.db ------
+# MUST run BEFORE link. link writes principle_memories, whose rows FK-reference
+# the memories table; if memories is empty (link before dump), link writes ZERO
+# principle_memories and the principle->memory->raw trace is silently broken.
+# dump fills memories + memory_events first so link can connect the full ladder.
 # --days 0 re-segments the whole DB (a superset of the sampled units), so every
 # retained memory resolves its raw events; dangling units simply go unmatched.
-log "Materialising the memory->raw provenance into recall.db"
+log "Materialising the memory->raw provenance into recall.db (before link)"
 $DOPPLER env PYTHONPATH=src "$PY" scripts/dump_bank.py --days 0 \
   2>&1 | tee /tmp/bootstrap_dump.log
 grep -q "memory records into" /tmp/bootstrap_dump.log \
   || die "Dump did not finish — see /tmp/bootstrap_dump.log"
 
-# --- 8. show + verify the traceable recall.db (the fact-check) ----------------
-log "Your principles, now traceable to raw data in recall.db:"
-PYTHONPATH=src "$PY" - <<'PY'
+# --- 7. link: merge near-dupes + typed edges + principle_memories -> recall.db -
+# Runs AFTER dump so the memories it links principles to already exist.
+log "Linking principles (merge near-dupes + grounded edges) — writes recall.db"
+$DOPPLER env PYTHONPATH=src "$PY" scripts/link_principles.py \
+  2>&1 | tee /tmp/bootstrap_link.log
+grep -q "edges" /tmp/bootstrap_link.log || die "Link did not finish — see /tmp/bootstrap_link.log"
+
+# --- 8. show + VERIFY the traceable recall.db (hard gate, not just a print) ----
+# Exits non-zero if the principle->memory->raw ladder is broken (e.g. empty
+# principle_memories from a stage-order regression), so the trace bug can never
+# ship silently. This is the definition-of-done check.
+log "Verifying the principle -> memory -> raw trace in recall.db:"
+PYTHONPATH=src "$PY" - <<'PY' || die "TRACE BROKEN — principles do not reach raw events (see above). Check dump-before-link order."
 import sqlite3
+import sys
+
 c = sqlite3.connect("data/recall.db")
 n = lambda t: c.execute(f"select count(*) from {t}").fetchone()[0]
-print(f"\n  {n('principles')} principles · {n('edges')} edges · "
+n_principles = n("principles")
+print(f"\n  {n_principles} principles · {n('edges')} edges · "
       f"{n('memories')} memories · {n('events')} raw events\n")
 for text, conf in c.execute(
     "select text, confidence from principles order by confidence desc"
 ):
     print(f"  [{conf:.2f}] {text}")
+
 reach = c.execute(
     "select count(distinct pm.principle_id) from principle_memories pm "
-    "join memory_events me on me.memory_id = pm.memory_id"
+    "join memory_events me on me.memory_id = pm.memory_id "
+    "join events e on e.id = me.event_id"
 ).fetchone()[0]
-print(f"\n  {reach}/{n('principles')} principles trace to >=1 raw event. "
-      "Walk any one: principle -> principle_memories -> memory_events -> events.")
+print(f"\n  {reach}/{n_principles} principles trace all the way to raw events.")
+
+if n_principles and reach < n_principles:
+    print(
+        f"  ERROR: {n_principles - reach} principle(s) do NOT reach raw events — "
+        "the provenance ladder is incomplete. Did dump run before link?",
+        file=sys.stderr,
+    )
+    sys.exit(1)
+print("  Walk any one: principle -> principle_memories -> memory_events -> events.")
 PY
 
 log "Done. Principles minted, linked, and traceable to your raw data in recall.db."
