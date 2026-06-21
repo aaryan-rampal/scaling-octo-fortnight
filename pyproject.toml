@@ -9,6 +9,7 @@ dependencies = [
     "loguru==0.7.3",
     "pydantic>=2",
     "python-dotenv",
+    "sentry-sdk[fastapi]==2.63.0",
 ]
 
 [project.scripts]
@@ -26,6 +27,7 @@ packages = [
     "src/storage",
     "src/pipeline",
     "src/runtime",
+    "src/observability",
 ]
 sources = ["src"]
 force-include = { "src/cli.py" = "cli.py" }

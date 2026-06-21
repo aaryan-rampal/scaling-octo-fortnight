@@ -26,6 +26,7 @@ import psycopg2
 from loguru import logger
 from openai import OpenAI
 
+from observability.sentry import capture_exception, gen_ai_span, record_gen_ai_usage
 from pipeline.mint import MemoryCard
 
 
@@ -363,17 +364,24 @@ class LLMProposer:
         """
         entries = _build_entries(cards)
         user_msg = _USER_TEMPLATE.format(entries=entries)
-        try:
-            resp = self._client.chat.completions.create(
-                model=self._model,
-                messages=[
-                    {"role": "system", "content": _SYSTEM_PROMPT},
-                    {"role": "user", "content": user_msg},
-                ],
-                temperature=0.3,
-            )
-        except Exception as exc:
-            logger.error("proposer: LLM call failed: {}: {}", type(exc).__name__, exc)
-            return []
-        raw = (resp.choices[0].message.content or "").strip()
-        return _parse_proposals(raw)
+        # Metadata only — never the cluster's raw memory text (personal data).
+        request_data = {"cluster_size": len(cards), "temperature": 0.3}
+        with gen_ai_span(operation="chat", model=self._model, request_data=request_data) as span:
+            try:
+                resp = self._client.chat.completions.create(
+                    model=self._model,
+                    messages=[
+                        {"role": "system", "content": _SYSTEM_PROMPT},
+                        {"role": "user", "content": user_msg},
+                    ],
+                    temperature=0.3,
+                )
+            except Exception as exc:
+                logger.error("proposer: LLM call failed: {}: {}", type(exc).__name__, exc)
+                capture_exception(exc, context={"stage": "propose", "model": self._model})
+                return []
+            record_gen_ai_usage(span, getattr(resp, "usage", None))
+            raw = (resp.choices[0].message.content or "").strip()
+            proposals = _parse_proposals(raw)
+            span.set_data("gen_ai.response.proposal_count", len(proposals))
+            return proposals

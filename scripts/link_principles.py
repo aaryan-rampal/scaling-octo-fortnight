@@ -41,10 +41,12 @@ import json
 import time
 from pathlib import Path
 
+import sentry_sdk
 from loguru import logger
 
 from core.logging import configure_logging
 from core.principle import Edge, Principle
+from observability.sentry import init_sentry
 from pipeline.link import LLMEdgeProposer, run_linking, run_merge
 from pipeline.mint import MemoryCard
 from pipeline.propose import PgVectorReader, QwenEmbedder, recall_to_cards
@@ -142,6 +144,7 @@ def _edge_to_dict(e: Edge) -> dict:
 def main() -> None:
     """Load principles, recall cards for ledger rebuilding, merge, then link."""
     configure_logging()
+    init_sentry(component="link")
 
     ap = argparse.ArgumentParser(
         description="Rung ④: merge near-duplicate principles then link related ones."
@@ -227,12 +230,15 @@ def main() -> None:
     # -----------------------------------------------------------------------
     proposer = LLMEdgeProposer()
     t0 = time.perf_counter()
-    edges = run_linking(
-        merged_principles,
-        embedder,
-        proposer,
-        limit=args.limit,
-    )
+    # One transaction spans the linking pass so every per-pair gen_ai.chat edge
+    # span nests under it as a single trace in Sentry's AI Agents view.
+    with sentry_sdk.start_transaction(op="link", name="link_principles"):
+        edges = run_linking(
+            merged_principles,
+            embedder,
+            proposer,
+            limit=args.limit,
+        )
     elapsed = time.perf_counter() - t0
     logger.info(
         "linking complete: {} edges from {} principles in {:.1f}s",

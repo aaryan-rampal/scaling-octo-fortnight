@@ -25,6 +25,7 @@ from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from hindsight_client import Hindsight
 
+from observability.sentry import init_sentry
 from poc_demo.server import data
 from poc_demo.server.capsules import (
     DEFAULT_MEDIA_ROOT,
@@ -33,6 +34,10 @@ from poc_demo.server.capsules import (
 )
 from runtime.hindsight import embedded_hindsight
 from storage.store import CapsuleStore
+
+# Initialize Sentry before the app is built so the FastAPI integration hooks the
+# request lifecycle. No-op when SENTRY_DSN is unset.
+init_sentry(component="api")
 
 DEFAULT_BANK = os.environ.get("RECALL_BANK", "imessage-v0")
 

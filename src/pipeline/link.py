@@ -35,6 +35,7 @@ from typing import Any, Protocol
 from loguru import logger
 
 from core.principle import Edge, LedgerRow, Principle, Relation
+from observability.sentry import capture_exception, gen_ai_span, record_gen_ai_usage
 from pipeline.mint import MemoryCard, compute_confidence
 
 #: Pairs at or above this cosine are merge candidates (near-duplicates).
@@ -479,21 +480,26 @@ class LLMEdgeProposer:
         """
         ids_str = "\n".join(f"  {mid}" for mid in neighborhood)
         user_msg = _EDGE_USER.format(text_a=src.text, text_b=dst.text, ids=ids_str)
-        try:
-            resp = self._client.chat.completions.create(
-                model=self._model,
-                messages=[
-                    {"role": "system", "content": _EDGE_SYSTEM},
-                    {"role": "user", "content": user_msg},
-                ],
-                temperature=0.2,
-            )
-        except Exception as exc:
-            logger.error("edge proposer: LLM call failed: {}: {}", type(exc).__name__, exc)
-            return None
+        # Metadata only — neighborhood size, not the principle texts (personal data).
+        request_data = {"neighborhood_size": len(neighborhood), "temperature": 0.2}
+        with gen_ai_span(operation="chat", model=self._model, request_data=request_data) as span:
+            try:
+                resp = self._client.chat.completions.create(
+                    model=self._model,
+                    messages=[
+                        {"role": "system", "content": _EDGE_SYSTEM},
+                        {"role": "user", "content": user_msg},
+                    ],
+                    temperature=0.2,
+                )
+            except Exception as exc:
+                logger.error("edge proposer: LLM call failed: {}: {}", type(exc).__name__, exc)
+                capture_exception(exc, context={"stage": "link", "model": self._model})
+                return None
 
-        raw = (resp.choices[0].message.content or "").strip()
-        return _parse_edge_proposal(raw)
+            record_gen_ai_usage(span, getattr(resp, "usage", None))
+            raw = (resp.choices[0].message.content or "").strip()
+            return _parse_edge_proposal(raw)
 
 
 def _parse_edge_proposal(raw: str) -> tuple[Relation, list[str]] | None:

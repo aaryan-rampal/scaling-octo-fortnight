@@ -43,9 +43,11 @@ import json
 import time
 from pathlib import Path
 
+import sentry_sdk
 from loguru import logger
 
 from core.logging import configure_logging
+from observability.sentry import capture_exception, init_sentry, set_measurement
 from pipeline.mint import (
     _principle_id,
     build_ledger,
@@ -93,6 +95,8 @@ def _run_with_observability(
         clusters = clusters[:limit_clusters]
         logger.info("limiting to first {} clusters (--limit-clusters)", len(clusters))
 
+    set_measurement("clusters_processed", len(clusters))
+
     principles: list[dict] = []
     total = len(clusters)
 
@@ -114,6 +118,7 @@ def _run_with_observability(
                 type(exc).__name__,
                 exc,
             )
+            capture_exception(exc, context={"stage": "mint", "cluster": idx})
             continue
 
         if not candidates:
@@ -145,6 +150,7 @@ def _run_with_observability(
 def main() -> None:
     """Recall, cluster, propose, and write principles with live observability."""
     configure_logging()
+    init_sentry(component="mint")
 
     ap = argparse.ArgumentParser(description="Mint principles from the slice-7d bank.")
     ap.add_argument(
@@ -188,13 +194,18 @@ def main() -> None:
     proposer = LLMProposer()
     embedder = QwenEmbedder()
 
-    principles = _run_with_observability(
-        cards,
-        proposer,
-        embedder,
-        limit_clusters=args.limit_clusters,
-        dry_run=args.dry_run,
-    )
+    # One transaction spans the whole mint run so every per-cluster gen_ai.chat
+    # span nests under it as a single trace in Sentry's AI Agents view.
+    with sentry_sdk.start_transaction(op="mint", name="mint_principles"):
+        set_measurement("cards_recalled", len(cards))
+        principles = _run_with_observability(
+            cards,
+            proposer,
+            embedder,
+            limit_clusters=args.limit_clusters,
+            dry_run=args.dry_run,
+        )
+        set_measurement("principles_minted", len(principles))
 
     if args.dry_run:
         logger.info("dry-run complete — no output written.")

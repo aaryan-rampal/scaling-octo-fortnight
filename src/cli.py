@@ -15,6 +15,7 @@ from datetime import date
 
 from adapters.imessage import DEFAULT_DB_PATH, ingest
 from core.schema import read_events_jsonl, write_events_jsonl
+from observability.sentry import init_sentry
 from pipeline.episodes import _summary_lines, _write_episodes_jsonl, build_episodes
 from pipeline.load import (
     DEFAULT_BANK,
@@ -185,6 +186,7 @@ def _build_parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> None:
     """CLI entry point: parse arguments and dispatch the chosen subcommand."""
+    init_sentry(component="cli")
     parser = _build_parser()
     args = parser.parse_args(argv)
     args.handler(args)
