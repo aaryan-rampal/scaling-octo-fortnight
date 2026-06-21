@@ -268,11 +268,16 @@ document.getElementById("create-form").addEventListener("submit", async (e) => {
   renderPlaces();
   switchTab("map");
 
-  // send to the recall backend if one is configured (the capsule-ingest path)
+  // send to the recall backend if one is configured (the capsule-ingest path).
+  // the journal note rides along as a `text` media file = new raw_data (flywheel §3).
   if (Recall.on()) {
     toast(`Sealing to recall…`);
+    const files = [...selFiles];
+    if (note && note !== "No words — just being here.") {
+      files.push(new File([note], "note.txt", { type: "text/plain" }));
+    }
     try {
-      await Recall.createCapsule({ place_name: createPoi.name, lat: createPoi.lat, lng: createPoi.lng, files: selFiles });
+      await Recall.createCapsule({ place_name: createPoi.name, lat: createPoi.lat, lng: createPoi.lng, files });
       toast(`Sealed at ${cap.name} — ingested by recall.`);
     } catch {
       toast(`Sealed locally (recall unreachable).`);
@@ -605,10 +610,9 @@ document.querySelectorAll("[data-back-map]").forEach((b) => b.addEventListener("
 // --- pull any capsules already ingested by the recall backend (capsule-ingest) ---
 async function hydrateFromBackend() {
   if (!Recall.on()) return;
-  const h = await Recall.health();
-  setBackendChip(!!h);
-  if (!h) return;
-  const list = await Recall.listCapsules();
+  const list = await Recall.listCapsules(); // null = unreachable, [] = connected but empty
+  setBackendChip(list !== null);
+  if (!list) return;
   let added = 0;
   list.forEach((c) => {
     if (getPlace(c.id)) return;

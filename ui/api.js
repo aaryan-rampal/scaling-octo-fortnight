@@ -21,17 +21,22 @@ const Recall = (() => {
     try { const r = await fetch(base() + "/api/health", { cache: "no-store" }); return r.ok ? await r.json() : null; }
     catch { return null; }
   }
+  // returns the capsules array, or null if the backend is unreachable
   async function listCapsules() {
-    if (!on()) return [];
-    try { const r = await fetch(base() + "/api/capsules"); return r.ok ? await r.json() : []; }
-    catch { return []; }
+    if (!on()) return null;
+    try {
+      const r = await fetch(base() + "/api/capsules");
+      if (!r.ok) return null;
+      const j = await r.json();
+      return Array.isArray(j) ? j : (j.capsules || []); // server wraps as {capsules:[...]}
+    } catch { return null; }
   }
   async function createCapsule({ place_name, lat, lng, files }) {
     const fd = new FormData();
     fd.append("place_name", place_name);
     if (lat != null) fd.append("lat", lat);
     if (lng != null) fd.append("lng", lng);
-    (files || []).forEach((f) => fd.append("files", f));
+    (files || []).forEach((f) => fd.append("media", f)); // server field is `media` (list[UploadFile])
     const r = await fetch(base() + "/api/capsules", { method: "POST", body: fd });
     if (!r.ok) throw new Error("create " + r.status);
     return await r.json();
