@@ -33,8 +33,18 @@ const KEY_FILE  = path.join(CERT_DIR, 'key.pem');
 const CRT_FILE  = path.join(CERT_DIR, 'cert.pem');
 const HAS_CERT  = fs.existsSync(KEY_FILE) && fs.existsSync(CRT_FILE);
 
+// The login USERNAME from Basic Auth (lowercased). The passcode is shared; the
+// username identifies WHO logged in (aaryan / selin), which the app uses to pick
+// that person's principle set. Empty if no/blank username.
+function authUser(req) {
+  const hdr = req.headers['authorization'] || '';
+  if (!hdr.startsWith('Basic ')) return '';
+  const decoded = Buffer.from(hdr.slice(6), 'base64').toString('utf8');
+  return decoded.slice(0, decoded.indexOf(':')).trim().toLowerCase();
+}
+
 // HTTP Basic Auth gate: the browser shows a native prompt; we only check the
-// password field against PASSCODE (the username is ignored — "just a passcode").
+// password field against PASSCODE (the username identifies the user, below).
 // Returns true if the request may proceed, false if a 401 challenge was sent.
 function passcodeOK(req, res) {
   if (!PASSCODE) return true;                          // no passcode configured → open
@@ -79,6 +89,13 @@ const handler = (req, res) => {
   if (!passcodeOK(req, res)) return;
 
   const urlPath = decodeURIComponent(req.url.split('?')[0]);
+
+  // Who logged in? The app fetches this to pick the right principle set.
+  if (urlPath === '/whoami') {
+    res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+    res.end(JSON.stringify({ user: authUser(req) }));
+    return;
+  }
 
   // Proxy /api/* and /media/* to the Python backend.
   if (urlPath.startsWith('/api/') || urlPath.startsWith('/media/')) {

@@ -2109,12 +2109,25 @@
     // principles connect). Two thematic clusters are colored by community.
     let pgState = null;
 
+    // Which principle set to load, by login user. Each maps to a JSON file the
+    // export wrote; unknown/blank users fall back to the default principles.json.
+    const PRINCIPLE_FILES = { aaryan: 'principles.aaryan.json', selin: 'principles.selin.json' };
+
+    async function whoAmI(){
+      try { const r = await fetch('/whoami', { cache: 'no-store' }); if (r.ok) return ((await r.json()).user || '').toLowerCase(); }
+      catch {}
+      return '';
+    }
+
     async function openPrinciples(){
       principles.classList.add('open');
       const scroll = document.getElementById('principlesScroll');
       scroll.innerHTML = '<div class="prin-loading">reading your principles…</div>';
       try {
-        const resp = await fetch('principles.json', { cache: 'no-store' });
+        const user = await whoAmI();
+        const file = PRINCIPLE_FILES[user] || 'principles.json';
+        let resp = await fetch(file, { cache: 'no-store' });
+        if (!resp.ok && file !== 'principles.json') resp = await fetch('principles.json', { cache: 'no-store' });
         if (!resp.ok) throw new Error('fetch failed');
         const data = await resp.json();
         renderPrincipleGraph(scroll, data);
@@ -2302,13 +2315,21 @@
         });
       });
 
-      // isolated nodes: a tidy row beneath the clusters
-      const iy = 46 + 50;
-      const ispan = Math.max(isolated.length - 1, 1) * 34;
-      isolated.forEach((n, i) => {
-        n.x = 50 - ispan / 2 + i * 34;
-        n.y = iy;
-      });
+      // isolated nodes: a GRID (wraps into rows) so even many of them stay
+      // visible and browsable. If there are no clusters (an edgeless set, e.g.
+      // 79 principles with no edges), the grid is the whole graph and is centered.
+      if (isolated.length){
+        const gap = 30;
+        const cols = Math.max(1, Math.round(Math.sqrt(isolated.length * 1.1)));
+        const rows = Math.ceil(isolated.length / cols);
+        const gw = (cols - 1) * gap, gh = (rows - 1) * gap;
+        const ox = 50 - gw / 2;                 // centered horizontally
+        const oy = (clusters.length ? 46 + 46 : 50 - gh / 2); // below clusters, or centered
+        isolated.forEach((n, i) => {
+          n.x = ox + (i % cols) * gap;
+          n.y = oy + Math.floor(i / cols) * gap;
+        });
+      }
 
       // a few relaxation passes so linked nodes settle nearer each other without
       // collapsing (bounded, won't explode)
