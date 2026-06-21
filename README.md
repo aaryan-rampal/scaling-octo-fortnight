@@ -94,3 +94,61 @@ See `poc_demo/README.md` for the API endpoints.
 - Loaded data lives in an embedded Postgres (`pg0`) on disk and persists between
   runs, scoped to the bank id (default `imessage-v0`).
 - Tests: `.venv/bin/python -m pytest -q` (no network, uses fixtures).
+
+## The local-first capsule app (`recall serve`)
+
+Run the whole app — UI, API, and media — from one command, all on your machine.
+Your photos, notes, and memories never leave the device; the server just reads
+and writes local SQLite + files.
+
+```bash
+# laptop-only (safest): nothing on the network can reach it
+recall serve --host 127.0.0.1
+
+# open http://localhost:8000
+```
+
+Create a time capsule in the UI (a place + photos + a note). It persists to the
+local SQLite store **and** is projected into the unified `events` table as a
+canonical `Event` (`source="capsule"`) — the same provenance path as the passive
+sources (iMessage / Spotify / photos), ready to rise into memory.
+
+### Reach it from your phone (data stays on your laptop)
+
+The phone talks to *your laptop*; the data is never uploaded to a cloud. Protect
+it with a passcode first — required whenever you expose the port:
+
+```bash
+recall serve --token "your-passcode"        # gates API + media behind the passcode
+# (or set RECALL_TOKEN in the env)
+```
+
+Then make the laptop reachable from the phone. Two options:
+
+**Same wifi (simplest):**
+```bash
+recall serve --host 0.0.0.0 --token "your-passcode"
+# phone (same wifi): http://<your-laptop-ip>:8000   (mac: ipconfig getifaddr en0)
+```
+
+**From anywhere, privately (recommended): Tailscale**
+A private encrypted network between *your own devices* — the laptop is never
+exposed to the public internet.
+```bash
+# install Tailscale on the laptop AND the phone, then on the laptop:
+tailscale up
+recall serve --host 0.0.0.0 --token "your-passcode"
+# phone: http://<laptop-tailscale-ip>:8000
+```
+
+**Quick public URL (demo): ngrok**
+```bash
+recall serve --token "your-passcode"
+ngrok http 8000          # open the https URL it prints on your phone
+```
+The passcode is what protects the tunnel — anyone with the URL still needs it.
+
+On first load the UI shows a passcode lock screen (styled to match the app);
+enter the passcode once and the device stays unlocked. Memory networks
+(`/api/networks`) need OpenRouter and are skipped gracefully if no key is
+configured — capsule creation, media, and listing work without it.

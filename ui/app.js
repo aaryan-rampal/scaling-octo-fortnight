@@ -643,11 +643,47 @@ function setBackendChip(live) {
   if (el) el.title = live ? "recall backend: connected" : "recall backend: offline (seed)";
 }
 
-// --- boot ---
-renderMap();
-renderPlaces();
-renderGraph();
-show("map");
-hydrateFromBackend();
+// --- passcode lock gate (local-first auth) ---
+// If the backend requires a passcode and we don't have a valid one yet, show the
+// themed lock screen and wait for a correct unlock before booting the app.
+async function lockGate() {
+  if (!Recall.on()) return true; // no backend (file:// / seed mode) → nothing to lock
+  let required;
+  try { required = await Recall.authRequired(); }
+  catch { return true; } // backend unreachable → seed mode, no lock
+  if (!required) return true;
+  // already have a token? verify it silently.
+  if (Recall.getToken() && (await Recall.unlock(Recall.getToken()))) return true;
 
-if(location.search.includes("demo=venue")){active=getPlace("venue");reveal();}
+  const lock = document.getElementById("lock");
+  const form = document.getElementById("lock-form");
+  const input = document.getElementById("lock-input");
+  const err = document.getElementById("lock-error");
+  lock.hidden = false;
+  input.focus();
+  return new Promise((resolve) => {
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      err.textContent = "";
+      const ok = await Recall.unlock(input.value.trim());
+      if (ok) { lock.hidden = true; resolve(true); }
+      else {
+        err.textContent = "Incorrect passcode.";
+        input.classList.remove("shake"); void input.offsetWidth; input.classList.add("shake");
+        input.select();
+      }
+    });
+  });
+}
+
+// --- boot ---
+async function boot() {
+  renderMap();
+  renderPlaces();
+  renderGraph();
+  show("map");
+  await lockGate();
+  hydrateFromBackend();
+  if (location.search.includes("demo=venue")) { active = getPlace("venue"); reveal(); }
+}
+boot();

@@ -12,20 +12,60 @@
  * before load):  localStorage.recall_api = "http://localhost:8000"
  */
 const Recall = (() => {
-  const base = () => (window.RECALL_API || localStorage.getItem("recall_api") || "").replace(/\/$/, "");
+  // Resolve the backend base URL, in priority order:
+  //   1. an explicit override (window.RECALL_API or localStorage.recall_api)
+  //   2. same-origin — when the page is served over http(s) by `recall serve`,
+  //      the backend IS this origin, so the UI just works with no config (this
+  //      is also what makes phone-over-wifi work: the phone's origin is the
+  //      laptop's IP, which is exactly the backend).
+  //   3. "" — e.g. opened as a file:// with no backend → falls back to seed.js.
+  const sameOrigin = () =>
+    location.protocol.startsWith("http") ? location.origin : "";
+  const base = () =>
+    (window.RECALL_API || localStorage.getItem("recall_api") || sameOrigin()).replace(/\/$/, "");
   const on = () => !!base();
-  const mediaURL = (fp) => `${base()}/media/${fp}`;
+
+  // ── passcode (local-first auth) ───────────────────────────────────────
+  // The passcode the lock screen collects, sent as X-Recall-Token on every
+  // request. Persisted so an unlocked device stays unlocked across reloads.
+  let _token = localStorage.getItem("recall_token") || "";
+  const getToken = () => _token;
+  const setToken = (t) => { _token = t || ""; localStorage.setItem("recall_token", _token); };
+  const clearToken = () => { _token = ""; localStorage.removeItem("recall_token"); };
+  const authHeaders = () => (_token ? { "X-Recall-Token": _token } : {});
+  // <img>/<video> can't send headers, so media carries the token as a query param
+  // (the backend accepts it there too).
+  const mediaURL = (fp) =>
+    `${base()}/media/${fp}` + (_token ? `?t=${encodeURIComponent(_token)}` : "");
 
   async function health() {
     if (!on()) return null;
     try { const r = await fetch(base() + "/api/health", { cache: "no-store" }); return r.ok ? await r.json() : null; }
     catch { return null; }
   }
+  // True if the backend requires a passcode (health reports it).
+  async function authRequired() {
+    const h = await health();
+    return !!(h && h.auth_required);
+  }
+  // Try a passcode against a protected endpoint; on success it's saved. Returns
+  // true if accepted, false if rejected (401).
+  async function unlock(passcode) {
+    try {
+      const r = await fetch(base() + "/api/capsules", {
+        headers: { "X-Recall-Token": passcode },
+      });
+      if (r.status === 401) return false;
+      if (!r.ok) return false;
+      setToken(passcode);
+      return true;
+    } catch { return false; }
+  }
   // returns the capsules array, or null if the backend is unreachable
   async function listCapsules() {
     if (!on()) return null;
     try {
-      const r = await fetch(base() + "/api/capsules");
+      const r = await fetch(base() + "/api/capsules", { headers: authHeaders() });
       if (!r.ok) return null;
       const j = await r.json();
       return Array.isArray(j) ? j : (j.capsules || []); // server wraps as {capsules:[...]}
@@ -37,13 +77,13 @@ const Recall = (() => {
     if (lat != null) fd.append("lat", lat);
     if (lng != null) fd.append("lng", lng);
     (files || []).forEach((f) => fd.append("media", f)); // server field is `media` (list[UploadFile])
-    const r = await fetch(base() + "/api/capsules", { method: "POST", body: fd });
+    const r = await fetch(base() + "/api/capsules", { method: "POST", body: fd, headers: authHeaders() });
     if (!r.ok) throw new Error("create " + r.status);
     return await r.json();
   }
   async function networks() {
     if (!on()) return null;
-    try { const r = await fetch(base() + "/api/networks"); return r.ok ? await r.json() : null; }
+    try { const r = await fetch(base() + "/api/networks", { headers: authHeaders() }); return r.ok ? await r.json() : null; }
     catch { return null; }
   }
 
@@ -74,5 +114,8 @@ const Recall = (() => {
     };
   }
 
-  return { base, on, health, listCapsules, createCapsule, networks, toUICapsule, mediaURL };
+  return {
+    base, on, health, authRequired, unlock, getToken, setToken, clearToken,
+    listCapsules, createCapsule, networks, toUICapsule, mediaURL,
+  };
 })();

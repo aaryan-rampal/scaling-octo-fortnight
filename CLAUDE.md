@@ -11,13 +11,15 @@ disk and flag the drift.
 ## 1. What this is
 
 A **single-user personal memory + principles tracker**. We ingest a person's own
-data (iMessage today; photos / Spotify / LLM-chat exports stubbed), fold it into
-memory networks via [Hindsight](https://github.com/vectorize-io/hindsight)
-(episodic / semantic / entity / **principles**), and surface non-obvious,
-**traceable** insights about how that person thinks and behaves.
+data (iMessage runs end-to-end; photos / Spotify / Claude-chat exports have real
+adapters that emit canonical events + persist, but aren't wired into the
+pipeline yet — see §3), fold it into memory networks via
+[Hindsight](https://github.com/vectorize-io/hindsight) (episodic / semantic /
+entity / **principles**), and surface non-obvious, **traceable** insights about
+how that person thinks and behaves.
 
 Two names in the repo, same project:
-- **Recall** — the shipped POC / package name (`src/recall`, `recall` CLI).
+- **Recall** — the shipped POC / distribution name (`src/` packages, `recall` CLI).
 - **RETURN** — the hackathon product framing (location-tagged "time capsules"
   you seal at a place and revisit on return). Working title; not final.
 
@@ -55,7 +57,7 @@ keeps this true:
 
 The full target architecture (the self-reinforcing "flywheel" where
 contradictions route back to the user, whose answer becomes richer raw_data) is
-in **`design/TIME_CAPSULE_FLYWHEEL.md`**. Read it for the vision. But see §3 —
+in **`docs/TIME_CAPSULE_FLYWHEEL.md`**. Read it for the vision. But see §3 —
 most of it is **not built**.
 
 ---
@@ -69,8 +71,10 @@ which layer you're touching.
 |---|---|
 | iMessage ingest → events → episodes → Hindsight → show / web UI | **BUILT** — this is the POC, end to end |
 | Four memory networks + `reflect` (synthesized connection) | **BUILT** (via Hindsight) |
-| Time-capsule write path + SQLite store | **PARTIAL** — `src/recall/capsule.py`, `store.py`, `poc_demo/server/capsule*` exist |
-| Photos / Spotify / LLM-chat adaptors | **STUBS** — `src/adaptors/*`, not wired into the pipeline |
+| Time-capsule write path (UI → SQLite → unified events) | **BUILT** — UI upload (place + photos + note) persists to the capsules tables AND projects to a canonical `Event` (`source="capsule"`) in the unified `events` table via `Capsule.to_event`; media served at `/media`. The agentic workflow that consumes these events is the deferred next deliverable |
+| Local-first app + mobile + passcode auth | **BUILT** — `recall serve` runs UI + API + media on one origin; `--token` gates `/api/*` + `/media` behind a passcode (themed lock screen in the UI). Data stays on the device; phone reaches the laptop over LAN/tunnel (Tailscale/ngrok). Nothing is uploaded to a server |
+| Photos / Spotify / Claude-chat adapters | **BUILT but not wired** — `src/adapters/*` parse the source → canonical `Event` → persist to the unified `events` table (tested), but nothing in the `recall` CLI / episodes→Hindsight flow calls them yet. Only Spotify has its own `python -m adapters.spotify` CLI |
+| Unified events store (one source-agnostic `events` table) | **BUILT** — every adapter persists via `src/storage/persist.py` into one table in `src/storage/store.py` |
 | Location geofence / "locked until you return" | **FAKED for the demo** — an "I'm back" button, not real GPS |
 | The agentic swarm (retriever / critics / arbiter) | **NOT BUILT** — vision only |
 | The consolidation flywheel + contradiction loop | **CUT for the hackathon** — "vision, not v1" |
@@ -88,29 +92,46 @@ principles), with the flywheel as the story we point at, not code we run.
 **OpenRouter**; secrets injected by **Doppler** (`berkeley-hackathon` / `dev`),
 never stored in the repo.
 
+`src/` is the package root (no umbrella package; imports are bare top-level,
+e.g. `from adapters.spotify import ...`, `from core.schema import Event`). The
+console script `recall` resolves to `cli:main`.
+
 ```
-src/recall/        the pipeline + CLI (the POC core)
-  ingest.py          chat.db (read-only) → canonical events
-  episodes.py        temporal-window events → conversation episodes
-  load.py            episodes → Hindsight (retain)         ← only step that costs LLM calls
-  show.py            query the 4 networks + reflect
-  hindsight_runtime.py  boot embedded Hindsight (pg0 + OpenRouter)
-  capsule.py / store.py / schema.py   time-capsule write path + SQLite
-  cli.py             `recall ingest|episodes|load|show|all`
-src/adaptors/      imessage (real) · photos / spotify / llm_chats (stubs)
-src/db, src/models additive storage + data shapes
+src/
+  cli.py             `recall ingest|episodes|load|show|all`  (iMessage pipeline)
+  core/              canonical domain types
+    schema.py          Event / Episode (the universal currency every adapter emits)
+    capsule.py         Capsule / Media (time-capsule write path)
+  models/            per-source typed records (pydantic): spotify, imessage, photo, llm_export
+  adapters/          per-source: raw source → models → Event
+    imessage.py        chat.db (read-only) → events  (the wired source)
+    spotify.py · photos.py · llm_chats.py   built, emit events + persist, not in CLI yet
+  storage/
+    store.py           CapsuleStore: the unified, source-agnostic `events` table + capsules
+    persist.py         persist_events(): the single write path into that table
+  pipeline/          transforms over Events, toward Hindsight
+    episodes.py        temporal-window events → conversation episodes
+    load.py            episodes → Hindsight (retain)         ← only step that costs LLM calls
+    show.py            query the 4 networks + reflect
+  runtime/
+    hindsight.py       boot embedded Hindsight (pg0 + OpenRouter)
 poc_demo/server/   FastAPI backend (boots embedded Hindsight, serves JSON)
 poc_demo/web/      Vite + React + TypeScript frontend
-design/            TIME_CAPSULE_FLYWHEEL.md — north-star architecture
+ui/                static mobile web app ("recapsule"); served by `recall serve`
+docs/              TIME_CAPSULE_FLYWHEEL.md (north-star) + adapter / store design docs
 context/           team transcripts, Q&A, design docs (decision history)
-tests/             pytest, fixture-based, no network
+tests/             pytest mirroring src: tests/{core,models,adapters,storage,pipeline}/
 ```
 
 - `chat.db` is read **read-only** — the pipeline never writes to Messages.
+- Every source persists to **one unified `events` table** (source-agnostic via a
+  `source` column; non-conversational sources like photos leave the
+  conversational fields null and carry payload in `additional_data`).
 - Loaded data persists in embedded Postgres (`pg0`) on disk, scoped to a bank id
   (default `imessage-v0`).
-- Pipeline vocabulary (settled): **Utterance → Episode → Abstraction → Cluster →
-  Connection → principle graph.** Use these terms.
+- Pipeline vocabulary (settled): **Event → Episode → Abstraction → Cluster →
+  Connection → principle graph.** Use these terms (`Event` is the canonical
+  per-message/per-item type in `core/schema.py`).
 
 ---
 
@@ -124,7 +145,15 @@ uv pip install --python .venv/bin/python -e .
 # Pipeline (Doppler injects OPENROUTER_API_KEY)
 doppler run --project berkeley-hackathon --config dev -- recall all --top-n 5 --limit 150
 
-# Web demo (two terminals)
+# Local-first app: UI + API + media on one origin (the capsule flow)
+#   NOTE: poc_demo isn't packaged, so run from the repo root with it on the path:
+PYTHONPATH=src:. .venv/bin/python -m cli serve --host 127.0.0.1      # laptop-only
+#   mobile (data stays on the laptop): add --host 0.0.0.0 --token <passcode>,
+#   then open http://<laptop-ip>:8000 on a phone (same wifi, or via Tailscale).
+#   Memory networks need OpenRouter; without it /api/networks degrades and the
+#   capsule flow still works keyless.
+
+# Original web demo (Vite/React; two terminals)
 doppler run --project berkeley-hackathon --config dev -- \
   .venv/bin/python -m uvicorn poc_demo.server.app:app --port 8000
 cd poc_demo/web && pnpm dev          # → http://localhost:5173
@@ -180,4 +209,4 @@ Full decision history and rationale: `context/team-questions-and-answers.md`.
   pieces as if they exist.
 - **Definition of done** (team-agreed): at least one non-obvious, grounded,
   traceable insight per person from their own data.
-- **Read the design doc before architecture work**: `design/TIME_CAPSULE_FLYWHEEL.md`.
+- **Read the design doc before architecture work**: `docs/TIME_CAPSULE_FLYWHEEL.md`.

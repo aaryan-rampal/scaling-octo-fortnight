@@ -947,3 +947,74 @@ body {
   width: 64px; height: 64px; border-radius: 12px; object-fit: cover;
   background-size: cover; background-position: center; border: 1px solid var(--hairline);
 }
+
+/* ── passcode lock screen ───────────────────────────────────────────────
+   Full-screen unlock gate, themed to the cinema-mobile palette. Shown only
+   when the backend requires a passcode (local-first auth). */
+.lock {
+  position: absolute;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background:
+    radial-gradient(120% 90% at 50% 12%, rgba(232,145,80,.16), transparent 60%),
+    var(--bg);
+  backdrop-filter: blur(2px);
+}
+.lock[hidden] { display: none; }
+.lock-inner {
+  width: min(86%, 320px);
+  text-align: center;
+  animation: lock-rise .5s var(--easing) both;
+}
+@keyframes lock-rise { from { opacity: 0; transform: translateY(10px); } }
+.lock-brand { font-size: 2rem; margin: 0 0 .25rem; }
+.lock-tagline {
+  color: var(--ink-faint);
+  font-style: italic;
+  margin: 0 0 1.75rem;
+  font-size: .9rem;
+}
+.lock-form { display: flex; flex-direction: column; gap: .6rem; }
+.lock-input {
+  width: 100%;
+  padding: .85rem 1rem;
+  border-radius: var(--radius-card);
+  border: 1px solid var(--glass-brd);
+  background: var(--glass);
+  color: var(--ink);
+  font-family: var(--mono);
+  font-size: 1rem;
+  letter-spacing: .12em;
+  text-align: center;
+  outline: none;
+  transition: border-color .2s var(--easing);
+}
+.lock-input:focus { border-color: var(--accent); }
+.lock-btn {
+  padding: .85rem 1rem;
+  border-radius: var(--radius-card);
+  border: none;
+  background: linear-gradient(135deg, var(--amber), var(--rose));
+  color: #1a130c;
+  font-weight: 600;
+  font-size: 1rem;
+  cursor: pointer;
+  transition: transform .15s var(--easing), filter .2s var(--easing);
+}
+.lock-btn:active { transform: scale(.97); }
+.lock-btn:hover { filter: brightness(1.05); }
+.lock-error {
+  min-height: 1.2em;
+  margin: .75rem 0 0;
+  color: var(--rose);
+  font-size: .82rem;
+}
+.lock-input.shake { animation: lock-shake .4s var(--easing); }
+@keyframes lock-shake {
+  10%, 90% { transform: translateX(-2px); }
+  30%, 70% { transform: translateX(4px); }
+  50% { transform: translateX(-4px); }
+}

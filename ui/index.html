@@ -186,10 +186,24 @@
 
     <!-- toast -->
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+    <!-- passcode lock — shown only when the backend requires a passcode -->
+    <div id="lock" class="lock" hidden>
+      <div class="lock-inner">
+        <h1 class="brand lock-brand">recapsule<span class="dot">.</span></h1>
+        <p class="lock-tagline">your memories, on your device</p>
+        <form id="lock-form" class="lock-form" autocomplete="off">
+          <input id="lock-input" class="lock-input" type="password" inputmode="text"
+                 placeholder="passcode" aria-label="passcode" autocomplete="off" />
+          <button class="lock-btn" type="submit">unlock</button>
+        </form>
+        <p id="lock-error" class="lock-error" aria-live="polite"></p>
+      </div>
+    </div>
   </div>
 
-  <script src="seed.js?v=9"></script>
-  <script src="api.js?v=9"></script>
-  <script src="app.js?v=9"></script>
+  <script src="seed.js?v=10"></script>
+  <script src="api.js?v=10"></script>
+  <script src="app.js?v=10"></script>
 </body>
 </html>
