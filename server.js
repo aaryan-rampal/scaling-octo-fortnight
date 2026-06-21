@@ -10,16 +10,28 @@
 // Keyless capsule-only:  .venv/bin/python -m uvicorn poc_demo.server.capsule_app:app --port 8000
 // Full (with principles): doppler run -- .venv/bin/python -m cli serve --port 8000
 
-const http = require('http');
-const fs   = require('fs');
-const path = require('path');
-const os   = require('os');
+const http  = require('http');
+const https = require('https');
+const fs    = require('fs');
+const path  = require('path');
+const os    = require('os');
 
 const ROOT     = __dirname;
 const PORT     = process.env.PORT     || 4321;
 const HOST     = process.env.HOST     || '0.0.0.0';   // bind all interfaces → LAN reachable
 const BACKEND  = process.env.BACKEND  || 'http://localhost:8000';
 const PASSCODE = process.env.PASSCODE || '';           // set to require a passcode
+
+// HTTPS when a cert exists — REQUIRED for the camera to work on phones over the
+// LAN (browsers only allow getUserMedia on https or localhost). Generate one with:
+//   openssl req -x509 -newkey rsa:2048 -nodes -keyout certs/key.pem \
+//     -out certs/cert.pem -days 825 -subj "/CN=recapsule-dev" \
+//     -addext "subjectAltName=DNS:localhost,IP:127.0.0.1,IP:<your-lan-ip>"
+// Falls back to http if the cert files are absent.
+const CERT_DIR  = process.env.CERT_DIR || path.join(ROOT, 'certs');
+const KEY_FILE  = path.join(CERT_DIR, 'key.pem');
+const CRT_FILE  = path.join(CERT_DIR, 'cert.pem');
+const HAS_CERT  = fs.existsSync(KEY_FILE) && fs.existsSync(CRT_FILE);
 
 // HTTP Basic Auth gate: the browser shows a native prompt; we only check the
 // password field against PASSCODE (the username is ignored — "just a passcode").
@@ -62,7 +74,7 @@ const TYPES = {
 
 const backendUrl = new URL(BACKEND);
 
-http.createServer((req, res) => {
+const handler = (req, res) => {
   // Gate EVERYTHING behind the passcode (page, API, media) before any work.
   if (!passcodeOK(req, res)) return;
 
@@ -106,14 +118,25 @@ http.createServer((req, res) => {
     res.writeHead(200, { 'Content-Type': ct });
     res.end(data);
   });
-}).listen(PORT, HOST, () => {
+};
+
+// HTTPS when a cert exists (camera works on phones); plain http otherwise.
+const scheme = HAS_CERT ? 'https' : 'http';
+const server = HAS_CERT
+  ? https.createServer({ key: fs.readFileSync(KEY_FILE), cert: fs.readFileSync(CRT_FILE) }, handler)
+  : http.createServer(handler);
+
+server.listen(PORT, HOST, () => {
   const ip = lanIP();
-  console.log(`recapsule  →  http://localhost:${PORT}`);
+  console.log(`recapsule  →  ${scheme}://localhost:${PORT}`);
   if (HOST === '0.0.0.0' && ip !== 'localhost') {
-    console.log(`on the LAN  →  http://${ip}:${PORT}   (same wifi)`);
+    console.log(`on the LAN  →  ${scheme}://${ip}:${PORT}   (same wifi)`);
   }
   console.log(`API proxy  →  ${BACKEND}`);
   console.log(PASSCODE
     ? `passcode   →  REQUIRED (enter it in the browser prompt; leave username blank)`
     : `passcode   →  none (open — set PASSCODE=... to require one)`);
+  console.log(HAS_CERT
+    ? `camera     →  enabled (https) — accept the one-time cert warning on each device`
+    : `camera     →  disabled (http) — add certs/ for https so phones can use the camera`);
 });
