@@ -364,6 +364,9 @@
   .bury[data-phase="success"] .cam,
   .bury[data-phase="success"] .cam-fallback,
   .bury[data-phase="success"] .cam-scrim { display: none; }
+  .bury[data-phase="compose"] .cam,
+  .bury[data-phase="compose"] .cam-fallback,
+  .bury[data-phase="compose"] .cam-scrim { display: none; }
 
   /* darken slightly so white text reads over any camera image */
   .cam-scrim {
@@ -772,6 +775,118 @@
     animation: tapPulse 1.4s ease-in-out infinite;
   }
 
+  /* =========================================================
+     COMPOSE PHASE  (fill the capsule)
+     ========================================================= */
+  .b-compose {
+    position: absolute; inset: 0;
+    background: radial-gradient(120% 90% at 50% 0%, #fffdf7 0%, #f3ead4 70%, #e7d8b6 100%);
+    display: none; flex-direction: column;
+    padding: 52px 20px 24px; overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  .bury[data-phase="compose"] .b-compose { display: flex; }
+  .b-compose::-webkit-scrollbar { width: 0; }
+
+  .compose-title {
+    font-family: 'Dancing Script', cursive; font-size: 34px; font-weight: 700;
+    color: #4f3924; text-align: center; transform: rotate(-2deg);
+    margin-bottom: 18px; flex: none;
+  }
+  .compose-section-label {
+    font-family: 'Caveat', cursive; font-weight: 700; font-size: 18px;
+    color: #9c4a2a; margin: 0 0 7px;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .compose-section-label::after {
+    content: ''; flex: 1; height: 1.5px;
+    background: linear-gradient(90deg, #c9b27a, transparent);
+  }
+  .compose-msg {
+    width: 100%; min-height: 100px; resize: none;
+    background: #fffdf5; border: 1.5px dashed #c9b27a; border-radius: 14px;
+    padding: 12px 14px; font-family: 'Caveat', cursive; font-size: 20px;
+    color: #3a2f22; line-height: 1.4; outline: none; margin-bottom: 18px;
+    box-shadow: inset 0 2px 6px rgba(180,140,60,.07);
+  }
+  .compose-msg::placeholder { color: #c0a87a; font-style: italic; }
+  .compose-input {
+    width: 100%; background: #fffdf5; border: 1.5px dashed #c9b27a; border-radius: 12px;
+    padding: 10px 14px; font-family: 'Caveat', cursive; font-size: 19px;
+    color: #3a2f22; outline: none; margin-bottom: 8px; display: block;
+  }
+  .compose-input::placeholder { color: #c0a87a; font-style: italic; }
+  .compose-input:last-of-type { margin-bottom: 18px; }
+  .compose-upload {
+    display: flex; align-items: center; gap: 10px;
+    background: #fffdf5; border: 1.5px dashed #c9b27a; border-radius: 14px;
+    padding: 13px 18px; cursor: pointer; transition: background .15s ease;
+    box-shadow: 0 2px 6px rgba(40,22,10,.07);
+  }
+  .compose-upload:hover { background: rgba(251,244,222,.96); }
+  .compose-upload-text { font-family: 'Caveat', cursive; font-size: 20px; color: #4f3924; }
+  .compose-thumbs {
+    display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0 20px; min-height: 0;
+  }
+  .compose-thumb {
+    width: 74px; height: 74px; object-fit: cover;
+    border-radius: 10px; border: 1.5px solid #c9b27a;
+    box-shadow: 0 3px 7px rgba(40,22,10,.18);
+  }
+  .compose-thumb-wrap { position: relative; display: inline-block; }
+  .compose-thumb-del {
+    position: absolute; top: -6px; right: -6px;
+    width: 20px; height: 20px; border-radius: 50%;
+    background: #9c4a2a; color: #fff; border: none; font-size: 12px;
+    display: flex; align-items: center; justify-content: center; cursor: pointer;
+    box-shadow: 0 2px 4px rgba(0,0,0,.3);
+  }
+
+  /* ---- audio recorder ---- */
+  .compose-audio {
+    display: flex; align-items: center; gap: 14px;
+    background: #fffdf5; border: 1.5px dashed #c9b27a; border-radius: 14px;
+    padding: 14px 16px; margin-bottom: 8px;
+    box-shadow: 0 2px 6px rgba(40,22,10,.07);
+  }
+  .audio-rec-btn {
+    width: 52px; height: 52px; border-radius: 50%; border: none; cursor: pointer; flex: none;
+    background: #9c4a2a; display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 3px 10px rgba(156,74,42,.35); transition: transform .15s ease;
+  }
+  .audio-rec-btn:active { transform: scale(.92); }
+  .audio-rec-btn.recording { background: #c0485a; animation: recPulse 1s ease-in-out infinite; }
+  @keyframes recPulse { 0%,100%{box-shadow:0 3px 10px rgba(192,72,90,.35);} 50%{box-shadow:0 3px 20px rgba(192,72,90,.65);} }
+  .audio-rec-dot {
+    width: 18px; height: 18px; border-radius: 50%; background: #fff;
+    transition: border-radius .2s ease, width .2s ease, height .2s ease;
+  }
+  .audio-rec-btn.recording .audio-rec-dot { border-radius: 3px; width: 14px; height: 14px; }
+  .audio-rec-info { flex: 1; min-width: 0; }
+  .audio-rec-status {
+    font-family: 'Caveat', cursive; font-size: 19px; color: #4f3924; line-height: 1.2;
+  }
+  .audio-rec-timer {
+    font-family: 'Caveat', cursive; font-size: 15px; color: #9c7a5a; margin-top: 2px;
+    display: none;
+  }
+  .audio-rec-btn.recording ~ .audio-rec-info .audio-rec-timer { display: block; }
+  .audio-preview {
+    width: 100%; margin-top: 10px; margin-bottom: 0;
+    border-radius: 8px; display: none;
+  }
+  .compose-audio-wrap { margin-bottom: 18px; }
+
+  .b-seal {
+    width: 100%; font-family: 'Caveat', cursive; font-weight: 700; font-size: 24px;
+    color: #fff; background: #9c4a2a; border: none; border-radius: 18px;
+    padding: 14px 0; cursor: pointer; box-shadow: 0 5px 14px rgba(40,22,10,.25);
+    transition: transform .14s ease, box-shadow .14s ease; flex: none;
+    margin-top: 6px;
+  }
+  .b-seal:hover { transform: translateY(-2px); box-shadow: 0 8px 18px rgba(40,22,10,.3); }
+  .b-seal:active { transform: translateY(1px) scale(.97); }
+
   @media (prefers-reduced-motion: reduce) {
     * { animation-duration: .001s !important; }
   }
@@ -1028,6 +1143,45 @@
             <div class="b-reticle"><span></span><span></span><span></span><span></span></div>
           </div>
 
+          <!-- PHASE compose: fill the capsule -->
+          <div class="bphase b-compose">
+            <div class="compose-title">fill your capsule</div>
+
+            <!-- photos -->
+            <div class="compose-section-label">📷 photos</div>
+            <label class="compose-upload" for="composePhotos">
+              <span style="font-size:24px">📷</span>
+              <span class="compose-upload-text">tap to choose photos</span>
+              <input type="file" id="composePhotos" accept="image/*" multiple style="display:none">
+            </label>
+            <div class="compose-thumbs" id="composeThumbs"></div>
+
+            <!-- message -->
+            <div class="compose-section-label">✉️ a message</div>
+            <textarea class="compose-msg" id="composeMsg" placeholder="write something to your future self…" maxlength="600"></textarea>
+
+            <!-- song -->
+            <div class="compose-section-label">🎵 a song that captures this moment</div>
+            <input type="text" class="compose-input" id="composeSong" placeholder="song name" maxlength="100">
+
+            <!-- voice note -->
+            <div class="compose-section-label">🎙️ a voice note for your future self (maybe ask a question!)</div>
+            <div class="compose-audio-wrap">
+              <div class="compose-audio">
+                <button class="audio-rec-btn" id="audioRecBtn" type="button">
+                  <div class="audio-rec-dot"></div>
+                </button>
+                <div class="audio-rec-info">
+                  <div class="audio-rec-status" id="audioRecStatus">tap to record</div>
+                  <div class="audio-rec-timer" id="audioRecTimer">0:00</div>
+                </div>
+              </div>
+              <audio class="audio-preview" id="audioPreview" controls></audio>
+            </div>
+
+            <button class="b-seal" id="bSeal">choose your spot →</button>
+          </div>
+
           <!-- PHASE 2: dig (tap repeatedly) then bury -->
           <div class="bphase b-dig" id="bDig">
             <div class="b-banner" id="digBanner">point the camera at the ground</div>
@@ -1248,6 +1402,14 @@
     const digBanner= document.getElementById('digBanner');
     let camStream = null;
     let chooseTimer = null;
+    let buryPhotos = [];
+    let buryMessage = '';
+    let buryAudioBlob = null;
+    let buryLat = null, buryLng = null;
+    let mediaRecorder = null;
+    let audioChunks = [];
+    let recTimerInterval = null;
+    let recSeconds = 0;
 
     const TARGET_DIGS = 4;
     let digCount = 0;
@@ -1263,6 +1425,12 @@
       holeRim.style.transform = `translateX(-50%) scale(${p})`;
       hole.style.transform    = `translate(-50%,0) scale(${p})`;
     }
+    function stopRecording(){
+      if (mediaRecorder && mediaRecorder.state === 'recording') mediaRecorder.stop();
+      mediaRecorder = null;
+      clearInterval(recTimerInterval);
+      recTimerInterval = null;
+    }
     function resetDig(){
       digCount = 0;
       setHoleProgress(0);
@@ -1270,6 +1438,19 @@
       digBanner.textContent = BANNER_PROMPTS[0];
       bDig.classList.remove('dug','ready','burying');
       digzone.classList.remove('hide','stab');
+      buryPhotos = [];
+      buryMessage = '';
+      buryAudioBlob = null;
+      buryLat = null; buryLng = null;
+      stopRecording();
+      document.getElementById('composeMsg').value = '';
+      document.getElementById('composeSong').value = '';
+      document.getElementById('composeThumbs').innerHTML = '';
+      document.getElementById('audioPreview').style.display = 'none';
+      document.getElementById('audioPreview').src = '';
+      document.getElementById('audioRecBtn').classList.remove('recording');
+      document.getElementById('audioRecStatus').textContent = 'tap to record';
+      document.getElementById('audioRecTimer').textContent = '0:00';
     }
 
     async function startCamera(){
@@ -1290,21 +1471,112 @@
 
     function openBury(){
       resetDig();
-      setPhase('choose');
+      setPhase('compose');
       bury.classList.add('open');
-      startCamera();
-      clearTimeout(chooseTimer);
-      chooseTimer = setTimeout(() => { if (bury.dataset.phase === 'choose') setPhase('dig'); }, 2800);
     }
     function closeBury(){
       bury.classList.remove('open');
       stopCamera();
+      stopRecording();
       clearTimeout(chooseTimer);
     }
 
     document.getElementById('buryBtn').addEventListener('click', openBury);
     document.getElementById('buryClose').addEventListener('click', closeBury);
     document.getElementById('buryDone').addEventListener('click', closeBury);
+
+    // ---- compose: photo picker ----
+    document.getElementById('composePhotos').addEventListener('change', function(){
+      buryPhotos = Array.from(this.files);
+      const thumbs = document.getElementById('composeThumbs');
+      thumbs.innerHTML = '';
+      buryPhotos.forEach((file, idx) => {
+        const wrap = document.createElement('div');
+        wrap.className = 'compose-thumb-wrap';
+        const img = document.createElement('img');
+        img.className = 'compose-thumb';
+        img.src = URL.createObjectURL(file);
+        const del = document.createElement('button');
+        del.className = 'compose-thumb-del';
+        del.textContent = '×';
+        del.addEventListener('click', e => {
+          e.preventDefault();
+          buryPhotos.splice(idx, 1);
+          wrap.remove();
+        });
+        wrap.appendChild(img);
+        wrap.appendChild(del);
+        thumbs.appendChild(wrap);
+      });
+    });
+
+    // ---- compose: audio recorder ----
+    document.getElementById('audioRecBtn').addEventListener('click', async () => {
+      const btn    = document.getElementById('audioRecBtn');
+      const status = document.getElementById('audioRecStatus');
+      const timer  = document.getElementById('audioRecTimer');
+      const prev   = document.getElementById('audioPreview');
+
+      if (mediaRecorder && mediaRecorder.state === 'recording') {
+        mediaRecorder.stop();
+        btn.classList.remove('recording');
+        clearInterval(recTimerInterval);
+        status.textContent = 'saved! tap to re-record';
+      } else {
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          audioChunks = [];
+          mediaRecorder = new MediaRecorder(stream);
+          mediaRecorder.ondataavailable = e => { if (e.data.size > 0) audioChunks.push(e.data); };
+          mediaRecorder.onstop = () => {
+            const mime = (mediaRecorder.mimeType || 'audio/webm');
+            buryAudioBlob = new Blob(audioChunks, { type: mime });
+            prev.src = URL.createObjectURL(buryAudioBlob);
+            prev.style.display = 'block';
+            stream.getTracks().forEach(t => t.stop());
+          };
+          mediaRecorder.start();
+          btn.classList.add('recording');
+          recSeconds = 0;
+          timer.textContent = '0:00';
+          clearInterval(recTimerInterval);
+          recTimerInterval = setInterval(() => {
+            recSeconds++;
+            const m = Math.floor(recSeconds / 60);
+            const s = String(recSeconds % 60).padStart(2, '0');
+            timer.textContent = m + ':' + s;
+          }, 1000);
+          status.textContent = 'recording — tap to stop';
+          prev.style.display = 'none';
+          prev.src = '';
+        } catch(e) {
+          status.textContent = 'mic not available';
+        }
+      }
+    });
+
+    // ---- compose: seal → choose your spot ----
+    document.getElementById('bSeal').addEventListener('click', () => {
+      stopRecording();
+      const msg  = document.getElementById('composeMsg').value.trim();
+      const song = document.getElementById('composeSong').value.trim();
+      const parts = [];
+      if (msg)  parts.push(msg);
+      if (song) parts.push('🎵 ' + song);
+      buryMessage = parts.join('\n\n');
+      // start geolocation in background — it will be ready by the time they finish digging
+      if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(
+          pos => { buryLat = pos.coords.latitude; buryLng = pos.coords.longitude; },
+          () => {},
+          { timeout: 8000, maximumAge: 300000 }
+        );
+      }
+      setPhase('choose');
+      startCamera();
+      clearTimeout(chooseTimer);
+      chooseTimer = setTimeout(() => { if (bury.dataset.phase === 'choose') setPhase('dig'); }, 2800);
+    });
 
     function doDig(){
       if (bDig.classList.contains('dug')) return;
@@ -1354,41 +1626,60 @@
       }
     }
 
-    // POST the buried capsule to the backend (fire-and-forget).
-    async function buryToBackend(lat, lng){
+    // Reverse-geocode lat/lng → "City, State" via Nominatim (free, no key).
+    async function reverseGeocode(lat, lng){
+      try {
+        const r = await fetch(
+          'https://nominatim.openstreetmap.org/reverse?lat=' + lat + '&lon=' + lng + '&format=json',
+          { headers: { 'Accept-Language': 'en' } }
+        );
+        if (!r.ok) throw new Error();
+        const d = await r.json();
+        const a = d.address || {};
+        const city  = a.city || a.town || a.village || a.hamlet || a.county || '';
+        const state = a.state || '';
+        if (city && state) return city + ', ' + state;
+        if (city || state) return city || state;
+      } catch(e) {}
+      return Number(lat).toFixed(3) + ', ' + Number(lng).toFixed(3);
+    }
+
+    // POST the capsule with all collected media to the backend.
+    async function buryToBackend(lat, lng, place){
       try {
         const form = new FormData();
-        const place = (lat != null)
-          ? `${Number(lat).toFixed(4)}, ${Number(lng).toFixed(4)}`
-          : 'Unknown location';
-        form.append('place_name', place);
+        form.append('place_name', place || 'Unknown location');
         if (lat != null){ form.append('lat', lat); form.append('lng', lng); }
-        await fetch('/api/capsules', { method:'POST', body:form });
+        if (buryMessage){
+          form.append('media', new Blob([buryMessage], { type: 'text/plain' }), 'note.txt');
+        }
+        if (buryAudioBlob){
+          const ext = buryAudioBlob.type.includes('ogg') ? '.ogg' : '.webm';
+          form.append('media', buryAudioBlob, 'voice_note' + ext);
+        }
+        buryPhotos.forEach((f, i) => form.append('media', f, f.name || ('photo_' + i + '.jpg')));
+        const resp = await fetch('/api/capsules', { method: 'POST', body: form });
+        if (!resp.ok) console.warn('Capsule save failed:', resp.status, await resp.text());
       } catch(e){ console.warn('Could not save capsule:', e); }
     }
 
-    function renderSuccess(){
-      const setPin = (lat, lon, label) => {
-        const x = 48 + (lon + 180) * 0.733;
+    async function renderSuccess(){
+      const lat = buryLat, lng = buryLng;
+      // Geocode and update success art simultaneously
+      const place = lat != null ? await reverseGeocode(lat, lng) : 'your spot';
+      if (lat != null){
+        const x = 48 + (lng + 180) * 0.733;
         const y = 40 + (90 - lat) * 0.778;
         ['pinHalo','pinRing','pinDot'].forEach(id => {
           const el = document.getElementById(id);
-          el.setAttribute('cx', x); el.setAttribute('cy', y);
+          if (el){ el.setAttribute('cx', x); el.setAttribute('cy', y); }
         });
         const conn = document.getElementById('connector');
-        conn.setAttribute('x2', x); conn.setAttribute('y2', y + 8);
-        document.getElementById('bLoc').textContent = label;
-        buryToBackend(lat, lon);
-      };
-      const fallback = () => setPin(41.31, -72.92, 'pinned to your spot · New Haven, CT');
-      if (navigator.geolocation) {
-        navigator.geolocation.getCurrentPosition(
-          pos => setPin(pos.coords.latitude, pos.coords.longitude,
-                        `pinned to your spot · ${pos.coords.latitude.toFixed(3)}, ${pos.coords.longitude.toFixed(3)}`),
-          () => fallback(),
-          { timeout: 4000, maximumAge: 600000 }
-        );
-      } else fallback();
+        if (conn){ conn.setAttribute('x2', x); conn.setAttribute('y2', y + 8); }
+      }
+      document.getElementById('bLoc').textContent = 'pinned to · ' + place;
+      // Now save — place name is already resolved, no duplicate geocode call
+      buryToBackend(lat, lng, place);
     }
 
     // ============ DIG-UP FLOW ============
@@ -1528,7 +1819,7 @@
         } else if (item.kind === 'video'){
           html += '<div class="frame"><div class="frame-label">🎬 Video</div><div class="frame-body media"><video src="' + src + '" controls playsinline style="width:100%;display:block"></video></div></div>';
         } else if (item.kind === 'audio'){
-          html += '<div class="frame"><div class="frame-label">🎵 Audio</div><div class="frame-body"><audio src="' + src + '" controls style="width:100%;margin:8px 0"></audio></div></div>';
+          html += '<div class="frame"><div class="frame-label">🎙️ Voice note</div><div class="frame-body"><audio src="' + src + '" controls style="width:100%;margin:8px 0"></audio></div></div>';
         } else if (item.kind === 'text'){
           const eid = 'tf-' + item.id;
           html += '<div class="frame"><div class="frame-label">✉️ Note</div><div class="frame-body"><div class="frame-msg" id="' + eid + '">…</div></div></div>';
