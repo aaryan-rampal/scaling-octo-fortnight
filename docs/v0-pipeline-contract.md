@@ -54,9 +54,16 @@ mapping so rung ③ can trace a memory back to its unit:
 ```python
 @dataclass(frozen=True, slots=True)
 class MemoryRef:
-    memory_id: str          # Hindsight-returned id for the retained memory
+    document_id: str        # passed to retain (== unit_id); persists on every memory
     derived_from: list[str] # the Unit.unit_id(s) it came from (non-empty)
 ```
+The memory→unit link is the **`document_id`** (verified live): `retain` returns
+no per-memory id and the `metadata` passed to it does **not** persist on extracted
+memories, but `document_id` does. So rung ② calls `retain(document_id=unit.unit_id)`,
+and every memory comes back with `document_id == unit_id`. Real per-memory UUIDs
+are read from `list_memories` / `recall` (which expose `id`), keyed by that
+`document_id`. Verified: 71/71 memories in the live `slice-7d` bank trace
+memory → `document_id` → unit → raw Events.
 
 ### Rung ③ output — `Principle` node (defined here for reference; NOT built yet)
 Principles are **graph nodes**, not a flat list. Each node cites its supporting
@@ -237,13 +244,17 @@ clear v0 recommendation the lead can pick from.
   `data/recall.db`, spotify rows have `additional_data == {}` and the track/
   artist/album live in `content` (built by `SpotifyStreamRecord.content_line()`).
   Photos DO carry geo/people in `additional_data` as the contract states.
-- **Hindsight `retain` returns no bare `memory_id`.** `RetainResponse` exposes
-  `success / items_count / operation_id / operation_ids / usage`. Rung ② sets
-  `MemoryRef.memory_id` from `operation_id`. **Rung ③ caveat:** if the evidence
-  ledger needs a true per-memory id (to quote/trace a single memory), resolve it
-  post-retain from the operation — do not assume `memory_id` is already a memory.
-- Network routing is made explicit via tags/metadata (`network:experience|world`)
-  from `author_role`, since Hindsight leaves multi-participant routing implicit.
+- **Memory→unit trace is `document_id`, not the retain response or metadata**
+  (verified live, supersedes the earlier `operation_id` plan). `retain`'s response
+  carries no per-memory id, and `metadata` passed to `retain` does NOT persist on
+  the extracted memories (`metadata=None` on every stored memory). What persists is
+  `document_id`: rung ② calls `retain(document_id=unit.unit_id)`, and each memory
+  comes back with that `document_id`. Real per-memory UUIDs come from `list_memories`
+  / `recall` (`RecallResult.id`), keyed by `document_id`. Rung ③/④ build their
+  evidence ledger from those recall ids; the unit/raw link is `document_id`.
+- Network routing is made explicit via **tags** (`network:experience|world`,
+  `author:<role>`, `<source>`) from `author_role` — tags persist on the memory;
+  metadata does not. Hindsight leaves multi-participant routing implicit otherwise.
 
 ## Integration (lead does this, after teammates return)
 1. Review each summary; check no cross-worktree file overlap.

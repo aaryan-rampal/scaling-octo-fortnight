@@ -42,16 +42,26 @@ _ROLE_NETWORK = {"self": "experience", "other": "world"}
 
 @dataclass(frozen=True, slots=True)
 class MemoryRef:
-    """Provenance row linking a retained memory back to its source unit.
+    """Provenance row linking the memories of one retain back to their source unit.
+
+    Hindsight's ``retain`` returns no per-memory id (its response carries only an
+    operation status), and the ``metadata`` passed to ``retain`` does not persist
+    on the extracted memories. The durable link that *does* persist is the
+    **``document_id``**: we pass ``document_id = unit.unit_id`` into ``retain``, and
+    every memory Hindsight extracts from that text comes back carrying it. So the
+    trace is ``memory.document_id == unit.unit_id`` → unit → raw Events; the real
+    per-memory UUIDs are read later from ``list_memories`` / ``recall`` (which do
+    expose ``id``), keyed by this ``document_id``.
 
     Attributes:
-        memory_id: Hindsight-returned id for the retained memory.
-        derived_from: The ``Unit.unit_id`` value(s) the memory came from. Always
+        document_id: The id passed to ``retain`` (equals the source ``unit_id``);
+            persisted on every memory extracted from the unit.
+        derived_from: The ``Unit.unit_id`` value(s) the memories came from. Always
             non-empty — an empty derivation is a snapped provenance chain and is
             rejected at construction time.
     """
 
-    memory_id: str
+    document_id: str
     derived_from: list[str]
 
     def __post_init__(self) -> None:
@@ -183,32 +193,11 @@ def retain_unit(
     if not text.strip():
         raise ValueError("retain_unit requires non-empty rendered text")
     network = _ROLE_NETWORK.get(author_role or "", "world")
-    response = client.retain(
+    client.retain(
         bank_id=bank_id,
         content=text,
         timestamp=unit.t_start.isoformat(),
+        document_id=unit.unit_id,
         tags=[unit.source, f"author:{author_role or 'unknown'}", f"network:{network}"],
-        metadata={
-            "unit_id": unit.unit_id,
-            "source": unit.source,
-            "author_role": author_role or "unknown",
-            "network": network,
-        },
     )
-    return MemoryRef(memory_id=_memory_id(response), derived_from=[unit.unit_id])
-
-
-def _memory_id(response: Any) -> str:
-    """Extract a stable memory id from a Hindsight ``RetainResponse``.
-
-    ``retain`` returns an operation id rather than a bare memory id; we use the
-    first available of ``operation_id`` / ``operation_ids`` as the handle, falling
-    back to ``str(response)`` so the ref is never empty.
-    """
-    op = getattr(response, "operation_id", None)
-    if op:
-        return str(op)
-    ops = getattr(response, "operation_ids", None)
-    if ops:
-        return str(ops[0])
-    return str(response)
+    return MemoryRef(document_id=unit.unit_id, derived_from=[unit.unit_id])

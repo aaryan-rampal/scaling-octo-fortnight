@@ -58,21 +58,14 @@ def _unit(source: str, ids: list[str]) -> _Unit:
     )
 
 
-class _FakeRetainResponse:
-    def __init__(self, operation_id: str) -> None:
-        self.operation_id = operation_id
-
-
 @dataclass
 class _FakeClient:
     """Records the kwargs of the last retain call instead of hitting a server."""
 
     calls: list[dict[str, Any]] = field(default_factory=list)
-    op_id: str = "op-123"
 
-    def retain(self, **kwargs: Any) -> _FakeRetainResponse:
+    def retain(self, **kwargs: Any) -> None:
         self.calls.append(kwargs)
-        return _FakeRetainResponse(self.op_id)
 
 
 # --- render_unit: conversational -------------------------------------------------
@@ -143,37 +136,35 @@ def test_render_empty_events_raises() -> None:
 # --- retain_unit -----------------------------------------------------------------
 
 
-def test_retain_unit_returns_memory_ref_with_derived_from() -> None:
-    client = _FakeClient(op_id="op-xyz")
+def test_retain_unit_sets_document_id_to_unit_id() -> None:
+    client = _FakeClient()
     unit = _unit("imessage", ["a", "b"])
     ref = retain_unit(client, unit, "self: hey", author_role="self")
     assert isinstance(ref, MemoryRef)
-    assert ref.memory_id == "op-xyz"
+    # The durable provenance link: document_id == unit_id, carried on every memory.
+    assert ref.document_id == "u-imessage"
+    assert client.calls[0]["document_id"] == "u-imessage"
     assert ref.derived_from == ["u-imessage"]
-    assert ref.derived_from  # non-empty
 
 
-def test_retain_unit_routes_self_to_experience() -> None:
+def test_retain_unit_routes_self_to_experience_via_tags() -> None:
     client = _FakeClient()
     retain_unit(client, _unit("imessage", ["a"]), "self: hi", author_role="self")
-    call = client.calls[0]
-    assert call["metadata"]["network"] == "experience"
-    assert "network:experience" in call["tags"]
-    assert call["metadata"]["unit_id"] == "u-imessage"
+    assert "network:experience" in client.calls[0]["tags"]
 
 
-def test_retain_unit_routes_other_to_world() -> None:
+def test_retain_unit_routes_other_to_world_via_tags() -> None:
     client = _FakeClient()
     retain_unit(client, _unit("imessage", ["a"]), "other: hi", author_role="other")
-    assert client.calls[0]["metadata"]["network"] == "world"
+    assert "network:world" in client.calls[0]["tags"]
 
 
 def test_retain_unit_none_role_defaults_to_world() -> None:
     client = _FakeClient()
     retain_unit(client, _unit("photos", ["p1"]), "On ..., took a photo", author_role=None)
-    call = client.calls[0]
-    assert call["metadata"]["network"] == "world"
-    assert call["metadata"]["author_role"] == "unknown"
+    tags = client.calls[0]["tags"]
+    assert "network:world" in tags
+    assert "author:unknown" in tags
 
 
 def test_retain_unit_blank_text_raises() -> None:
@@ -183,4 +174,4 @@ def test_retain_unit_blank_text_raises() -> None:
 
 def test_memory_ref_rejects_empty_derived_from() -> None:
     with pytest.raises(ValueError, match="non-empty list"):
-        MemoryRef(memory_id="m", derived_from=[])
+        MemoryRef(document_id="u", derived_from=[])
