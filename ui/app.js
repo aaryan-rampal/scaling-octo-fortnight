@@ -149,7 +149,7 @@ function drawMarkers() {
       const locked = isLocked(cap);
       if (locked) el.classList.add("sealed");
       el.setAttribute("aria-label", `${locked ? "Sealed" : "Open"} capsule — ${poi.name}`);
-      inner = `<span class="mk-dot" style="background:${cap.cover}">${locked ? `<span class="mk-lock">${ICON.lock}</span>` : ""}</span><span class="mk-label">${poi.name}</span>`;
+      inner = `<span class="mk-dot"><span class="mk-seam"></span>${locked ? `<span class="mk-lock">${ICON.lock}</span>` : ""}</span><span class="mk-label">${poi.name}</span>`;
     } else {
       el.classList.add("empty");
       el.setAttribute("aria-label", `Seal a capsule at ${poi.name}`);
@@ -303,14 +303,16 @@ function openingSequence(wasLocked, after) {
   if (reduceMotion) { SoundFX.open(); after(); return; }
 
   ov.classList.add("show");
-  // restart the CSS animations
-  ov.querySelectorAll(".opening-cap-icon, .opening-glow, .dust").forEach((el) => {
+  // restart the capsule open animations
+  ov.querySelectorAll(".cap3d, .cap-top, .cap-bottom, .cap-burst, .cap-rays, .dust").forEach((el) => {
     el.style.animation = "none"; void el.offsetWidth; el.style.animation = "";
   });
-  if (wasLocked) { SoundFX.dig(); setTimeout(() => SoundFX.unlock(), 360); setTimeout(() => SoundFX.open(), 760); }
-  else { SoundFX.dig(); setTimeout(() => SoundFX.open(), 380); }
+  // sound: dig as it rises, (unlock if sealed), then the "pop" as the lid opens (~1s in)
+  SoundFX.dig();
+  if (wasLocked) setTimeout(() => SoundFX.unlock(), 450);
+  setTimeout(() => SoundFX.open(), 1000);
 
-  setTimeout(() => { ov.classList.remove("show"); after(); }, 1250);
+  setTimeout(() => { ov.classList.remove("show"); after(); }, 2050);
 }
 
 // principle → light up the capsule(s) it was formed from, on the map
