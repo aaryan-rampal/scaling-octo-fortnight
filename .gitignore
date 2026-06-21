@@ -17,3 +17,6 @@ data/
 __pycache__/
 .pytest_cache/
 .ruff_cache/
+
+# Local-only test fixtures sliced from private exports (do not commit)
+tests/fixtures/
