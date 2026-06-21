@@ -36,6 +36,12 @@ DEFAULT_GAP = timedelta(minutes=30)
 #: Sources whose events are grouped by ``thread_id`` before gap-sessionizing.
 CONVERSATIONAL_SOURCES = frozenset({"imessage", "claude"})
 
+#: Default weekly quota (units kept per interval) for :func:`segment_windowed_quota`.
+#: Picked so a 90-day span with ~13 weekly buckets totals ~120 units — matching a
+#: contiguous 30-day run's volume (~119 units on the present ``recall.db``) while
+#: spreading that budget across 90 days of reach instead of one recency block.
+DEFAULT_PER_INTERVAL = 9
+
 
 @dataclass(frozen=True, slots=True)
 class Unit:
@@ -190,3 +196,93 @@ def segment_recent(
     if window is not None:
         events = _slice_recent(events, window)
     return segment_events(events, gap)
+
+
+def _passes_imessage_gate(unit: Unit, min_imessage_msgs: int) -> bool:
+    """Return True unless ``unit`` is a thin iMessage conversation.
+
+    iMessage units with fewer than ``min_imessage_msgs`` source events are dropped
+    as thin/spam conversations. Non-iMessage sources have no meaningful message
+    count and always pass.
+    """
+    if unit.source != "imessage":
+        return True
+    return len(unit.derived_from) >= min_imessage_msgs
+
+
+def _bucket_index(t_end: datetime, newest: datetime, interval: timedelta) -> int:
+    """Return which ``interval`` bucket ``t_end`` falls in, counting back from newest."""
+    return int((newest - t_end) / interval)
+
+
+def _select_largest(units: list[Unit], per_interval: int) -> list[Unit]:
+    """Keep the ``per_interval`` units with the most ``derived_from`` events.
+
+    The per-bucket selection policy (swap this helper to change it — e.g. to an
+    evenly-strided pick). Largest-first biases toward substantive runs.
+    """
+    ranked = sorted(units, key=lambda u: len(u.derived_from), reverse=True)
+    return ranked[:per_interval]
+
+
+def _apply_weekly_quota(
+    units: list[Unit], interval: timedelta, per_interval: int
+) -> list[Unit]:
+    """Bucket units by interval (relative to newest ``t_end``) and cap each bucket.
+
+    Within every bucket, :func:`_select_largest` keeps the top ``per_interval``
+    units. The kept units are returned in time order (by ``t_start``).
+    """
+    if not units:
+        return []
+    newest = max(u.t_end for u in units)
+    buckets: dict[int, list[Unit]] = {}
+    for unit in units:
+        idx = _bucket_index(unit.t_end, newest, interval)
+        buckets.setdefault(idx, []).append(unit)
+
+    kept: list[Unit] = []
+    for bucket in buckets.values():
+        kept.extend(_select_largest(bucket, per_interval))
+    kept.sort(key=lambda u: u.t_start)
+    return kept
+
+
+def segment_windowed_quota(
+    db_path: str | None = None,
+    gap: timedelta = DEFAULT_GAP,
+    span: timedelta = timedelta(days=90),
+    interval: timedelta = timedelta(days=7),
+    per_interval: int = DEFAULT_PER_INTERVAL,
+    min_imessage_msgs: int = 20,
+) -> list[Unit]:
+    """Segment a long span, then thin it to an even per-interval quota.
+
+    Takes a wide ``span`` of reach at a bounded cost by slicing it into
+    ``interval`` buckets and keeping only ``per_interval`` units per bucket. A
+    quality gate drops thin iMessage conversations before the quota; other sources
+    pass ungated. The provenance invariant is preserved — whole units are dropped,
+    never reshaped, so every returned ``Unit`` keeps its non-empty ``derived_from``.
+
+    Args:
+        db_path: Path to the SQLite store; defaults to ``CapsuleStore``'s default.
+        gap: Inactivity gap before a run is cut. Defaults to 30 minutes.
+        span: Trailing reach to consider, from the latest event. Defaults to 90 days.
+        interval: Bucket width for the quota. Defaults to 7 days (weekly).
+        per_interval: Units kept per bucket (K). Defaults to
+            :data:`DEFAULT_PER_INTERVAL`.
+        min_imessage_msgs: Minimum source events for an iMessage unit to survive
+            the gate. Defaults to 20.
+
+    Returns:
+        Units ordered by ``t_start``, gated then quota-capped.
+    """
+    store = CapsuleStore() if db_path is None else CapsuleStore(db_path)
+    try:
+        events = store.list_events()
+    finally:
+        store.close()
+    events = _slice_recent(events, span)
+    units = segment_events(events, gap)
+    gated = [u for u in units if _passes_imessage_gate(u, min_imessage_msgs)]
+    return _apply_weekly_quota(gated, interval, per_interval)

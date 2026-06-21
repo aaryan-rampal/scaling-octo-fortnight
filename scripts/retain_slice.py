@@ -44,7 +44,7 @@ from pipeline.render import (
     render_unit,
     retain_batch_units,
 )
-from pipeline.segment import segment_recent
+from pipeline.segment import segment_recent, segment_windowed_quota
 from runtime.hindsight import embedded_hindsight
 from storage.store import CapsuleStore
 
@@ -137,10 +137,44 @@ def main() -> None:
         default=CHUNK_SIZE,
         help=f"Units per retain_batch call (default {CHUNK_SIZE}).",
     )
+    ap.add_argument(
+        "--quota",
+        type=int,
+        default=0,
+        help="Opt in to the temporal-spread sampler: units kept per interval (K). "
+        "0 (default) uses the contiguous segment_recent path unchanged.",
+    )
+    ap.add_argument(
+        "--span-days",
+        type=int,
+        default=90,
+        help="Reach (days) for the quota sampler; only used with --quota.",
+    )
+    ap.add_argument(
+        "--interval-days",
+        type=int,
+        default=7,
+        help="Bucket width (days) for the quota sampler; only used with --quota.",
+    )
+    ap.add_argument(
+        "--min-imessage-msgs",
+        type=int,
+        default=20,
+        help="Min source events for an iMessage unit to survive the gate "
+        "(quota sampler only).",
+    )
     args = ap.parse_args()
 
-    window = timedelta(days=args.days) if args.days > 0 else None
-    units = segment_recent(window=window)
+    if args.quota > 0:
+        units = segment_windowed_quota(
+            span=timedelta(days=args.span_days),
+            interval=timedelta(days=args.interval_days),
+            per_interval=args.quota,
+            min_imessage_msgs=args.min_imessage_msgs,
+        )
+    else:
+        window = timedelta(days=args.days) if args.days > 0 else None
+        units = segment_recent(window=window)
     by_source = dict(Counter(u.source for u in units))
     logger.info("segmented {} units; by source: {}", len(units), by_source)
     if args.limit:
