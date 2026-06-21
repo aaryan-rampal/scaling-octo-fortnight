@@ -22,7 +22,7 @@
   <link href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet" />
   <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
 
-  <link rel="stylesheet" href="styles.css?v=11" />
+  <link rel="stylesheet" href="styles.css?v=16" />
 </head>
 <body>
   <!-- hand-painted / "drawn" map filter (static wobble — no continuous motion) -->
@@ -98,9 +98,6 @@
                placeholder="Where are you?" aria-label="Place name" />
       </div>
       <form id="create-form">
-        <label class="field-label">How are you feeling right now?</label>
-        <div id="mood-row" class="chip-row"><!-- injected --></div>
-
         <label class="field-label" for="create-note">Leave a note for future you</label>
         <textarea id="create-note" rows="3" placeholder="what's true today that you might forget…"></textarea>
 
@@ -111,10 +108,7 @@
         </label>
         <div id="file-preview" class="file-preview"></div>
 
-        <label class="field-label">Or pick a cover</label>
-        <div id="cover-row" class="cover-row"><!-- injected --></div>
-
-        <button type="submit" class="primary">Seal until I return ↩</button>
+        <button type="submit" class="primary">Seal capsule ↩</button>
       </form>
     </section>
 
@@ -126,7 +120,6 @@
         <div class="anchor-meta">
           <p id="anchor-place" class="anchor-place"></p>
           <p id="anchor-time" class="anchor-time"></p>
-          <span id="anchor-mood" class="mood-pill"></span>
         </div>
       </div>
 
@@ -210,8 +203,8 @@
     </div>
   </div>
 
-  <script src="seed.js?v=11"></script>
-  <script src="api.js?v=11"></script>
-  <script src="app.js?v=11"></script>
+  <script src="seed.js?v=16"></script>
+  <script src="api.js?v=16"></script>
+  <script src="app.js?v=16"></script>
 </body>
 </html>

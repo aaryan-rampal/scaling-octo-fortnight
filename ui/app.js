@@ -125,19 +125,47 @@ function ensureMap() {
     map.resize();
     fitToMarkers();
     document.getElementById("map").classList.add("ready"); // one-time fade-in
+    // The map is often created before its container has its final laid-out size
+    // (boot runs renderMap before the view is fully shown, and there's an async
+    // lock gate). At 0-size the imagery is blank AND every marker projects to the
+    // top-left origin. So after sizing settles, resize, then REDRAW markers and
+    // refit so the pins land on their real coordinates. This is what fixes both
+    // the "blank map" and the "pins clumped top-left" symptoms.
+    [120, 350, 800].forEach((ms) => setTimeout(() => { map.resize(); drawMarkers(); fitToMarkers(); }, ms));
   });
+  const mapEl = document.getElementById("map");
+  if (mapEl && "ResizeObserver" in window) {
+    new ResizeObserver(() => {
+      if (!map) return;
+      map.resize();
+      drawMarkers(); // reproject pins to the new size
+    }).observe(mapEl);
+  }
 }
 function stopSpin() {} // map no longer auto-moves
 
-// center on the cluster at a close zoom so the (near-collinear) pins spread
-// vertically with space between them, instead of stacking at an edge.
+// Frame ALL pins so they fit the viewport and spread out, instead of jumping to
+// a hardcoded zoom that's too tight (which pushed the spread-out pins toward a
+// corner). fitBounds computes the right center+zoom from the pins' bounding box.
 function fitToMarkers() {
   if (!map) return;
   const pts = SEED.map.filter((m) => m.lat != null && m.lng != null);
   if (!pts.length) { map.jumpTo({ center: MAP_CENTER, zoom: MAP_ZOOM }); return; }
-  const cx = pts.reduce((s, m) => s + m.lng, 0) / pts.length;
-  const cy = pts.reduce((s, m) => s + m.lat, 0) / pts.length;
-  map.jumpTo({ center: [cx, cy], zoom: 16.2, pitch: 0, bearing: 0 });
+  if (pts.length === 1) {
+    map.jumpTo({ center: [pts[0].lng, pts[0].lat], zoom: 16, pitch: 0, bearing: 0 });
+    return;
+  }
+  let minLng = Infinity, minLat = Infinity, maxLng = -Infinity, maxLat = -Infinity;
+  for (const m of pts) {
+    minLng = Math.min(minLng, m.lng); maxLng = Math.max(maxLng, m.lng);
+    minLat = Math.min(minLat, m.lat); maxLat = Math.max(maxLat, m.lat);
+  }
+  map.fitBounds([[minLng, minLat], [maxLng, maxLat]], {
+    padding: { top: 60, bottom: 60, left: 50, right: 50 },
+    maxZoom: 16.5,
+    duration: 0,    // instant (no fly-in), consistent with the static map
+    pitch: 0, bearing: 0,
+  });
 }
 
 function drawMarkers() {
@@ -203,24 +231,17 @@ function visit(poi) {
 }
 
 // --- 2. CREATE a capsule ---
-let createPoi = null, selMood = null, selCover = null, selFiles = [];
+let createPoi = null, selCover = null, selFiles = [];
 
 // Shared reset for the create form, used by both entry paths (a map pin, or a
 // standalone "New capsule" with a user-named place).
 function resetCreateForm() {
-  selMood = SEED.moods[0];
-  selCover = SEED.covers[0];
+  selCover = null; // the uploaded photo becomes the cover; no preset picker
   selFiles = [];
   document.getElementById("file-preview").innerHTML = "";
   document.getElementById("create-files").value = "";
   document.getElementById("filedrop-label").textContent = "＋ add a photo or video — recall reads its EXIF location & time";
   document.getElementById("create-loc-icon").innerHTML = ICON.pin;
-  document.getElementById("mood-row").innerHTML = SEED.moods
-    .map((m, i) => `<button type="button" class="mchip${i ? "" : " sel"}" style="--h:${m.hue}" data-i="${i}">${m.label}</button>`)
-    .join("");
-  document.getElementById("cover-row").innerHTML = SEED.covers
-    .map((c, i) => `<button type="button" class="cover-sw${i ? "" : " sel"}" style="background:${c}" data-i="${i}" aria-label="Cover ${i + 1}"></button>`)
-    .join("");
   document.getElementById("create-note").value = "";
 }
 
@@ -256,19 +277,6 @@ function startCreateStandalone() {
   }
 }
 
-document.getElementById("mood-row").addEventListener("click", (e) => {
-  const b = e.target.closest(".mchip"); if (!b) return;
-  selMood = SEED.moods[+b.dataset.i];
-  [...e.currentTarget.children].forEach((c) => c.classList.remove("sel"));
-  b.classList.add("sel");
-});
-document.getElementById("cover-row").addEventListener("click", (e) => {
-  const b = e.target.closest(".cover-sw"); if (!b) return;
-  selCover = SEED.covers[+b.dataset.i];
-  [...e.currentTarget.children].forEach((c) => c.classList.remove("sel"));
-  b.classList.add("sel");
-});
-
 // real photo/video attach — first image becomes the cover; all files upload to recall
 document.getElementById("create-files").addEventListener("change", (e) => {
   selFiles = [...e.target.files];
@@ -301,16 +309,21 @@ document.getElementById("create-form").addEventListener("submit", async (e) => {
   const media = selFiles.map((f) => f.type.startsWith("video")
     ? { type: "video", src: URL.createObjectURL(f) }
     : { type: "photo", src: URL.createObjectURL(f) });
+  // Cover = the first uploaded photo, else a warm gradient fallback.
+  const firstPhoto = media.find((m) => m.type === "photo");
+  const cover = selCover || (firstPhoto
+    ? `center/cover url('${firstPhoto.src}')`
+    : "linear-gradient(150deg,#2a2140 0%,#4a3a5e 55%,#cf7f86 130%)");
   const cap = {
     id, icon: ICON.capsule, name: createPoi.name, place: createPoi.name,
-    visits: "just sealed", sealed: true, mood: selMood, cover: selCover, media,
+    visits: "just sealed", sealed: true, cover, media,
     storyline: escapeHTML(note),
     citations: [], principle: "",
     reflection: "When you open this, what will you want to remember about who you are today?",
     sealDate: "sealed just now",
     opener: "what were you hoping for when you sealed this?",
     replies: [], fallback: "I sealed this moment for you — that's all I know yet.",
-    anchor: { place: createPoi.name, time: "just now", photo: selCover },
+    anchor: { place: createPoi.name, time: "just now", photo: cover },
     userCreated: true,
   };
   SEED.places.push(cap);
@@ -373,7 +386,7 @@ function renderPlaces() {
       </div>
       <div class="place-body">
         <h3 class="pname">${p.name}</h3>
-        <div class="pmeta"><span class="mood-dot" style="--h:${p.mood.hue}"></span>${p.mood.label} · ${p.visits}</div>
+        <div class="pmeta">${p.visits || ""}</div>
       </div>
       ${locked ? `<button class="imback">I'm back ↩</button>` : ``}`;
     const go = () => openCapsule(p);
@@ -447,8 +460,6 @@ function openPlace(id) {
   document.getElementById("anchor-photo").style.background = a.photo;
   document.getElementById("anchor-place").textContent = a.place;
   document.getElementById("anchor-time").textContent = a.time;
-  document.getElementById("anchor-mood").outerHTML =
-    `<span id="anchor-mood" class="mood-pill" style="--h:${active.mood.hue}">${active.mood.label}</span>`;
 
   const feed = document.getElementById("reconstruct-feed");
   feed.innerHTML = "";
@@ -489,14 +500,13 @@ function reveal() {
   document.querySelector("#view-reveal .section-label").textContent =
     active.userCreated ? "Your note, sealed" : "The night, reconstructed";
 
-  // --- capsule data model: place · coordinates · time · mood (agent-read) · music
+  // --- capsule data model: place · coordinates · time · music
   const poi = SEED.map.find((m) => m.capsuleId === active.id);
   const coords = poi ? `${poi.lat.toFixed(5)}, ${poi.lng.toFixed(5)}` : "";
   document.getElementById("reveal-meta").innerHTML = `
     <span class="rm-place">${ICON.pin}${active.anchor.place}</span>
     ${coords ? `<span class="rm-coord">${coords}</span>` : ""}
     <span class="rm-time">${active.anchor.time}</span>
-    <span class="rm-mood" style="--h:${active.mood.hue}">${active.mood.label} · read by recapsule</span>
     ${active.music ? `<span class="rm-music">♪ ${active.music}</span>` : ""}`;
 
   // --- media: photos + video (text lives in the storyline below)

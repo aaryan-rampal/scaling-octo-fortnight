@@ -816,6 +816,11 @@ body {
    LIVE SATELLITE MAP (MapLibre) — custom markers
    ========================================================================= */
 #map { position: relative; }
+/* Make the MapLibre root fill the #map box, but DO NOT touch the
+   canvas-container or the markers it positions — overriding their size/position
+   breaks marker projection (pins get pinned to a corner and don't move on zoom).
+   MapLibre's own CSS sizes the canvas + container; we only need the root to fill. */
+#map .maplibregl-map { position: absolute; inset: 0; width: 100%; height: 100%; }
 #map .maplibregl-canvas { border-radius: inherit; }
 .maplibregl-ctrl-attrib { font-size: 8px !important; background: rgba(10,8,6,.5) !important; border-radius: 6px 0 0 0 !important; }
 .maplibregl-ctrl-attrib a { color: rgba(255,255,255,.6) !important; }
