@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover" />
+  <title>recapsule — photo in, grounded memory out</title>
+
+  <!-- installable / "looks like a native app" on phones -->
+  <link rel="manifest" href="manifest.json" />
+  <meta name="theme-color" content="#14100c" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="recapsule" />
+  <link rel="apple-touch-icon" href="icon.svg" />
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+
+  <!-- live satellite map -->
+  <link href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet" />
+  <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+
+  <link rel="stylesheet" href="styles.css?v=9" />
+</head>
+<body>
+  <!-- hand-painted / "drawn" map filter (static wobble — no continuous motion) -->
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+    <filter id="watercolor" x="-5%" y="-5%" width="110%" height="110%">
+      <feTurbulence type="fractalNoise" baseFrequency="0.011 0.013" numOctaves="2" seed="7" result="n"/>
+      <feDisplacementMap in="SourceGraphic" in2="n" scale="11" xChannelSelector="R" yChannelSelector="G"/>
+    </filter>
+  </defs></svg>
+
+  <div class="phone">
+    <!-- ambient golden-hour glow + film grain (nostalgia atmosphere) -->
+    <div class="ambient" aria-hidden="true"></div>
+    <div class="grain" aria-hidden="true"></div>
+
+    <div class="screen">
+    <div class="statusbar" aria-hidden="true">
+      <span class="sb-time">9:41</span>
+      <span class="sb-icons">
+        <svg viewBox="0 0 18 12" width="17" height="11"><rect x="0" y="8" width="3" height="4" rx="1"/><rect x="5" y="5" width="3" height="7" rx="1"/><rect x="10" y="2" width="3" height="10" rx="1"/><rect x="15" y="0" width="3" height="12" rx="1" opacity=".35"/></svg>
+        <svg viewBox="0 0 16 12" width="16" height="11"><path d="M8 11.2 1.2 4.4a9.6 9.6 0 0 1 13.6 0L8 11.2Z" fill="none" stroke="currentColor" stroke-width="1.4" opacity=".35"/><path d="M8 11.2 4.4 7.6a5.1 5.1 0 0 1 7.2 0L8 11.2Z"/></svg>
+        <svg viewBox="0 0 26 13" width="25" height="12"><rect x="1" y="1.5" width="20" height="10" rx="3" fill="none" stroke="currentColor" stroke-width="1" opacity=".4"/><rect x="2.5" y="3" width="16" height="7" rx="1.5"/><rect x="22.5" y="4.5" width="1.6" height="4" rx="1" opacity=".4"/></svg>
+      </span>
+    </div>
+
+    <header class="topbar">
+      <h1 class="brand">recapsule<span class="dot">.</span></h1>
+      <p class="tagline">return to a moment, not just a place</p>
+    </header>
+
+    <!-- VIEW: map -->
+    <section id="view-map" class="view active">
+      <div class="map-head">
+        <p class="section-label">Your world</p>
+        <span id="map-progress" class="map-progress"></span>
+      </div>
+      <div id="map" class="map"></div>
+      <p id="map-info" class="map-info">Tap a glowing capsule to open it. Tap a dim pin to travel there and seal a memory.</p>
+    </section>
+
+    <!-- VIEW: principle graph (Obsidian-style) -->
+    <section id="view-graph" class="view">
+      <div class="map-head">
+        <p class="section-label">Principle graph</p>
+        <span class="graph-legend"><i class="lg align"></i>aligns<i class="lg contra"></i>contradicts</span>
+      </div>
+      <div id="graph" class="graph-canvas">
+        <svg id="graph-edges" class="graph-edges" viewBox="0 0 100 100" preserveAspectRatio="none"></svg>
+        <div id="graph-nodes" class="graph-nodes"></div>
+      </div>
+      <p class="map-info" id="graph-info">Tap a principle to see the moments behind it. Tap a memory to open it.</p>
+    </section>
+
+    <!-- VIEW: capsules -->
+    <section id="view-places" class="view">
+      <p class="section-label">Your capsules</p>
+      <div id="place-list" class="place-list"><!-- injected --></div>
+      <p class="hint">Sealed capsules unlock when you come back. The <em>I'm back</em>
+        button stands in for real geofencing in this build.</p>
+    </section>
+
+    <!-- VIEW: create a capsule -->
+    <section id="view-create" class="view">
+      <button class="back" data-back-map>← map</button>
+      <p class="section-label">Seal a capsule</p>
+      <div class="create-loc"><span id="create-loc-icon"></span><span id="create-place"></span></div>
+      <form id="create-form">
+        <label class="field-label">How are you feeling right now?</label>
+        <div id="mood-row" class="chip-row"><!-- injected --></div>
+
+        <label class="field-label" for="create-note">Leave a note for future you</label>
+        <textarea id="create-note" rows="3" placeholder="what's true today that you might forget…"></textarea>
+
+        <label class="field-label">Attach media (photo / video)</label>
+        <label class="filedrop" for="create-files">
+          <span id="filedrop-label">＋ add a photo or video — recall reads its EXIF location & time</span>
+          <input id="create-files" type="file" accept="image/*,video/*" multiple hidden />
+        </label>
+        <div id="file-preview" class="file-preview"></div>
+
+        <label class="field-label">Or pick a cover</label>
+        <div id="cover-row" class="cover-row"><!-- injected --></div>
+
+        <button type="submit" class="primary">Seal until I return ↩</button>
+      </form>
+    </section>
+
+    <!-- VIEW: reconstruct-before-reveal -->
+    <section id="view-reconstruct" class="view">
+      <button class="back" data-back-map>← map</button>
+      <div class="anchor-card">
+        <div id="anchor-photo" class="anchor-photo"></div>
+        <div class="anchor-meta">
+          <p id="anchor-place" class="anchor-place"></p>
+          <p id="anchor-time" class="anchor-time"></p>
+          <span id="anchor-mood" class="mood-pill"></span>
+        </div>
+      </div>
+
+      <p class="section-label">Reconstructing the moment</p>
+      <div id="reconstruct-feed" class="feed"><!-- injected, staged --></div>
+
+      <button id="reveal-btn" class="primary hidden">Reveal what happened →</button>
+    </section>
+
+    <!-- VIEW: the grounded storyline -->
+    <section id="view-reveal" class="view">
+      <button class="back" data-back-map>← map</button>
+      <div id="reveal-meta" class="rmeta"><!-- place · coords · time · mood · music --></div>
+      <div id="reveal-media" class="rmedia"><!-- photos + video --></div>
+      <div class="storyline-wrap">
+        <p class="section-label">The night, reconstructed</p>
+        <p id="storyline" class="storyline"></p>
+        <div id="citations" class="citations"><!-- injected --></div>
+        <div id="principle" class="principle"><!-- injected --></div>
+      </div>
+
+      <!-- forward-looking reflection (wellbeing guardrail) -->
+      <div id="reflection" class="reflection"><!-- injected --></div>
+
+      <div class="persona">
+        <p class="section-label">Talk to past you <span class="seal" id="seal-date"></span></p>
+        <div id="chat" class="chat"><!-- injected --></div>
+        <form id="chat-form" class="chat-form">
+          <input id="chat-input" type="text" autocomplete="off"
+                 placeholder="ask the version of you from that moment…" />
+          <button type="submit" aria-label="send">↑</button>
+        </form>
+      </div>
+    </section>
+
+    <!-- bottom tab bar -->
+    <nav class="tabbar" id="tabbar">
+      <button class="tab" data-tab="map" aria-label="Map">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><polygon points="3 6 9 3 15 6 21 3 21 18 15 21 9 18 3 21 3 6"/><line x1="9" y1="3" x2="9" y2="18"/><line x1="15" y1="6" x2="15" y2="21"/></svg>
+        <span>Map</span>
+      </button>
+      <button class="tab" data-tab="graph" aria-label="Principle graph">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="5" cy="6" r="2.4"/><circle cx="19" cy="7" r="2.4"/><circle cx="12" cy="18" r="2.4"/><path d="M7 7.2 10 16M17 8.6 13.4 16.4M7.2 6.4 16.7 6.7"/></svg>
+        <span>Graph</span>
+      </button>
+      <button class="tab" data-tab="capsules" aria-label="Capsules">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="m7.5 4.27 9 5.15"/><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg>
+        <span>Capsules</span>
+      </button>
+    </nav>
+    </div>
+
+    <!-- capsule physically opening -->
+    <div id="opening" class="opening" aria-hidden="true">
+      <div class="cap3d">
+        <span class="cap-burst"></span>
+        <span class="cap-rays"></span>
+        <span class="cap-half cap-bottom"></span>
+        <span class="cap-half cap-top"></span>
+        <span class="cap-shadow"></span>
+        <span class="dust d1"></span><span class="dust d2"></span><span class="dust d3"></span><span class="dust d4"></span>
+      </div>
+      <p class="opening-text" id="opening-text">unearthing…</p>
+    </div>
+
+    <!-- toast -->
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  </div>
+
+  <script src="seed.js?v=9"></script>
+  <script src="api.js?v=9"></script>
+  <script src="app.js?v=9"></script>
+</body>
+</html>
