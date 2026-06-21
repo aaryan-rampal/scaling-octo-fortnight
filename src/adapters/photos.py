@@ -31,7 +31,9 @@ from pathlib import Path
 from typing import Any, Literal
 
 import httpx
+from loguru import logger
 
+from core.logging import log_progress
 from models.photo import PhotoRecord
 
 # Apple's Core Data epoch (2001-01-01 UTC) as seconds past the Unix epoch.
@@ -456,12 +458,14 @@ def enrich_photos(
     key = api_key or os.environ.get("OPENROUTER_API_KEY")
     enriched: list[PhotoRecord] = []
     dirty = False
-    for record in records:
+    for index, record in enumerate(records):
         result = cache.get(record.id)
         if result is None and record.kind == "photo":
+            logger.info("photos: vision cache miss, enriching {} (OpenRouter call)", record.id)
             result = _enrich_one(record, library_root, model, key, cache)
             dirty = dirty or result is not None
         enriched.append(_apply_vision(record, result))
+        log_progress("photos-vision", index, record.id)
     if dirty:
         _save_vision_cache(cache_path, cache)
     return enriched

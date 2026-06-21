@@ -1,0 +1,115 @@
+[
+  {
+    "id": "390de88b810de6c2fd30028d4580b4092c2d8dbf576b3653b378b3a334588d51",
+    "text": "You proactively build relationships with academic communities that align with your long-term research goals.",
+    "confidence": 0.5833333333333334,
+    "derived_from": [
+      "537dd7f3-1b8e-47c6-9879-2eb270ede6c3",
+      "4e761aea-ae81-4b46-bdf5-0dcd5db841c2",
+      "341eb739-11ef-408d-950a-20020462b590"
+    ]
+  },
+  {
+    "id": "56754bbe8b07cda70a86615c3097b352e86fe9804f4380e547fc0a6924679542",
+    "text": "You value building specialized expertise through challenging, self-directed learning.",
+    "confidence": 0.5833333333333334,
+    "derived_from": [
+      "1427a43a-6b37-4227-8ef1-a863c7cd7d81",
+      "937f491a-b14b-44d8-9306-63719245abbe",
+      "e745680e-7bdf-48a0-98d3-e8b61e9cb0f9"
+    ]
+  },
+  {
+    "id": "86a6b892cf5d2a9a3a2ba3b5a9406adddb6a03b2755df8843e49e210311297f4",
+    "text": "You prioritize self-reflection and emotional awareness through journaling and therapy.",
+    "confidence": 0.7,
+    "derived_from": [
+      "54b889db-2714-4947-9cb7-1c040aa66822",
+      "5279ce01-1bd2-4448-9b08-f6ff577099cb"
+    ]
+  },
+  {
+    "id": "e1dc099886c87f1b91df5640b1b60f06f383dbc242b9f42d6a2865a74957ad9b",
+    "text": "You actively capture and cultivate spontaneous creative ideas and software concepts.",
+    "confidence": 0.7,
+    "derived_from": [
+      "54b889db-2714-4947-9cb7-1c040aa66822",
+      "5279ce01-1bd2-4448-9b08-f6ff577099cb"
+    ]
+  },
+  {
+    "id": "698e2ca2eb67c2144f35d2f8e0388a374dbe503d90daba2441463a5d34abfa20",
+    "text": "You value preserving human experience and information to combat a fear of impermanence.",
+    "confidence": 0.5,
+    "derived_from": [
+      "6c12dcc6-2f4d-4c4b-9899-315ebb26c6f6",
+      "e1bfcf47-11b7-45eb-bd23-a8195d94758d"
+    ]
+  },
+  {
+    "id": "f08cca968e805062e744a6eeb194538be96f73c4bff60efe92b51c7c0b0702ae",
+    "text": "You are driven to capture, organize, and preserve human experience through memory systems.",
+    "confidence": 0.75,
+    "derived_from": [
+      "ff4111cd-ab9c-4219-a5d0-059550d2b598",
+      "f69ad3e0-5862-4c0f-a2b8-9c99607d7f54",
+      "c43818cf-296e-4778-bb94-12ad7d682e1b"
+    ]
+  },
+  {
+    "id": "c54a54e844e2c87a05ed4bc6dd2c2ebd42b8fc3b20dce62e0155539681d19d3b",
+    "text": "Despite high achievements, you struggle with self-deprecation and conforming to others' opinions.",
+    "confidence": 0.5,
+    "derived_from": [
+      "ef69adb9-70ad-4ec1-a664-90eb74f934a7",
+      "f75a40a4-359b-42c4-87c0-a197b955f1bb"
+    ]
+  },
+  {
+    "id": "8521b0df0f7965fef979db49bfad317c7dbc32856ffa7cd8ea5793b65d72eb8d",
+    "text": "You value systematic capture methods to overcome working memory limitations and stay organized.",
+    "confidence": 0.5,
+    "derived_from": [
+      "9bfc34b0-d204-48e5-8e47-6192326e86a9",
+      "35211563-70bb-434a-ade5-4fec57060ccf"
+    ]
+  },
+  {
+    "id": "c190a80f988e0e48f3c4632dcf9df60aa1d49a18b9bb92cd14c05762ba16cdc9",
+    "text": "You prioritize minimizing cognitive overhead and maximizing efficiency in your digital workflows.",
+    "confidence": 0.5833333333333334,
+    "derived_from": [
+      "cb2eb8af-7d14-4d6d-ba53-5914270aba60",
+      "66b8afd1-1ae5-4b15-b26a-3e3deffce218",
+      "89575720-0e3d-4539-ab3d-e0fe934f5e4f"
+    ]
+  },
+  {
+    "id": "1378020fb6931b36e0f15c04d810b6ec3d8b070f1704872a3919699277629540",
+    "text": "You carefully balance cost-efficiency against convenience and utility when managing digital subscriptions.",
+    "confidence": 0.75,
+    "derived_from": [
+      "c6b262f5-97a6-4650-ba69-c08c94ce1f02",
+      "cb2eb8af-7d14-4d6d-ba53-5914270aba60",
+      "bef68cce-3f93-4b13-9b08-07f5405c62cd"
+    ]
+  },
+  {
+    "id": "cf7980965409400bd22b24bcd6b1fd00b9708ea6651a3e9f60816bfff5944eef",
+    "text": "You value mathematical rigor and formal decision theory when analyzing choices under uncertainty.",
+    "confidence": 0.7,
+    "derived_from": [
+      "db48f841-e550-4943-9950-02874ffe7ff0",
+      "56ef4fce-6467-4d01-a787-7706bd04ecb8"
+    ]
+  },
+  {
+    "id": "7357ea544855a9cfac44e4e52abf9d3197548b0fc09a959d1c3c68a4e1bf3657",
+    "text": "You value strict time optimization and experience guilt when engaging in unproductive leisure.",
+    "confidence": 0.7,
+    "derived_from": [
+      "85731923-eee0-43aa-b8d6-24820d0dd376",
+      "ff720837-450e-450d-b48d-b2f8e0d126e3"
+    ]
+  }
+]

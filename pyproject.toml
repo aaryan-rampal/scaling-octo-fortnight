@@ -6,6 +6,7 @@ dependencies = [
     "hindsight-api-slim[embedded-db]",
     "hindsight-client",
     "httpx==0.28.1",
+    "loguru==0.7.3",
     "pydantic>=2",
     "python-dotenv",
 ]

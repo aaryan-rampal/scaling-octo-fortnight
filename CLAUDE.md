@@ -167,6 +167,13 @@ episodes load for Hindsight consolidation to form mental models.
 - Web: TypeScript, ESM. (Repo currently uses eslint via `eslint.config.js`.)
 - Secrets only via Doppler / env — never commit keys.
 - Absolute imports; self-documenting code; fail fast with actionable errors.
+- **Long-running commands: background + log to a file, never block.** The
+  pipeline's expensive steps (`build_all_sources_db.py`, `retain_slice.py`,
+  anything that boots Hindsight or spends OpenRouter) run for minutes. Always
+  start them as a background shell redirecting to a known file
+  (`... > /tmp/recall_<step>.log 2>&1 &`) rather than a blocking foreground call,
+  so progress is inspectable (`tail -f`) and the shell stays free. Pick a stable,
+  descriptive log path and report it.
 
 ---
 

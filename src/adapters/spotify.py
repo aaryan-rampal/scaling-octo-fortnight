@@ -31,7 +31,9 @@ from collections.abc import Callable, Iterator
 from pathlib import Path
 
 import httpx
+from loguru import logger
 
+from core.logging import log_progress
 from core.schema import Event, write_events_jsonl
 from models.spotify import SpotifyStreamRecord
 from storage.persist import persist_events
@@ -151,12 +153,14 @@ def resolve_vibes(
         The subset of ``cache`` covering the requested artists.
     """
     out: dict[str, str] = {}
-    for artist in artists:
+    for index, artist in enumerate(artists):
         if not artist:
             continue
         if artist not in cache:
+            logger.info("spotify: vibe cache miss, resolving {!r} (OpenRouter call)", artist)
             cache[artist] = resolver(artist)
         out[artist] = cache[artist]
+        log_progress("spotify-vibes", index, artist)
     return out
 
 

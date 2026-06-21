@@ -20,6 +20,9 @@ from __future__ import annotations
 import hashlib
 from pathlib import Path
 
+from loguru import logger
+
+from core.logging import log_progress
 from core.schema import Event
 from models.llm_export import ClaudeConversation, ClaudeExport, ClaudeMessage
 
@@ -171,5 +174,9 @@ def ingest_export(export_dir: str | Path) -> list[Event]:
     export = ClaudeExport.from_dir(export_dir)
     events: list[Event] = []
     for conversation in export.conversations:
-        events.extend(to_chat_events(conversation))
+        chat_events = to_chat_events(conversation)
+        logger.debug("claude: conversation {} -> {} events", conversation.uuid, len(chat_events))
+        for event in chat_events:
+            events.append(event)
+            log_progress("claude", len(events) - 1, conversation.uuid)
     return events

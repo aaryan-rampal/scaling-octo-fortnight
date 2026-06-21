@@ -135,11 +135,22 @@ def cluster_memories(
     return [c for c in clusters if len(c) >= 2]
 
 
+def _parse_ts(ts: str) -> datetime | None:
+    """Parse an ISO-8601 timestamp, or ``None`` when blank/malformed.
+
+    Memories from sources without a timestamp (e.g. standing ``world`` facts)
+    carry an empty ``ts``; callers must tolerate that rather than crash.
+    """
+    try:
+        return datetime.fromisoformat(ts.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+
+
 def _recency_weight(ts: str, now: datetime, halflife_days: float) -> float:
     """Return ``0.5 ** (age_days / halflife)`` for a memory timestamp, clamped >=0."""
-    try:
-        when = datetime.fromisoformat(ts.replace("Z", "+00:00"))
-    except ValueError:
+    when = _parse_ts(ts)
+    if when is None:
         return 0.0
     age_days = max((now - when).total_seconds() / 86400.0, 0.0)
     return 0.5 ** (age_days / halflife_days)
@@ -169,10 +180,8 @@ def compute_confidence(ledger: list[LedgerRow], *, now: datetime | None = None) 
     s, w, c = len(supports), len(weakens), len(contradicts)
     support_rows = [r for r in ledger if r.stance == "supports"]
     if now is None:
-        now = max(
-            (datetime.fromisoformat(r.ts.replace("Z", "+00:00")) for r in ledger),
-            default=datetime.now().astimezone(),
-        )
+        parsed = [t for t in (_parse_ts(r.ts) for r in ledger) if t is not None]
+        now = max(parsed, default=datetime.now().astimezone())
     diversity = len({r.source for r in support_rows})
     recency = max(
         (_recency_weight(r.ts, now, RECENCY_HALFLIFE_DAYS) for r in support_rows), default=0.0

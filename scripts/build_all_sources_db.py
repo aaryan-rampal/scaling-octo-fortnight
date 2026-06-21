@@ -23,7 +23,11 @@ from __future__ import annotations
 
 import argparse
 import os
+import time
+from collections.abc import Callable
 from datetime import timedelta
+
+from loguru import logger
 
 from adapters import imessage
 from adapters.llm_chats import ingest_export
@@ -34,6 +38,7 @@ from adapters.spotify import (
     read_records,
     records_to_events,
 )
+from core.logging import configure_logging
 from core.schema import Event
 from models.photo import PhotoRecord
 from storage.persist import persist_events
@@ -50,7 +55,26 @@ IMESSAGE_TOP_N = 25
 def _persist(name: str, events: list[Event]) -> int:
     """Persist one source's events and report the count."""
     written = persist_events(events)
-    print(f"  {name:9s}: {written:>6d} events")
+    logger.info("{}: persisted {} events to the unified table", name, written)
+    return written
+
+
+def _run_phase(name: str, build: Callable[[], list[Event]]) -> int:
+    """Build one source's events, persist them, and log start/end with timing.
+
+    Args:
+        name: Source name shown in the phase logs (e.g. ``"imessage"``).
+        build: Zero-arg callable that returns the source's canonical events.
+
+    Returns:
+        The number of events persisted for the phase.
+    """
+    logger.info("{}: phase start", name)
+    start = time.perf_counter()
+    events = build()
+    written = _persist(name, events)
+    elapsed = time.perf_counter() - start
+    logger.info("{}: phase complete: {} events in {:.1f}s", name, written, elapsed)
     return written
 
 
@@ -71,7 +95,9 @@ def _enrich_photos_slice(records: list[PhotoRecord], days: int) -> list[PhotoRec
     recent_ids = _recent_event_ids([r.to_event() for r in records], days)
     recent = [r for r in records if r.id in recent_ids]
     rest = [r for r in records if r.id not in recent_ids]
-    print(f"  photos   : enriching {len(recent)} of {len(records)} (last {days}d) with vision")
+    logger.info(
+        "photos: enriching {} of {} (last {}d) with vision", len(recent), len(records), days
+    )
     return enrich_photos(recent) + rest
 
 
@@ -85,7 +111,9 @@ def _spotify_events(days: int) -> list[Event]:
     records = [r for r in read_records(SPOTIFY_EXPORT_DIR) if r.ms_played >= DEFAULT_MIN_MS_PLAYED]
     recent_ids = _recent_event_ids(records_to_events(records), days)
     recent = [r for r in records if r.to_event().id in recent_ids]
-    print(f"  spotify  : enriching {len(recent)} of {len(records)} (last {days}d) with vibes")
+    logger.info(
+        "spotify: enriching {} of {} (last {}d) with vibes", len(recent), len(records), days
+    )
     enrich_records(recent)  # mutates records in place; vibes ride into to_event()
     return records_to_events(records)
 
@@ -99,17 +127,22 @@ def main() -> None:
     )
     args = ap.parse_args()
 
+    configure_logging()
+
     if args.fresh and os.path.exists(DEFAULT_DB_PATH):
         os.remove(DEFAULT_DB_PATH)
-        print(f"Removed existing {DEFAULT_DB_PATH} (--fresh)")
+        logger.info("Removed existing {} (--fresh)", DEFAULT_DB_PATH)
 
-    print(f"Building {DEFAULT_DB_PATH} from four sources:")
+    logger.info("Building {} from four sources", DEFAULT_DB_PATH)
 
-    _persist("imessage", imessage.ingest(IMESSAGE_TOP_N, db_path=IMESSAGE_DB))
-    _persist("claude", ingest_export(CLAUDE_EXPORT_DIR))
-    _persist("spotify", _spotify_events(args.enrich_days))
-    photo_records = _enrich_photos_slice(ingest_photos(PHOTOS_DB), args.enrich_days)
-    _persist("photos", [r.to_event() for r in photo_records])
+    def _photo_events() -> list[Event]:
+        records = _enrich_photos_slice(ingest_photos(PHOTOS_DB), args.enrich_days)
+        return [r.to_event() for r in records]
+
+    _run_phase("imessage", lambda: imessage.ingest(IMESSAGE_TOP_N, db_path=IMESSAGE_DB))
+    _run_phase("claude", lambda: ingest_export(CLAUDE_EXPORT_DIR))
+    _run_phase("spotify", lambda: _spotify_events(args.enrich_days))
+    _run_phase("photos", _photo_events)
 
     store = CapsuleStore()
     try:

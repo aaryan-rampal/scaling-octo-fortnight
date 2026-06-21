@@ -65,7 +65,7 @@ are read from `list_memories` / `recall` (which expose `id`), keyed by that
 `document_id`. Verified: 71/71 memories in the live `slice-7d` bank trace
 memory → `document_id` → unit → raw Events.
 
-### Rung ③ output — `Principle` node (defined here for reference; NOT built yet)
+### Rung ③ output — `Principle` node (BUILT — `src/pipeline/mint.py` + `scripts/mint_principles.py`)
 Principles are **graph nodes**, not a flat list. Each node cites its supporting
 memories (the ledger); edges between nodes are rung ④.
 ```python
@@ -77,7 +77,7 @@ class Principle:
     derived_from: list[str]   # >=2 supporting memory_ids (the ledger)
 ```
 
-### Rung ④ output — `Edge` (principle ⇄ principle, grounded; NOT built yet)
+### Rung ④ output — `Edge` (principle ⇄ principle, grounded; BUILT — `src/pipeline/link.py`)
 The principle layer is a **graph**: typed edges connect principles, and **each
 edge carries its own evidence**, traced to memory-network nodes → raw_data like
 everything else. An edge's evidence is **NOT** restricted to the intersection (or

@@ -31,6 +31,9 @@ import sqlite3
 import struct
 from datetime import UTC, date, datetime
 
+from loguru import logger
+
+from core.logging import log_progress
 from core.schema import Event, write_events_jsonl
 from models.imessage import IMessageRecord
 from storage.persist import persist_events
@@ -351,11 +354,16 @@ def read_records(
     conn = connect_readonly(db_path)
     try:
         records: list[IMessageRecord] = []
+        processed = 0
         for chat_identifier, _handle in top_threads(conn, top_n):
-            for row in _rows_for_thread(conn, chat_identifier, since_ns):
+            rows = _rows_for_thread(conn, chat_identifier, since_ns)
+            logger.debug("imessage: thread {} -> {} rows", chat_identifier, len(rows))
+            for row in rows:
                 record = _build_record(row, chat_identifier)
                 if record is not None:
                     records.append(record)
+                log_progress("imessage", processed, chat_identifier)
+                processed += 1
         return records
     finally:
         conn.close()
