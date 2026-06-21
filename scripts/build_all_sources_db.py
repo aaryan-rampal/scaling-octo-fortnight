@@ -14,9 +14,12 @@ resolved for the whole set (no LLM, just a Contacts-DB lookup), so they ride in
 at ingest.
 
 LIVE on the slice pass: photo vision + artist vibes spend OpenRouter on cache
-misses. Run the whole thing under Doppler.
+misses. Run the whole thing under Doppler. Each enrichment has its own trailing
+window (``--photo-days`` / ``--spotify-days``); ``--enrich-days`` sets the shared
+default for whichever is left unset.
 
-    env PYTHONPATH=src .venv/bin/python scripts/build_all_sources_db.py --enrich-days 7
+    env PYTHONPATH=src .venv/bin/python scripts/build_all_sources_db.py \\
+        --photo-days 30 --spotify-days 7
 """
 
 from __future__ import annotations
@@ -121,11 +124,31 @@ def _spotify_events(days: int) -> list[Event]:
 def main() -> None:
     """Ingest all four sources into the unified events table, slice-enriched."""
     ap = argparse.ArgumentParser(description="Build the unified events DB from all sources.")
-    ap.add_argument("--enrich-days", type=int, default=30, help="Trailing window to enrich.")
+    ap.add_argument(
+        "--enrich-days",
+        type=int,
+        default=30,
+        help="Default trailing enrichment window (days), used by any per-source flag left unset.",
+    )
+    ap.add_argument(
+        "--photo-days",
+        type=int,
+        default=None,
+        help="Trailing window for photo vision enrichment (defaults to --enrich-days).",
+    )
+    ap.add_argument(
+        "--spotify-days",
+        type=int,
+        default=None,
+        help="Trailing window for Spotify vibe enrichment (defaults to --enrich-days).",
+    )
     ap.add_argument(
         "--fresh", action="store_true", help="Delete the existing DB first (build from scratch)."
     )
     args = ap.parse_args()
+
+    photo_days = args.photo_days if args.photo_days is not None else args.enrich_days
+    spotify_days = args.spotify_days if args.spotify_days is not None else args.enrich_days
 
     configure_logging()
 
@@ -133,15 +156,20 @@ def main() -> None:
         os.remove(DEFAULT_DB_PATH)
         logger.info("Removed existing {} (--fresh)", DEFAULT_DB_PATH)
 
-    logger.info("Building {} from four sources", DEFAULT_DB_PATH)
+    logger.info(
+        "Building {} (photo enrich={}d, spotify enrich={}d)",
+        DEFAULT_DB_PATH,
+        photo_days,
+        spotify_days,
+    )
 
     def _photo_events() -> list[Event]:
-        records = _enrich_photos_slice(ingest_photos(PHOTOS_DB), args.enrich_days)
+        records = _enrich_photos_slice(ingest_photos(PHOTOS_DB), photo_days)
         return [r.to_event() for r in records]
 
     _run_phase("imessage", lambda: imessage.ingest(IMESSAGE_TOP_N, db_path=IMESSAGE_DB))
     _run_phase("claude", lambda: ingest_export(CLAUDE_EXPORT_DIR))
-    _run_phase("spotify", lambda: _spotify_events(args.enrich_days))
+    _run_phase("spotify", lambda: _spotify_events(spotify_days))
     _run_phase("photos", _photo_events)
 
     store = CapsuleStore()
