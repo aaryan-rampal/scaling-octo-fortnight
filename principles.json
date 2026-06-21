@@ -1,0 +1,68 @@
+{
+  "principles": [
+    {
+      "id": "b15f78146dc70728c1e87d1ffb6e2190cd378ba5ab89a50a4b4816cb2b296885",
+      "short": "b15f78146dc7",
+      "text": "You apply rigorous mathematical and decision-theoretic frameworks to analyze risk and choices.",
+      "confidence": 0.75,
+      "n_memories": 3,
+      "n_events": 2
+    },
+    {
+      "id": "92c6dd7f4731bfdc211d3e20ea0efb417a68e1a429fc07d8adc987a0e0e5e429",
+      "short": "92c6dd7f4731",
+      "text": "You make deliberate, informed decisions about your academic and research path.",
+      "confidence": 0.7,
+      "n_memories": 2,
+      "n_events": 22
+    },
+    {
+      "id": "a9476af4e29cf9faa3e276c3aafe11cc48018817596c6a1967f6a3716f91bcff",
+      "short": "a9476af4e29c",
+      "text": "You align your research choices with a clear, long-term 'north star' goal.",
+      "confidence": 0.5,
+      "n_memories": 2,
+      "n_events": 22
+    },
+    {
+      "id": "b57296638217d34054e14779f2bee192f4f02649873b362d32ea41880068b02f",
+      "short": "b57296638217",
+      "text": "You value building a strong academic and professional foundation in computer engineering.",
+      "confidence": 0.5,
+      "n_memories": 2,
+      "n_events": 22
+    },
+    {
+      "id": "ed864bf62740ae359762c52695c99ddeaa0aaa45eefee1e57827f1580f47f950",
+      "short": "ed864bf62740",
+      "text": "You prioritize research directions focused on AI safety, privacy, and model memorization.",
+      "confidence": 0.5,
+      "n_memories": 2,
+      "n_events": 22
+    }
+  ],
+  "edges": [
+    {
+      "id": "51ffb51683a5bc39b877e755418215c9534fec13f85b069fdd114ee1af51abca",
+      "src": "92c6dd7f4731bfdc211d3e20ea0efb417a68e1a429fc07d8adc987a0e0e5e429",
+      "dst": "b57296638217d34054e14779f2bee192f4f02649873b362d32ea41880068b02f",
+      "relation": "supports",
+      "n_events": 22
+    },
+    {
+      "id": "7e9032925a26a1289f38036ecdb192465d85e334e1546265b4efb6331880020e",
+      "src": "b15f78146dc70728c1e87d1ffb6e2190cd378ba5ab89a50a4b4816cb2b296885",
+      "dst": "92c6dd7f4731bfdc211d3e20ea0efb417a68e1a429fc07d8adc987a0e0e5e429",
+      "relation": "supports",
+      "n_events": 2
+    },
+    {
+      "id": "93d69fb1b4bdc6c043c640b0eb8046ab75d4c1630b1ec49866db8e1a822927ab",
+      "src": "a9476af4e29cf9faa3e276c3aafe11cc48018817596c6a1967f6a3716f91bcff",
+      "dst": "92c6dd7f4731bfdc211d3e20ea0efb417a68e1a429fc07d8adc987a0e0e5e429",
+      "relation": "refines",
+      "n_events": 22
+    }
+  ],
+  "generated_from": "derek_sample.db"
+}
