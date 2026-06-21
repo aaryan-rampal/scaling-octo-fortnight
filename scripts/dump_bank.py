@@ -33,10 +33,12 @@ from collections import Counter
 from datetime import timedelta
 from pathlib import Path
 
+import sentry_sdk
 from loguru import logger
 
 from core.logging import configure_logging
 from core.schema import Event
+from observability.sentry import init_sentry, set_measurement
 from pipeline.segment import Unit, segment_recent
 from runtime.hindsight import embedded_hindsight
 from storage.principle_store import DEFAULT_DB_PATH, PrincipleStore
@@ -282,6 +284,7 @@ def _assert_provenance(records: list[dict], source_coverage: Counter) -> None:
 def main() -> None:
     """Dump the live Hindsight bank to a 9-field JSON snapshot."""
     configure_logging()
+    init_sentry(component="dump")
 
     ap = argparse.ArgumentParser(description="Dump Hindsight bank's memory layer into recall.db.")
     ap.add_argument("--bank", default=BANK, help=f"Bank id to read (default: {BANK}).")
@@ -313,11 +316,13 @@ def main() -> None:
 
     records = _build_snapshot(memories, unit_map, event_map)
 
-    store = PrincipleStore.open(args.db)
-    try:
-        store.write_memory_layer(records)
-    finally:
-        store.close()
+    with sentry_sdk.start_transaction(op="dump", name="dump_bank"):
+        set_measurement("memories", len(records), "none")
+        store = PrincipleStore.open(args.db)
+        try:
+            store.write_memory_layer(records)
+        finally:
+            store.close()
     logger.info("wrote {} memory records into {}", len(records), args.db)
 
     if args.out is not None:

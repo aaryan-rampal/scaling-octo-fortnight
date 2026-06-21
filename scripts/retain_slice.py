@@ -35,9 +35,11 @@ from collections import Counter
 from dataclasses import dataclass, field
 from datetime import timedelta
 
+import sentry_sdk
 from loguru import logger
 
 from core.logging import configure_logging
+from observability.sentry import capture_exception, init_sentry, set_measurement
 from pipeline.render import (
     RetainProgress,
     build_batch_item,
@@ -121,6 +123,7 @@ class _Progress:
 def main() -> None:
     """Segment + render + retain the slice, reporting live progress and any failures."""
     configure_logging()
+    init_sentry(component="retain")
 
     ap = argparse.ArgumentParser(description="Retain recall.db into Hindsight.")
     ap.add_argument("--limit", type=int, default=0, help="Max units to retain (0 = all).")
@@ -187,6 +190,12 @@ def main() -> None:
         args.chunk_size,
     )
 
+    transaction = sentry_sdk.start_transaction(op="retain", name="retain_slice")
+    transaction.__enter__()
+    set_measurement("units_segmented", len(units), "none")
+    for source, count in by_source.items():
+        set_measurement(f"units_{source}", count, "none")
+
     events_by_id = {e.id: e for e in CapsuleStore().list_events()}
     prog = _Progress(total=len(units))
 
@@ -249,6 +258,7 @@ def main() -> None:
                 elapsed = time.perf_counter() - chunk_start
                 prog.failed += len(chunk)
                 prog.record_timed(elapsed)
+                capture_exception(exc, context={"stage": "retain", "chunk": chunk_idx + 1})
                 logger.error(
                     "[chunk {}/{}] FAILED {} units ({:.1f}s): {}: {}",
                     chunk_idx + 1,
@@ -260,6 +270,11 @@ def main() -> None:
                 )
             processed_so_far = (chunk_idx + 1) * args.chunk_size
             logger.info("{}", prog.aggregate_line(min(processed_so_far, len(rendered))))
+
+    set_measurement("units_retained", prog.retained, "none")
+    set_measurement("units_failed", prog.failed, "none")
+    set_measurement("units_skipped_empty", prog.skipped, "none")
+    transaction.__exit__(None, None, None)
 
     logger.info(
         "\nretained={} skipped(empty)={} failed={} into bank {!r}",

@@ -31,6 +31,7 @@ import time
 from collections.abc import Callable
 from datetime import timedelta
 
+import sentry_sdk
 from loguru import logger
 
 from adapters import imessage
@@ -44,6 +45,7 @@ from adapters.spotify import (
 )
 from core.logging import configure_logging
 from core.schema import Event
+from observability.sentry import init_sentry, set_measurement
 from storage.persist import persist_events
 from storage.store import DEFAULT_DB_PATH, CapsuleStore
 
@@ -145,6 +147,7 @@ def main() -> None:
         return override if override is not None else args.days
 
     configure_logging()
+    init_sentry(component="build")
 
     if args.fresh and os.path.exists(DEFAULT_DB_PATH):
         os.remove(DEFAULT_DB_PATH)
@@ -159,21 +162,29 @@ def main() -> None:
         _window("claude"),
     )
 
-    _run_phase(
-        "imessage",
-        lambda: _within_days(
-            imessage.ingest(IMESSAGE_TOP_N, db_path=IMESSAGE_DB), _window("imessage")
-        ),
-    )
-    _run_phase("claude", lambda: _within_days(ingest_export(CLAUDE_EXPORT_DIR), _window("claude")))
-    _run_phase("spotify", lambda: _spotify_events(_window("spotify")))
-    _run_phase("photos", lambda: _photo_events(_window("photos")))
+    with sentry_sdk.start_transaction(op="build", name="build_all_sources_db"):
+        per_source = {
+            "imessage": _run_phase(
+                "imessage",
+                lambda: _within_days(
+                    imessage.ingest(IMESSAGE_TOP_N, db_path=IMESSAGE_DB), _window("imessage")
+                ),
+            ),
+            "claude": _run_phase(
+                "claude", lambda: _within_days(ingest_export(CLAUDE_EXPORT_DIR), _window("claude"))
+            ),
+            "spotify": _run_phase("spotify", lambda: _spotify_events(_window("spotify"))),
+            "photos": _run_phase("photos", lambda: _photo_events(_window("photos"))),
+        }
+        for source, count in per_source.items():
+            set_measurement(f"events_{source}", count, "none")
 
-    store = CapsuleStore()
-    try:
-        total = len(store.list_events())
-    finally:
-        store.close()
+        store = CapsuleStore()
+        try:
+            total = len(store.list_events())
+        finally:
+            store.close()
+        set_measurement("events_total", total, "none")
     print(f"\nDone. Unified store at {DEFAULT_DB_PATH} ({total} events)")
 
 
