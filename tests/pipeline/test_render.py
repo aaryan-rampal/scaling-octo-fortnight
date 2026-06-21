@@ -1,0 +1,186 @@
+"""Fixture-only tests for rung-② rendering and the retain wrapper.
+
+No network and no real Hindsight: the retain path is exercised with a fake
+client. ``Unit`` is stubbed locally to the v0 contract shape so these tests do
+not couple to rung ①'s module.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from datetime import UTC, datetime
+from typing import Any
+
+import pytest
+
+from core.schema import Event
+from pipeline.render import MemoryRef, render_unit, retain_unit
+
+
+@dataclass(frozen=True, slots=True)
+class _Unit:
+    """Local stand-in for the rung-① ``Unit`` contract shape."""
+
+    unit_id: str
+    source: str
+    derived_from: list[str]
+    t_start: datetime
+    t_end: datetime
+
+
+def _ts(hour: int, minute: int = 0) -> datetime:
+    return datetime(2026, 6, 14, hour, minute, tzinfo=UTC)
+
+
+def _event(**kwargs: Any) -> Event:
+    base: dict[str, Any] = {
+        "id": "e0",
+        "t_utc": _ts(12),
+        "author_role": None,
+        "content": None,
+        "thread_id": None,
+        "reply_to": None,
+        "raw_ref": "ref#0",
+        "source": "imessage",
+        "additional_data": {},
+    }
+    base.update(kwargs)
+    return Event(**base)
+
+
+def _unit(source: str, ids: list[str]) -> _Unit:
+    return _Unit(
+        unit_id=f"u-{source}",
+        source=source,
+        derived_from=ids,
+        t_start=_ts(12),
+        t_end=_ts(13),
+    )
+
+
+class _FakeRetainResponse:
+    def __init__(self, operation_id: str) -> None:
+        self.operation_id = operation_id
+
+
+@dataclass
+class _FakeClient:
+    """Records the kwargs of the last retain call instead of hitting a server."""
+
+    calls: list[dict[str, Any]] = field(default_factory=list)
+    op_id: str = "op-123"
+
+    def retain(self, **kwargs: Any) -> _FakeRetainResponse:
+        self.calls.append(kwargs)
+        return _FakeRetainResponse(self.op_id)
+
+
+# --- render_unit: conversational -------------------------------------------------
+
+
+def test_render_imessage_transcript_role_prefixed_in_order() -> None:
+    events = [
+        _event(id="a", author_role="self", content="hey", source="imessage", t_utc=_ts(12, 0)),
+        _event(id="b", author_role="other", content="hi", source="imessage", t_utc=_ts(12, 1)),
+    ]
+    text = render_unit(_unit("imessage", ["a", "b"]), events)
+    assert text == "self: hey\nother: hi"
+
+
+def test_render_conversational_handles_missing_role_and_content() -> None:
+    events = [_event(id="a", author_role=None, content=None, source="claude")]
+    assert render_unit(_unit("claude", ["a"]), events) == "unknown: "
+
+
+# --- render_unit: spotify --------------------------------------------------------
+
+
+def test_render_spotify_templated_fact_per_play() -> None:
+    events = [
+        _event(
+            id="s1",
+            author_role="self",
+            content="Listened to 'ROCKSTAR' by DaBaby (album BLAME IT ON BABY)",
+            source="spotify",
+            t_utc=_ts(9, 30),
+        ),
+    ]
+    text = render_unit(_unit("spotify", ["s1"]), events)
+    assert text == (
+        "On 2026-06-14T09:30:00+00:00, listened to 'ROCKSTAR' by DaBaby (album BLAME IT ON BABY)"
+    )
+
+
+# --- render_unit: photos ---------------------------------------------------------
+
+
+def test_render_photo_with_people() -> None:
+    events = [
+        _event(
+            id="p1",
+            source="photos",
+            t_utc=_ts(15, 5),
+            additional_data={"lat": 49.26, "lng": -123.25, "people": ["Alex", "Sam"]},
+        ),
+    ]
+    text = render_unit(_unit("photos", ["p1"]), events)
+    assert text == "On 2026-06-14T15:05:00+00:00, took a photo at 49.26, -123.25 with Alex, Sam"
+
+
+def test_render_photo_without_people_or_geo() -> None:
+    events = [
+        _event(id="p2", source="photos", t_utc=_ts(16, 0), additional_data={"people": []}),
+    ]
+    text = render_unit(_unit("photos", ["p2"]), events)
+    assert text == "On 2026-06-14T16:00:00+00:00, took a photo at an unknown location"
+
+
+def test_render_empty_events_raises() -> None:
+    with pytest.raises(ValueError, match="at least one event"):
+        render_unit(_unit("imessage", ["a"]), [])
+
+
+# --- retain_unit -----------------------------------------------------------------
+
+
+def test_retain_unit_returns_memory_ref_with_derived_from() -> None:
+    client = _FakeClient(op_id="op-xyz")
+    unit = _unit("imessage", ["a", "b"])
+    ref = retain_unit(client, unit, "self: hey", author_role="self")
+    assert isinstance(ref, MemoryRef)
+    assert ref.memory_id == "op-xyz"
+    assert ref.derived_from == ["u-imessage"]
+    assert ref.derived_from  # non-empty
+
+
+def test_retain_unit_routes_self_to_experience() -> None:
+    client = _FakeClient()
+    retain_unit(client, _unit("imessage", ["a"]), "self: hi", author_role="self")
+    call = client.calls[0]
+    assert call["metadata"]["network"] == "experience"
+    assert "network:experience" in call["tags"]
+    assert call["metadata"]["unit_id"] == "u-imessage"
+
+
+def test_retain_unit_routes_other_to_world() -> None:
+    client = _FakeClient()
+    retain_unit(client, _unit("imessage", ["a"]), "other: hi", author_role="other")
+    assert client.calls[0]["metadata"]["network"] == "world"
+
+
+def test_retain_unit_none_role_defaults_to_world() -> None:
+    client = _FakeClient()
+    retain_unit(client, _unit("photos", ["p1"]), "On ..., took a photo", author_role=None)
+    call = client.calls[0]
+    assert call["metadata"]["network"] == "world"
+    assert call["metadata"]["author_role"] == "unknown"
+
+
+def test_retain_unit_blank_text_raises() -> None:
+    with pytest.raises(ValueError, match="non-empty rendered text"):
+        retain_unit(_FakeClient(), _unit("imessage", ["a"]), "   ", author_role="self")
+
+
+def test_memory_ref_rejects_empty_derived_from() -> None:
+    with pytest.raises(ValueError, match="non-empty list"):
+        MemoryRef(memory_id="m", derived_from=[])
