@@ -190,11 +190,15 @@ function visit(poi) {
 }
 
 // --- 2. CREATE a capsule ---
-let createPoi = null, selMood = null, selCover = null;
+let createPoi = null, selMood = null, selCover = null, selFiles = [];
 function startCreate(poi) {
   createPoi = poi;
   selMood = SEED.moods[0];
   selCover = SEED.covers[0];
+  selFiles = [];
+  document.getElementById("file-preview").innerHTML = "";
+  document.getElementById("create-files").value = "";
+  document.getElementById("filedrop-label").textContent = "＋ add a photo or video — recall reads its EXIF location & time";
   document.getElementById("create-loc-icon").innerHTML = ICON.pin;
   document.getElementById("create-place").textContent = poi.name;
   document.getElementById("mood-row").innerHTML = SEED.moods
@@ -220,13 +224,33 @@ document.getElementById("cover-row").addEventListener("click", (e) => {
   b.classList.add("sel");
 });
 
-document.getElementById("create-form").addEventListener("submit", (e) => {
+// real photo/video attach — first image becomes the cover; all files upload to recall
+document.getElementById("create-files").addEventListener("change", (e) => {
+  selFiles = [...e.target.files];
+  const prev = document.getElementById("file-preview");
+  prev.innerHTML = "";
+  selFiles.forEach((f) => {
+    const url = URL.createObjectURL(f);
+    if (f.type.startsWith("video")) {
+      prev.insertAdjacentHTML("beforeend", `<video class="fp-item" src="${url}" muted></video>`);
+    } else {
+      prev.insertAdjacentHTML("beforeend", `<div class="fp-item" style="background:center/cover url('${url}')"></div>`);
+      if (!selFiles.some((x, i) => x.type.startsWith("image") && i < selFiles.indexOf(f))) selCover = `center/cover url('${url}')`;
+    }
+  });
+  document.getElementById("filedrop-label").textContent = selFiles.length ? `${selFiles.length} file(s) attached` : "＋ add a photo or video";
+});
+
+document.getElementById("create-form").addEventListener("submit", async (e) => {
   e.preventDefault();
   const note = document.getElementById("create-note").value.trim() || "No words — just being here.";
   const id = "c" + Date.now();
+  const media = selFiles.map((f) => f.type.startsWith("video")
+    ? { type: "video", src: URL.createObjectURL(f) }
+    : { type: "photo", src: URL.createObjectURL(f) });
   const cap = {
     id, icon: ICON.capsule, name: createPoi.name, place: createPoi.name,
-    visits: "just sealed", sealed: true, mood: selMood, cover: selCover,
+    visits: "just sealed", sealed: true, mood: selMood, cover: selCover, media,
     storyline: escapeHTML(note),
     citations: [], principle: "",
     reflection: "When you open this, what will you want to remember about who you are today?",
@@ -243,7 +267,19 @@ document.getElementById("create-form").addEventListener("submit", (e) => {
   renderMap();
   renderPlaces();
   switchTab("map");
-  toast(`Sealed at ${cap.name}. Come back to open it.`);
+
+  // send to the recall backend if one is configured (the capsule-ingest path)
+  if (Recall.on()) {
+    toast(`Sealing to recall…`);
+    try {
+      await Recall.createCapsule({ place_name: createPoi.name, lat: createPoi.lat, lng: createPoi.lng, files: selFiles });
+      toast(`Sealed at ${cap.name} — ingested by recall.`);
+    } catch {
+      toast(`Sealed locally (recall unreachable).`);
+    }
+  } else {
+    toast(`Sealed at ${cap.name}. Come back to open it.`);
+  }
 });
 
 // --- 3. CAPSULES tab ---
@@ -566,10 +602,35 @@ document.getElementById("graph").addEventListener("click", () => {
 document.querySelectorAll(".tab").forEach((t) => t.addEventListener("click", () => switchTab(t.dataset.tab)));
 document.querySelectorAll("[data-back-map]").forEach((b) => b.addEventListener("click", () => show("map")));
 
+// --- pull any capsules already ingested by the recall backend (capsule-ingest) ---
+async function hydrateFromBackend() {
+  if (!Recall.on()) return;
+  const h = await Recall.health();
+  setBackendChip(!!h);
+  if (!h) return;
+  const list = await Recall.listCapsules();
+  let added = 0;
+  list.forEach((c) => {
+    if (getPlace(c.id)) return;
+    const cap = Recall.toUICapsule(c);
+    SEED.places.push(cap);
+    if (cap._lat != null && cap._lng != null) {
+      SEED.map.push({ id: c.id, name: cap.name, lat: cap._lat, lng: cap._lng, discovered: true, capsuleId: c.id });
+    }
+    added++;
+  });
+  if (added) { renderMap(); renderPlaces(); buildGraph(); renderGraph(); }
+}
+function setBackendChip(live) {
+  const el = document.getElementById("map-progress");
+  if (el) el.title = live ? "recall backend: connected" : "recall backend: offline (seed)";
+}
+
 // --- boot ---
 renderMap();
 renderPlaces();
 renderGraph();
 show("map");
+hydrateFromBackend();
 
 if(location.search.includes("demo=venue")){active=getPlace("venue");reveal();}

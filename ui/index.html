@@ -96,7 +96,14 @@
         <label class="field-label" for="create-note">Leave a note for future you</label>
         <textarea id="create-note" rows="3" placeholder="what's true today that you might forget…"></textarea>
 
-        <label class="field-label">Pick a cover</label>
+        <label class="field-label">Attach media (photo / video)</label>
+        <label class="filedrop" for="create-files">
+          <span id="filedrop-label">＋ add a photo or video — recall reads its EXIF location & time</span>
+          <input id="create-files" type="file" accept="image/*,video/*" multiple hidden />
+        </label>
+        <div id="file-preview" class="file-preview"></div>
+
+        <label class="field-label">Or pick a cover</label>
         <div id="cover-row" class="cover-row"><!-- injected --></div>
 
         <button type="submit" class="primary">Seal until I return ↩</button>
@@ -182,6 +189,7 @@
   </div>
 
   <script src="seed.js"></script>
+  <script src="api.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

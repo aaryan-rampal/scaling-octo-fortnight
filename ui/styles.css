@@ -924,3 +924,18 @@ body {
 @keyframes mkin { from { opacity: 0; transform: scale(.5); } to { opacity: 1; transform: scale(1); } }
 @media (prefers-reduced-motion: reduce) { .mk { animation: none; } }
 @media (prefers-reduced-motion: reduce) { #map { transition: none; } .mk { animation: none; } }
+
+/* ---- create: media attach (recall ingest) ---- */
+.filedrop {
+  display: flex; align-items: center; justify-content: center;
+  min-height: 56px; padding: 12px 14px; border-radius: var(--radius-card);
+  border: 1.5px dashed rgba(232,193,136,.45); background: var(--glass);
+  color: var(--ink-dim); font-size: 12.5px; text-align: center; cursor: pointer;
+  transition: border-color .18s var(--easing), background .18s var(--easing);
+}
+.filedrop:hover { border-color: var(--amber); color: var(--ink); }
+.file-preview { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+.file-preview .fp-item {
+  width: 64px; height: 64px; border-radius: 12px; object-fit: cover;
+  background-size: cover; background-position: center; border: 1px solid var(--hairline);
+}
